@@ -1,0 +1,10 @@
+[project]
+name = "steadyroute"
+version = "0.1.0"
+description = "Local weighted residential-route controller for Clash Verge/Mihomo"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.unittest]
+start-directory = "tests"
+

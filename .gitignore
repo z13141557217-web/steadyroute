@@ -1,0 +1,28 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+*.local
+dist/
+build/
+artifacts/
+coverage/
+
+# Runtime and production data must never enter source control.
+state.json
+router.lock
+*.log
+*.log.*
+*.sock
+*.pid
+backups/
+
+# Secrets and subscription material.
+*subscription*
+*credentials*
+*secret*
+*.key
+*.pem
+

@@ -1,0 +1,83 @@
+# Profile Enhancement Groups Template for Clash Verge
+
+prepend:
+  # General international traffic uses Hong Kong residential exits only.
+  # A local weighted stability controller selects this group. It prioritizes
+  # sustained availability, then EWMA latency and jitter, with switch hysteresis.
+  - name: 香港家宽自动备援
+    type: select
+    interrupt-exist-connections: false
+    proxies:
+      - 香港家宽hy2🇭🇰
+      - 优秀|【3x】中转|香港家宽🇭🇰
+      - 优秀|cf加速|香港动态家宽🇭🇰
+      - 优秀|cf加速|香港动态家宽二🇭🇰
+      - 【10x】三网优化|香港动态家宽🇭🇰
+  # Keep AI services on Taiwan residential exits. Selection is managed by the
+  # same weighted stability controller; all residential candidates remain.
+  - name: AI 台湾家宽线路
+    type: select
+    interrupt-exist-connections: false
+    disable-udp: true
+    proxies:
+      - '[03]台湾hinet家宽🇨🇳hy2'
+      - '[01]台湾hinet家宽🇨🇳hy2'
+      - '[02]台湾hinet家宽🇨🇳hy2'
+      - 【10x】三网优化|台湾hinet家宽02
+      - 【10x】三网优化|台湾hinet动态家宽01
+      - 优秀|[3x]中转|台湾hinet家宽02
+      - 优秀|[3x]中转|台湾hinet家宽03
+      - 优秀|【3x】中转|台湾hinet动态家宽01
+      - 【3x】中转|台湾seednet动态家宽🇹🇼
+      - 优秀|cf加速|台湾动态家宽🇹🇼
+      - 台湾seednet动态家宽🇹🇼hy2
+  # Verve AI uses a dedicated active/standby route. The primary Hong Kong BGP
+  # node was selected by repeated real TLS requests; Singapore is the verified
+  # backup and is automatically selected if the primary health check fails.
+  - name: Verve AI 稳定线路
+    type: fallback
+    url: 'https://www.app.vervecopilot.com/desktop-auth/waiting?redirect_url=%2Fcopilot'
+    interval: 60
+    lazy: false
+    timeout: 5000
+    max-failed-times: 2
+    expected-status: 200
+    interrupt-exist-connections: false
+    disable-udp: true
+    proxies:
+      - 【3x】中转|香港BGP🇭🇰
+      - 【3x】中转|高速新加坡🇸🇬
+  # Real-time transcription uses AssemblyAI. Keep the currently fastest US
+  # route as primary, with the two independently verified Verve routes as
+  # automatic backups.
+  - name: Verve AI 实时语音线路
+    type: fallback
+    url: 'https://streaming.assemblyai.com/v3/ws'
+    interval: 60
+    lazy: false
+    timeout: 5000
+    max-failed-times: 2
+    interrupt-exist-connections: false
+    disable-udp: true
+    proxies:
+      - 优秀|【3x】中转|美国星链家宽🇺🇸
+      - 【3x】中转|香港BGP🇭🇰
+      - 【3x】中转|高速新加坡🇸🇬
+  # accounts.google.com was intermittently timing out on its previous single
+  # Hawaiian node. Keep a US exit as primary and a verified Hong Kong backup.
+  - name: Google 登录稳定线路
+    type: fallback
+    url: 'https://accounts.google.com/'
+    interval: 60
+    lazy: false
+    timeout: 5000
+    max-failed-times: 2
+    interrupt-exist-connections: false
+    disable-udp: true
+    proxies:
+      - 优秀|【3x】中转|美国星链家宽🇺🇸
+      - 【3x】中转|香港BGP🇭🇰
+
+append: []
+
+delete: []
