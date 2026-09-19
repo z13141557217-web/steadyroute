@@ -16,6 +16,16 @@
 - 是否存在长期隔离或空候选。
 - 日志是否接近上限。
 - RSS、CPU 和本地接口响应是否异常。
+- `/api/v1/status` 的 `service.state_stale`、`controller_connected` 和 `diagnostics.snapshot_id`。
+
+## 状态 schema 故障
+
+- `state.v1-backup.json` 是 v1→v2 前的原子备份，不提交 Git。
+- `state.corrupt-<unix>.json` 或 `state.migration-failed-<unix>.json` 是本机诊断副本，
+  不得复制到日志或看板。
+- 日志出现 `unsupported future state schema` 时停止用旧版本启动；不要删除或改写状态，
+  应恢复能识别该版本的程序或使用完整部署备份回滚。
+- 从 v0.3.0 候选回滚 v0.2.0 时使用完整目录备份，禁止把 v2 状态手工拼接到旧版本。
 
 ## 故障等级
 

@@ -49,6 +49,7 @@
 - 状态文件无法读取。
 - 选路行为与发布前 dry-run 不一致。
 - RSS、CPU 或接口延迟明显回退。
+- 状态迁移失败、未来 schema 拒绝或新旧 API 快照不一致。
 
 ## 回滚原则
 
@@ -56,3 +57,7 @@
 
 标准命令为 `./scripts/rollback-local.sh`（预演）和
 `./scripts/rollback-local.sh --apply`（执行）。
+
+`v0.3.0` 候选首次启动会把 v1 `state.json` 原子备份为 `state.v1-backup.json` 后写入
+schema v2。标准完整目录回滚会恢复发布前状态；不要让 v0.2.0 手工复用候选目录中的
+v2 状态。未知未来 schema 必须保留原文件并恢复能识别它的版本。
