@@ -46,6 +46,10 @@ class FutureStateVersionError(StateContractError):
     """Raised when an older process sees a state version it cannot safely write."""
 
 
+class InvalidTransitionError(StateContractError):
+    """Raised when a caller attempts to skip the declared state machine."""
+
+
 GROUP_DECISION_COPY = {
     "stable": {
         "severity": "ok", "title": "当前线路稳定且为最佳选择",
@@ -276,6 +280,14 @@ def utc_iso(value):
 
 
 def transition_allowed(scope, old_state, new_state):
+    if scope == "group":
+        known = set(GROUP_TRANSITIONS)
+    elif scope == "node":
+        known = set(NODE_TRANSITIONS)
+    else:
+        return False
+    if old_state not in known or new_state not in known:
+        return False
     if old_state == new_state:
         return True
     if scope == "group":
@@ -283,6 +295,42 @@ def transition_allowed(scope, old_state, new_state):
     if scope == "node":
         return new_state == "retired" or new_state in NODE_TRANSITIONS.get(old_state, set())
     return False
+
+
+def transition_path(scope, old_state, new_state):
+    """Return declared states after old_state through new_state, or reject the jump."""
+    if scope == "group":
+        known = set(GROUP_TRANSITIONS)
+        if old_state not in known or new_state not in known:
+            raise InvalidTransitionError("unknown group state in transition")
+        if new_state in GROUP_EXCEPTION_STATES:
+            return [new_state]
+        transitions = GROUP_TRANSITIONS
+    elif scope == "node":
+        known = set(NODE_TRANSITIONS)
+        if old_state not in known or new_state not in known:
+            raise InvalidTransitionError("unknown node state in transition")
+        if new_state == "retired":
+            return [new_state]
+        transitions = NODE_TRANSITIONS
+    else:
+        raise InvalidTransitionError("unknown transition scope: %s" % scope)
+    if old_state == new_state:
+        return []
+    queue = [(old_state, [])]
+    visited = {old_state}
+    while queue:
+        current, path = queue.pop(0)
+        neighbors = set(transitions.get(current, set()))
+        for candidate in sorted(neighbors):
+            if candidate == new_state:
+                return path + [candidate]
+            if candidate not in visited:
+                visited.add(candidate)
+                queue.append((candidate, path + [candidate]))
+    raise InvalidTransitionError(
+        "undeclared %s transition path: %s -> %s" % (scope, old_state, new_state)
+    )
 
 
 def resolve_group_decision(facts, updated_at):
@@ -358,6 +406,10 @@ def resolve_node_lifecycle(facts, now):
 
 
 def record_transition(state, scope, subject_id, old_state, new_state, reason_code, occurred_at, group_id=None):
+    if not transition_allowed(scope, old_state, new_state):
+        raise InvalidTransitionError(
+            "undeclared %s transition: %s -> %s" % (scope, old_state, new_state)
+        )
     if old_state == new_state:
         return False
     event = {
@@ -377,3 +429,21 @@ def record_transition(state, scope, subject_id, old_state, new_state, reason_cod
     events.append(event)
     state["events"] = events[-EVENT_LIMIT:]
     return True
+
+
+def record_transition_path(
+        state, scope, subject_id, old_state, final_state, steps, occurred_at, group_id=None):
+    """Record an explicit ordered path; every individual edge must be declared."""
+    if old_state == final_state and not steps:
+        return False
+    if not steps or steps[-1][0] != final_state:
+        raise InvalidTransitionError("explicit path must end at %s" % final_state)
+    changed = False
+    current = old_state
+    for next_state, reason_code in steps:
+        changed = record_transition(
+            state, scope, subject_id, current, next_state, reason_code,
+            occurred_at, group_id=group_id,
+        ) or changed
+        current = next_state
+    return changed

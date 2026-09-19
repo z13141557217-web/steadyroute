@@ -335,6 +335,45 @@ def public_subscription_change(change):
     return public
 
 
+def transition_reason(scope, state_code, final_decision=None):
+    if final_decision is not None and state_code == final_decision["code"]:
+        return final_decision["reason_code"]
+    if scope == "group":
+        return {
+            "stable": "current_best",
+            "candidate_confirming": "confirmation_incomplete",
+            "handover_pending": "confirmation_complete",
+            "handover_grace": "safe_handover_started",
+            "recovery_observing": "post_switch_validation",
+            "cooldown": "performance_cooldown_active",
+            "manual_hold": "manual_selection_active",
+            "degraded": "health_window_degraded",
+            "failover_now": "confirmed_current_failure",
+            "no_candidate": "safe_candidate_unavailable",
+            "controller_offline": "controller_unreachable",
+        }[state_code]
+    return "%s_criteria" % state_code
+
+
+def record_projected_transition(
+        state, scope, subject_id, old_state, new_state, occurred_at,
+        final_decision=None, group_id=None, explicit_steps=None):
+    if old_state == new_state:
+        return False
+    steps = []
+    for code, reason_code in explicit_steps or []:
+        if code != old_state and (not steps or steps[-1][0] != code):
+            steps.append((code, reason_code))
+    cursor = steps[-1][0] if steps else old_state
+    for code in state_contract.transition_path(scope, cursor, new_state):
+        if not steps or steps[-1][0] != code:
+            steps.append((code, transition_reason(scope, code, final_decision=final_decision)))
+    return state_contract.record_transition_path(
+        state, scope, subject_id, old_state, new_state, steps, occurred_at,
+        group_id=group_id,
+    )
+
+
 def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=None):
     now = int(time.time()) if now is None else int(now)
     memory_mb = memory_megabytes() if memory_mb is None else float(memory_mb)
@@ -376,9 +415,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
         previous = node_state.get("lifecycle")
         node_state["lifecycle"] = item["lifecycle"]
         if previous is not None:
-            state_contract.record_transition(
-                state, "node", item["id"], previous, item["lifecycle"],
-                item["lifecycle_status"]["reason_code"], now,
+            record_projected_transition(
+                state, "node", item["id"], previous, item["lifecycle"], now,
                 group_id=state_contract.group_ui_id(group_name),
             )
 
@@ -394,10 +432,18 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
         previous = group_state.get("decision_code")
         group_state["decision_code"] = decision["code"]
         if previous is not None:
-            state_contract.record_transition(
+            pending_steps = [
+                (item["code"], item["reason_code"])
+                for item in group_state.get("pending_decision_events", [])
+            ]
+            if pending_steps and decision["code"] == "recovery_observing":
+                pending_steps.append(("handover_grace", "no_old_connections"))
+            record_projected_transition(
                 state, "group", state_contract.group_ui_id(group_name), previous,
-                decision["code"], decision["reason_code"], now,
+                decision["code"], now, final_decision=decision,
+                explicit_steps=pending_steps,
             )
+        group_state["pending_decision_events"] = []
         current = node_by_name.get(current_name)
         target = node_by_name.get(target_name)
         groups.append({
@@ -1074,6 +1120,11 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         group_state["last_seen"] = current
         log("%s: keep %s; %s failed business preflight" % (group_name, current, leader))
         return
+    group_state["pending_decision_events"] = [{
+        "code": "handover_pending",
+        "reason_code": "confirmation_complete",
+        "occurred_at": int(now),
+    }]
     select_node(group_name, leader, dry_run)
     group_state["last_router_selection"] = leader
     group_state["last_seen"] = leader

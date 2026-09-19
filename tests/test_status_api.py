@@ -156,6 +156,9 @@ class StatusApiContractTests(unittest.TestCase):
         fixture = json.loads(body)
         self.assertGreaterEqual(len(fixture["group_scenarios"]), 14)
         self.assertGreaterEqual(len(fixture["node_scenarios"]), 7)
+        for collection in ("group_scenarios", "node_scenarios", "value_scenarios"):
+            for case in fixture[collection]:
+                self.assertIn("reachability", case, case["scenario"])
 
     def test_production_dashboard_displays_backend_status_without_state_formulas(self):
         source = (MODULE_DIR / "dashboard.html").read_text(encoding="utf-8")

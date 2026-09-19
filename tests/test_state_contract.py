@@ -81,6 +81,48 @@ class DecisionContractTests(unittest.TestCase):
         self.assertTrue(contract.transition_allowed("node", "healthy", "retired"))
         self.assertFalse(contract.transition_allowed("node", "retired", "healthy"))
 
+    def test_undeclared_group_and_node_transitions_are_rejected(self):
+        state = contract.new_state()
+        with self.assertRaises(contract.InvalidTransitionError):
+            contract.record_transition(
+                state, "group", "group-tw", "stable", "handover_grace",
+                "skipped_confirmation", 1789762600,
+            )
+        with self.assertRaises(contract.InvalidTransitionError):
+            contract.record_transition(
+                state, "node", "node-retired", "retired", "healthy",
+                "history_must_not_revive", 1789762600,
+            )
+        with self.assertRaises(contract.InvalidTransitionError):
+            contract.record_transition(
+                state, "group", "group-tw", "unknown", "manual_hold",
+                "unknown_state", 1789762600,
+            )
+        with self.assertRaises(contract.InvalidTransitionError):
+            contract.record_transition(
+                state, "node", "node-unknown", "unknown", "unknown",
+                "unknown_state", 1789762600,
+            )
+        self.assertEqual(state["events"], [])
+
+    def test_declared_intermediate_path_records_ordered_events(self):
+        state = contract.new_state()
+        contract.record_transition_path(
+            state, "group", "group-tw", "candidate_confirming", "handover_grace",
+            [
+                ("handover_pending", "confirmation_complete"),
+                ("handover_grace", "healthy_old_connections_present"),
+            ],
+            1789762600,
+        )
+        self.assertEqual(
+            [(event["from_state"], event["to_state"], event["reason_code"]) for event in state["events"]],
+            [
+                ("candidate_confirming", "handover_pending", "confirmation_complete"),
+                ("handover_pending", "handover_grace", "healthy_old_connections_present"),
+            ],
+        )
+
     def test_node_ui_id_is_stable_non_reversible_identifier(self):
         first = contract.node_ui_id("AI 台湾家宽线路", "台湾 HINET 家宽02")
         self.assertEqual(first, contract.node_ui_id("AI 台湾家宽线路", "台湾 HINET 家宽02"))
