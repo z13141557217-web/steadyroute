@@ -1,0 +1,96 @@
+{
+  "schema_version": 2,
+  "generated_at": 1789762600,
+  "group_scenarios": [
+    {
+      "scenario": "当前最佳",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true},
+      "expected": {"code": "stable", "title": "当前线路稳定且为最佳选择"}
+    },
+    {
+      "scenario": "候选确认 1/3",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "target_id": "node-b", "confirmation_current": 1, "confirmation_required": 3},
+      "expected": {"code": "candidate_confirming", "title": "发现更优线路，正在确认稳定性"}
+    },
+    {
+      "scenario": "候选确认 2/3",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "target_id": "node-b", "confirmation_current": 2, "confirmation_required": 3},
+      "expected": {"code": "candidate_confirming", "title": "发现更优线路，正在确认稳定性"}
+    },
+    {
+      "scenario": "候选确认 3/3",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "target_id": "node-b", "confirmation_current": 3, "confirmation_required": 3},
+      "expected": {"code": "handover_pending", "title": "当前线路已不是最佳，等待安全回优"}
+    },
+    {
+      "scenario": "等待安全交接",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "target_id": "node-b", "handover_pending": true, "old_connections": 4},
+      "expected": {"code": "handover_pending", "title": "当前线路已不是最佳，等待安全回优"}
+    },
+    {
+      "scenario": "正在交接",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "target_id": "node-b", "handover_active": true, "old_connections": 4, "grace_remaining_seconds": 28},
+      "expected": {"code": "handover_grace", "title": "新请求已回优，旧连接自然结束中"}
+    },
+    {
+      "scenario": "交接完成",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "recovery_observing": true},
+      "expected": {"code": "recovery_observing", "title": "切换完成，正在观察恢复质量"}
+    },
+    {
+      "scenario": "当前节点性能下降",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "current_degraded": true},
+      "expected": {"code": "degraded", "title": "当前线路质量下降"}
+    },
+    {
+      "scenario": "当前节点故障",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_failed": true, "target_id": "node-b"},
+      "expected": {"code": "failover_now", "title": "当前线路故障，立即切换"}
+    },
+    {
+      "scenario": "无候选",
+      "facts": {"controller_connected": true, "candidate_count": 0, "current_failed": true},
+      "expected": {"code": "no_candidate", "title": "没有可安全使用的候选线路"}
+    },
+    {
+      "scenario": "手动锁定",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "manual_hold_remaining_seconds": 1800},
+      "expected": {"code": "manual_hold", "title": "已尊重手动选择，暂停自动回优"}
+    },
+    {
+      "scenario": "控制器断开",
+      "facts": {"controller_connected": false, "candidate_count": 2},
+      "expected": {"code": "controller_offline", "title": "控制器连接中断"}
+    },
+    {
+      "scenario": "控制器恢复",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "recovery_observing": true},
+      "expected": {"code": "recovery_observing", "title": "切换完成，正在观察恢复质量"}
+    },
+    {
+      "scenario": "性能冷却",
+      "facts": {"controller_connected": true, "candidate_count": 2, "current_healthy": true, "cooldown_remaining_seconds": 1200},
+      "expected": {"code": "cooldown", "title": "刚完成切换，处于性能冷却期"}
+    }
+  ],
+  "node_scenarios": [
+    {"scenario": "新节点发现", "facts": {"discovered": true, "samples": 0}, "expected": {"lifecycle": "discovered", "title": "新节点已发现"}},
+    {"scenario": "新节点预热", "facts": {"samples": 3}, "expected": {"lifecycle": "warming", "title": "节点正在预热"}},
+    {"scenario": "健康节点", "facts": {"samples": 20, "last_success": true, "failure_streak": 0}, "expected": {"lifecycle": "healthy", "title": "节点健康"}},
+    {"scenario": "节点性能下降", "facts": {"samples": 20, "last_success": true, "failure_streak": 1}, "expected": {"lifecycle": "degraded", "title": "节点质量下降"}},
+    {"scenario": "节点进入隔离", "facts": {"samples": 20, "quarantine_until": 1789766200, "quarantine_recovery_streak": 0}, "expected": {"lifecycle": "quarantined", "title": "节点已隔离"}},
+    {"scenario": "半开放恢复", "facts": {"samples": 20, "quarantine_until": 1789762500, "quarantine_recovery_streak": 1}, "expected": {"lifecycle": "half_open", "title": "节点正在半开放验证"}},
+    {"scenario": "节点退役", "facts": {"retired_at": 1789760000, "samples": 20}, "expected": {"lifecycle": "retired", "title": "节点已退役"}}
+  ],
+  "value_scenarios": [
+    {"scenario": "null 与 0 的区分", "expected": {"target": null, "cooldown_remaining_seconds": 0}},
+    {"scenario": "状态过期", "last_cycle_at": 1789762500, "now": 1789762600, "stale_after_seconds": 60, "expected": {"state_stale": true}}
+  ],
+  "transitions": {
+    "group_normal": ["stable", "candidate_confirming", "handover_pending", "handover_grace", "recovery_observing", "stable"],
+    "group_failure": ["stable", "degraded", "failover_now", "recovery_observing", "stable"],
+    "group_exception_branches": ["controller_offline", "no_candidate", "manual_hold"],
+    "node": ["discovered", "warming", "healthy", "degraded", "quarantined", "half_open", "healthy"],
+    "node_retirement": ["any", "retired", "cleanup_after_24h"]
+  }
+}

@@ -35,7 +35,10 @@ DEFAULT_STATUS_URL = "http://127.0.0.1:17654/api/status"
 REQUIRED_GROUPS = ("香港家宽自动备援", "AI 台湾家宽线路")
 MANAGED_FILES = {
     "src/weighted_router.py": "weighted_router.py",
+    "src/state_contract.py": "state_contract.py",
     "src/dashboard.html": "dashboard.html",
+    "src/acceptance_dashboard.html": "acceptance_dashboard.html",
+    "src/fixtures/status_contract_v2.json": "fixtures/status_contract_v2.json",
     "config/groups.yaml": "config/groups.yaml",
     "VERSION": "VERSION",
     "GIT_COMMIT": "GIT_COMMIT",
@@ -160,6 +163,8 @@ def validate_release_tree(root):
     if not version or not commit:
         raise DeploymentError("发布版本或 commit 为空")
     py_compile.compile(str(root / "src/weighted_router.py"), doraise=True)
+    py_compile.compile(str(root / "src/state_contract.py"), doraise=True)
+    json.loads((root / "src/fixtures/status_contract_v2.json").read_text(encoding="utf-8"))
     with (root / "deploy/com.nurture.clash-stability-router.plist").open("rb") as handle:
         plist = plistlib.load(handle)
     if plist.get("Label") != DEFAULT_LABEL:
@@ -506,6 +511,7 @@ def deploy(args):
         staged_target = prepare_target(release_root, current_source, work_parent)
         validate_groups_config(staged_target / "config/groups.yaml")
         py_compile.compile(str(staged_target / "weighted_router.py"), doraise=True)
+        py_compile.compile(str(staged_target / "state_contract.py"), doraise=True)
         with (release_root / "deploy/com.nurture.clash-stability-router.plist").open("rb") as handle:
             plistlib.load(handle)
         print("DRY-RUN validated version=%s commit=%s sha256=%s" % (release["version"], release["commit"], sha256(archive)))

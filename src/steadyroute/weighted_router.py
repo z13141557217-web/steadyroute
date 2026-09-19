@@ -10,10 +10,15 @@ import os
 import resource
 import socket
 import sys
-import tempfile
 import threading
 import time
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
+
+try:
+    import state_contract
+except ModuleNotFoundError:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import state_contract
 
 
 SOCKET_PATH = "/tmp/verge/verge-mihomo.sock"
@@ -21,6 +26,9 @@ BASE_DIR = "/Users/nurture/Library/Application Support/Clash-Verge-Stability-Rou
 STATE_PATH = os.path.join(BASE_DIR, "state.json")
 LOCK_PATH = os.path.join(BASE_DIR, "router.lock")
 DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard.html")
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+ACCEPTANCE_DASHBOARD_PATH = os.path.join(APP_DIR, "acceptance_dashboard.html")
+ACCEPTANCE_FIXTURE_PATH = os.path.join(APP_DIR, "fixtures", "status_contract_v2.json")
 DASHBOARD_HOST = "127.0.0.1"
 DASHBOARD_PORT = 17654
 SERVICE_NAME = "稳航 SteadyRoute"
@@ -161,28 +169,11 @@ def api_request(method, path, payload=None, timeout=10):
 
 
 def load_state():
-    try:
-        with open(STATE_PATH, "r", encoding="utf-8") as handle:
-            state = json.load(handle)
-    except (OSError, ValueError):
-        state = {}
-    state.setdefault("version", 1)
-    state.setdefault("nodes", {})
-    state.setdefault("groups", {})
-    return state
+    return state_contract.load_persistent_state(STATE_PATH)
 
 
 def save_state(state):
-    os.makedirs(BASE_DIR, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix="state-", suffix=".json", dir=BASE_DIR)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(state, handle, ensure_ascii=False, indent=2, sort_keys=True)
-            handle.write("\n")
-        os.replace(temporary, STATE_PATH)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    state_contract.save_persistent_state(STATE_PATH, state)
 
 
 def memory_megabytes():
@@ -210,83 +201,375 @@ def quality_score(node_state):
     return int(round(min(100.0, max(0.0, quality))))
 
 
-def dashboard_payload(state=None, proxy_data=None, connections=None):
-    if state is None:
-        state = load_state()
-    if proxy_data is None:
+def iso_timestamp(value):
+    if value is None:
+        return None
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(value)))
+
+
+def read_service_version():
+    candidates = [
+        os.path.join(APP_DIR, "VERSION"),
+        os.path.join(os.path.dirname(APP_DIR), "VERSION"),
+        os.path.join(os.path.dirname(os.path.dirname(APP_DIR)), "VERSION"),
+        os.path.join(BASE_DIR, "VERSION"),
+    ]
+    for path in candidates:
         try:
-            proxy_response = api_request("GET", "/proxies") or {}
-            proxy_data = proxy_response.get("proxies") or {}
-        except Exception:
-            proxy_data = {}
-    if connections is None:
-        try:
-            connection_data = api_request("GET", "/connections") or {}
-            connections = connection_data.get("connections") or []
-        except Exception:
-            connections = []
+            with open(path, "r", encoding="utf-8") as handle:
+                return handle.read().strip()
+        except OSError:
+            continue
+    return "unknown"
+
+
+def region_for_group(group_name):
+    return "TW" if "台湾" in group_name else "HK" if "香港" in group_name else "unknown"
+
+
+def connection_count_for_node(group_name, node_name, connections):
+    return sum(
+        1 for connection in connections
+        if group_name in (connection.get("chains") or [])
+        and node_name in (connection.get("chains") or [])
+    )
+
+
+def group_decision_facts(group_name, candidates, state, proxy_data, connections, now):
+    group_state = state.get("groups", {}).get(group_name, {})
+    current = (proxy_data.get(group_name) or {}).get("now") or group_state.get("last_seen")
+    current_state = state.get("nodes", {}).get(current, {})
+    failures = int(current_state.get("effective_failure_streak", current_state.get("failure_streak", 0)))
+    target = group_state.get("better_candidate")
+    if not target and int(now) < int(group_state.get("recovery_observe_until", 0)):
+        target = group_state.get("handover_new_node")
+    last_switch = int(group_state.get("last_switch_at", 0))
+    cooldown = max(0, PERFORMANCE_COOLDOWN_SECONDS - (int(now) - last_switch)) if last_switch else 0
+    manual_hold = max(0, int(group_state.get("manual_hold_until", 0)) - int(now))
+    old_node = group_state.get("handover_old_node")
+    old_connections = connection_count_for_node(group_name, old_node, connections) if old_node else 0
+    handover_until = int(group_state.get("handover_grace_until", 0))
+    recovery_until = int(group_state.get("recovery_observe_until", 0))
+    return {
+        "controller_connected": bool(state.get("controller_connected", bool(proxy_data))),
+        "candidate_count": len(candidates),
+        "current_healthy": bool(current_state.get("last_success")),
+        "current_degraded": bool(
+            current_state.get("last_success")
+            and (
+                int(current_state.get("failure_streak", 0)) > 0
+                or short_availability(current_state) < SHORT_MIN_AVAILABILITY
+                or long_availability(current_state) < MIN_AVAILABILITY
+            )
+        ),
+        "current_failed": failures >= FAILURES_BEFORE_SWITCH,
+        "target_id": state_contract.node_ui_id(group_name, target) if target else None,
+        "confirmation_current": int(group_state.get("better_streak", 0)),
+        "confirmation_required": PERFORMANCE_CONFIRMATIONS,
+        "handover_pending": bool(group_state.get("handover_pending")),
+        "handover_active": bool(old_node and old_connections and int(now) < handover_until),
+        "old_connections": old_connections,
+        "grace_remaining_seconds": max(0, handover_until - int(now)),
+        "recovery_observing": bool(int(now) < recovery_until),
+        "cooldown_remaining_seconds": cooldown,
+        "manual_hold_remaining_seconds": manual_hold,
+    }
+
+
+def node_contract(group_name, node_name, node_state, now, current_names):
+    lifecycle = state_contract.resolve_node_lifecycle(node_state, now)
+    latency = node_state.get("latency_ewma")
+    score = node_state.get("score")
+    samples = int(node_state.get("samples", 0))
+    quarantine_until = node_state.get("quarantine_until")
+    if not quarantine_until:
+        quarantine_until = None
+    last_probe = node_state.get("last_probe_at")
+    current = node_name in current_names
+    probe_gap = PROBE_INTERVAL_SECONDS if current else PROBE_INTERVAL_SECONDS * max(1, len(GROUPS.get(group_name, [])))
+    return {
+        "id": state_contract.node_ui_id(group_name, node_name),
+        "name": node_name,
+        "group": group_name,
+        "region": region_for_group(group_name),
+        "lifecycle": lifecycle["code"],
+        "lifecycle_status": lifecycle,
+        "role": "current" if current else "candidate",
+        "transport": "unknown",
+        "availability_short": round(short_availability(node_state), 4) if samples else None,
+        "availability_long": round(long_availability(node_state), 4) if samples else None,
+        "latency_ewma_ms": round(float(latency), 1) if latency is not None else None,
+        "latency_p95_ms": node_state.get("latency_p95_ms"),
+        "jitter_ms": round(float(node_state.get("jitter_ewma", 0.0)), 1) if latency is not None else None,
+        "score": round(float(score), 1) if score is not None else None,
+        "lower_score_is_better": True,
+        "quality": quality_score(node_state) if latency is not None else None,
+        "success_streak": int(node_state.get("success_streak", 0)),
+        "failure_streak": int(node_state.get("failure_streak", 0)),
+        "sample_count_short": len(node_state.get("short_results", [])),
+        "sample_count_long": sum(int(item.get("total", 0)) for item in node_state.get("long_buckets", [])),
+        "last_probe_at": int(last_probe) if last_probe is not None else None,
+        "last_probe_at_iso": iso_timestamp(last_probe),
+        "next_probe_at": int(last_probe) + probe_gap if last_probe is not None else None,
+        "next_probe_at_iso": iso_timestamp(int(last_probe) + probe_gap) if last_probe is not None else None,
+        "quarantine_until": int(quarantine_until) if quarantine_until is not None else None,
+        "quarantine_until_iso": iso_timestamp(quarantine_until),
+        "warmup_progress": round(min(1.0, float(samples) / MIN_SAMPLES_FOR_OPTIMIZATION), 3)
+        if lifecycle["code"] == "warming" else None,
+    }
+
+
+def public_event(event):
+    fields = (
+        "code", "severity", "scope", "subject_id", "group_id", "node_id",
+        "from_state", "to_state", "reason_code", "occurred_at", "occurred_at_iso",
+    )
+    return {name: event.get(name) for name in fields}
+
+
+def public_subscription_change(change):
+    fields = ("code", "node_id", "group_id", "from_state", "to_state", "occurred_at")
+    public = {name: change.get(name) for name in fields if name in change}
+    if "occurred_at" in public:
+        public["occurred_at_iso"] = iso_timestamp(public["occurred_at"])
+    return public
+
+
+def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=None):
+    now = int(time.time()) if now is None else int(now)
+    memory_mb = memory_megabytes() if memory_mb is None else float(memory_mb)
+    migrated = state_contract.migrate_state(state)
+    state.clear()
+    state.update(migrated)
+    last_cycle = state.get("updated_at")
+    stale_after = PROBE_INTERVAL_SECONDS * 3
+    state_stale = last_cycle is None or now - int(last_cycle) > stale_after
+    resumed = bool(state.get("last_resume_at") and now - int(state.get("last_resume_at")) < 180)
+    if state_stale:
+        service_state = {
+            "code": "stale", "severity": "warning", "title": "检测暂停",
+            "detail": "最后成功周期已超过新鲜度门槛。", "next_action": "等待下一次成功检测周期。",
+        }
+    elif resumed:
+        service_state = {
+            "code": "resume_recovery", "severity": "warning", "title": "刚从休眠恢复",
+            "detail": "连接正在按需重建，后端保持高频观察。", "next_action": "等待短期健康窗口重新稳定。",
+        }
+    else:
+        service_state = {
+            "code": "running", "severity": "ok", "title": "运行中",
+            "detail": "最近检测周期有效，缓存快照保持新鲜。", "next_action": "继续按既定策略检测。",
+        }
+    current_names = {
+        (proxy_data.get(group_name) or {}).get("now") or state.get("groups", {}).get(group_name, {}).get("last_seen")
+        for group_name in GROUPS
+    }
+    current_names.discard(None)
+
+    nodes = []
+    node_by_name = {}
+    for node_name, node_state in state.get("nodes", {}).items():
+        group_name = next((name for name, candidates in GROUPS.items() if node_name in candidates), "unknown")
+        item = node_contract(group_name, node_name, node_state, now, current_names)
+        nodes.append(item)
+        node_by_name[node_name] = item
+        previous = node_state.get("lifecycle")
+        node_state["lifecycle"] = item["lifecycle"]
+        if previous is not None:
+            state_contract.record_transition(
+                state, "node", item["id"], previous, item["lifecycle"],
+                item["lifecycle_status"]["reason_code"], now,
+                group_id=state_contract.group_ui_id(group_name),
+            )
 
     groups = []
     for group_name, candidates in GROUPS.items():
-        group_state = state.get("groups", {}).get(group_name, {})
-        current = (proxy_data.get(group_name) or {}).get("now")
-        active = sum(1 for connection in connections if group_name in (connection.get("chains") or []))
-        current_stats = state.get("nodes", {}).get(current, {})
-        if int(current_stats.get("effective_failure_streak", current_stats.get("failure_streak", 0))) >= FAILURES_BEFORE_SWITCH:
-            decision = "故障切换准备"
-        elif int(group_state.get("better_streak", 0)):
-            decision = "候选确认 %d/%d" % (
-                int(group_state.get("better_streak", 0)), PERFORMANCE_CONFIRMATIONS
+        group_state = state.get("groups", {}).setdefault(group_name, {})
+        current_name = (proxy_data.get(group_name) or {}).get("now") or group_state.get("last_seen")
+        target_name = group_state.get("better_candidate")
+        if not target_name and now < int(group_state.get("recovery_observe_until", 0)):
+            target_name = group_state.get("handover_new_node")
+        facts = group_decision_facts(group_name, candidates, state, proxy_data, connections, now)
+        decision = state_contract.resolve_group_decision(facts, now)
+        previous = group_state.get("decision_code")
+        group_state["decision_code"] = decision["code"]
+        if previous is not None:
+            state_contract.record_transition(
+                state, "group", state_contract.group_ui_id(group_name), previous,
+                decision["code"], decision["reason_code"], now,
             )
-        elif time.time() < float(group_state.get("manual_hold_until", 0)):
-            decision = "手动保持"
-        elif active:
-            decision = "无损运行"
-        else:
-            decision = "稳定观察"
+        current = node_by_name.get(current_name)
+        target = node_by_name.get(target_name)
         groups.append({
+            "id": state_contract.group_ui_id(group_name),
             "name": group_name,
-            "current": current,
-            "active_connections": active,
+            "region": region_for_group(group_name),
             "decision": decision,
-            "better_candidate": group_state.get("better_candidate"),
-            "better_streak": int(group_state.get("better_streak", 0)),
-            "manual_hold_until": int(group_state.get("manual_hold_until", 0)),
-            "last_switch_at": int(group_state.get("last_switch_at", 0)),
-            "candidates": candidates,
+            "current": current,
+            "target": target,
+            "confirmation": {
+                "current": facts["confirmation_current"],
+                "required": facts["confirmation_required"],
+            },
+            "handover": {
+                "mode": "session_sticky",
+                "old_node": (
+                    group_state.get("handover_old_node")
+                    if target_name and group_state.get("handover_new_node") == target_name
+                    else current_name if target_name else None
+                ),
+                "new_node": target_name,
+                "old_connections": facts["old_connections"],
+                "grace_remaining_seconds": facts["grace_remaining_seconds"],
+                "max_grace_seconds": 300,
+                "new_connections_use_target": bool(
+                    target_name and group_state.get("handover_new_node") == target_name
+                ),
+            },
+            "timers": {
+                "cooldown_remaining_seconds": facts["cooldown_remaining_seconds"],
+                "manual_hold_remaining_seconds": facts["manual_hold_remaining_seconds"],
+                "estimated_action_at": (
+                    now + facts["grace_remaining_seconds"]
+                    if facts["grace_remaining_seconds"] else None
+                ),
+                "estimated_action_at_iso": (
+                    iso_timestamp(now + facts["grace_remaining_seconds"])
+                    if facts["grace_remaining_seconds"] else None
+                ),
+            },
         })
 
-    nodes = {}
-    for name, node_state in state.get("nodes", {}).items():
-        nodes[name] = {
-            "availability": round(float(node_state.get("availability_ewma", 0.0)), 4),
-            "latency": round(float(node_state["latency_ewma"]), 1) if node_state.get("latency_ewma") is not None else None,
-            "jitter": round(float(node_state.get("jitter_ewma", 0.0)), 1),
-            "score": round(float(node_state.get("score", 1000000.0)), 1),
-            "quality": quality_score(node_state),
-            "last_delay": node_state.get("last_delay"),
-            "last_success": bool(node_state.get("last_success")),
-            "success_streak": int(node_state.get("success_streak", 0)),
-            "failure_streak": int(node_state.get("failure_streak", 0)),
-            "samples": int(node_state.get("samples", 0)),
-            "short_availability": round(short_availability(node_state), 4),
-            "long_availability": round(long_availability(node_state), 4),
-            "quarantined": is_quarantined(node_state),
-            "quarantine_until": int(node_state.get("quarantine_until", 0)),
-            "business_last_success": node_state.get("business_last_success"),
-        }
+    subscription = state.get("subscription", {})
+    refresh_at = subscription.get("last_refresh_at")
+    snapshot_id = "snapshot-%d-%d" % (now, int(last_cycle or 0))
+    versioned = {
+        "schema_version": state_contract.API_SCHEMA_VERSION,
+        "generated_at": now,
+        "generated_at_iso": iso_timestamp(now),
+        "service": {
+            "name": SERVICE_NAME,
+            "status": "running",
+            "state": service_state,
+            "started_at": SERVICE_STARTED_AT,
+            "started_at_iso": iso_timestamp(SERVICE_STARTED_AT),
+            "uptime_seconds": max(0, now - SERVICE_STARTED_AT),
+            "controller_connected": bool(state.get("controller_connected", bool(proxy_data))),
+            "last_cycle_at": int(last_cycle) if last_cycle is not None else None,
+            "last_cycle_at_iso": iso_timestamp(last_cycle),
+            "last_cycle_duration_ms": state.get("last_cycle_duration_ms"),
+            "next_cycle_at": int(last_cycle) + PROBE_INTERVAL_SECONDS if last_cycle is not None else None,
+            "next_cycle_at_iso": iso_timestamp(int(last_cycle) + PROBE_INTERVAL_SECONDS) if last_cycle is not None else None,
+            "state_stale": state_stale,
+            "stale_after_seconds": stale_after,
+            "memory_mb": memory_mb,
+            "version": read_service_version(),
+        },
+        "subscription": {
+            "generation": int(subscription.get("generation", 0)),
+            "last_refresh_at": int(refresh_at) if refresh_at is not None else None,
+            "last_refresh_at_iso": iso_timestamp(refresh_at),
+            "candidate_count": int(subscription.get("candidate_count", sum(len(items) for items in GROUPS.values()))),
+            "added_count": int(subscription.get("added_count", 0)),
+            "removed_count": int(subscription.get("removed_count", 0)),
+            "warming_count": sum(1 for node in nodes if node["lifecycle"] == "warming"),
+            "quarantined_count": sum(1 for node in nodes if node["lifecycle"] == "quarantined"),
+            "changes": [public_subscription_change(item) for item in subscription.get("changes", [])],
+        },
+        "policies": {
+            "probe_interval_seconds": PROBE_INTERVAL_SECONDS,
+            "business_probe_interval_seconds": BUSINESS_PROBE_INTERVAL_SECONDS,
+            "standby_probes_per_group": STANDBY_PROBES_PER_GROUP,
+            "min_samples": MIN_SAMPLES_FOR_OPTIMIZATION,
+            "confirmations": PERFORMANCE_CONFIRMATIONS,
+            "min_availability": MIN_AVAILABILITY,
+            "short_min_availability": SHORT_MIN_AVAILABILITY,
+            "short_window_size": SHORT_WINDOW_SIZE,
+            "long_window_hours": LONG_WINDOW_HOURS,
+            "failures_before_switch": FAILURES_BEFORE_SWITCH,
+            "quarantine_failures": QUARANTINE_FAILURES,
+            "quarantine_seconds": QUARANTINE_SECONDS,
+            "quarantine_recovery_successes": QUARANTINE_RECOVERY_SUCCESSES,
+            "performance_cooldown_seconds": PERFORMANCE_COOLDOWN_SECONDS,
+            "score": {"lower_is_better": True, "unit": "weighted_milliseconds"},
+        },
+        "groups": groups,
+        "nodes": nodes,
+        "events": [public_event(item) for item in state.get("events", [])][-state_contract.EVENT_LIMIT:],
+        "history_summary": {
+            "short_window_samples": SHORT_WINDOW_SIZE,
+            "long_window_hours": LONG_WINDOW_HOURS,
+            "event_count": len(state.get("events", [])),
+        },
+        "diagnostics": {
+            "snapshot_id": snapshot_id,
+            "cache_only": True,
+            "contains_sensitive_fields": False,
+        },
+    }
 
-    return {
+    legacy_nodes = {}
+    for node in nodes:
+        legacy_nodes[node["name"]] = {
+            "availability": node["availability_long"],
+            "latency": node["latency_ewma_ms"],
+            "jitter": node["jitter_ms"],
+            "score": node["score"],
+            "quality": node["quality"],
+            "last_delay": state["nodes"][node["name"]].get("last_delay"),
+            "last_success": bool(state["nodes"][node["name"]].get("last_success")),
+            "success_streak": node["success_streak"],
+            "failure_streak": node["failure_streak"],
+            "samples": int(state["nodes"][node["name"]].get("samples", 0)),
+            "short_availability": node["availability_short"],
+            "long_availability": node["availability_long"],
+            "quarantined": node["lifecycle"] == "quarantined",
+            "quarantine_until": node["quarantine_until"],
+            "business_last_success": state["nodes"][node["name"]].get("business_last_success"),
+            "lifecycle": node["lifecycle"],
+            "lifecycle_title": node["lifecycle_status"]["title"],
+            "lifecycle_severity": node["lifecycle_status"]["severity"],
+            "lifecycle_detail": node["lifecycle_status"]["detail"],
+        }
+    legacy_groups = []
+    for group in groups:
+        group_state = state.get("groups", {}).get(group["name"], {})
+        legacy_groups.append({
+            "name": group["name"],
+            "region": group["region"],
+            "current": group["current"]["name"] if group["current"] else group_state.get("last_seen"),
+            "active_connections": sum(
+                1 for connection in connections if group["name"] in (connection.get("chains") or [])
+            ),
+            "decision": group["decision"]["title"],
+            "decision_code": group["decision"]["code"],
+            "decision_severity": group["decision"]["severity"],
+            "decision_detail": group["decision"]["detail"],
+            "next_action": group["decision"]["next_action"],
+            "better_candidate": group["target"]["name"] if group["target"] else None,
+            "better_streak": group["confirmation"]["current"],
+            "manual_hold_until": int(group_state.get("manual_hold_until", 0)),
+            "last_switch_at": int(group_state.get("last_switch_at", 0)),
+            "candidates": list(GROUPS[group["name"]]),
+        })
+    legacy = {
+        "snapshot_id": snapshot_id,
         "service": {
             "name": SERVICE_NAME,
             "status": "running",
             "started_at": SERVICE_STARTED_AT,
-            "updated_at": int(state.get("updated_at", 0)),
-            "memory_mb": memory_megabytes(),
+            "updated_at": int(last_cycle) if last_cycle is not None else None,
+            "memory_mb": memory_mb,
             "probe_interval_seconds": PROBE_INTERVAL_SECONDS,
             "last_cycle_gap_seconds": int(state.get("last_cycle_gap_seconds", 0)),
             "last_resume_at": int(state.get("last_resume_at", 0)),
             "last_sleep_gap_seconds": int(state.get("last_sleep_gap_seconds", 0)),
+            "state_stale": state_stale,
+            "controller_connected": versioned["service"]["controller_connected"],
+            "state_code": service_state["code"],
+            "state_severity": service_state["severity"],
+            "state_title": service_state["title"],
+            "state_detail": service_state["detail"],
         },
         "policy": {
             "min_samples": MIN_SAMPLES_FOR_OPTIMIZATION,
@@ -306,26 +589,66 @@ def dashboard_payload(state=None, proxy_data=None, connections=None):
             "business_probe_interval_seconds": BUSINESS_PROBE_INTERVAL_SECONDS,
             "standby_probes_per_group": STANDBY_PROBES_PER_GROUP,
         },
-        "groups": groups,
-        "nodes": nodes,
+        "groups": legacy_groups,
+        "nodes": legacy_nodes,
     }
+    return {"snapshot_id": snapshot_id, "v1": versioned, "legacy": legacy}
 
 
-def update_dashboard_cache(payload):
+def dashboard_payload(state=None, proxy_data=None, connections=None):
+    state = load_state() if state is None else state
+    return build_status_snapshots(state, proxy_data or {}, connections or [])["legacy"]
+
+
+def update_dashboard_cache(snapshots):
     global DASHBOARD_CACHE
-    encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    encoded = {
+        "snapshot_id": snapshots["snapshot_id"],
+        "v1": json.dumps(snapshots["v1"], ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+        "legacy": json.dumps(snapshots["legacy"], ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+    }
     with DASHBOARD_CACHE_LOCK:
         DASHBOARD_CACHE = encoded
 
 
-def read_dashboard_cache():
+def read_dashboard_cache(kind):
     with DASHBOARD_CACHE_LOCK:
-        return DASHBOARD_CACHE
+        return None if DASHBOARD_CACHE is None else DASHBOARD_CACHE.get(kind)
 
+
+def cached_api_response(path):
+    route = urlsplit(path).path
+    kind = "v1" if route == "/api/v1/status" else "legacy" if route == "/api/status" else None
+    if kind is None:
+        return 404, "application/json; charset=utf-8", b'{"error":"not_found"}'
+    content = read_dashboard_cache(kind)
+    if content is None:
+        return 503, "application/json; charset=utf-8", b'{"error":"snapshot_unavailable"}'
+    return 200, "application/json; charset=utf-8", content
+
+
+def static_acceptance_response(path):
+    route = urlsplit(path).path
+    target = None
+    content_type = None
+    if route in ("/acceptance", "/acceptance/"):
+        target = ACCEPTANCE_DASHBOARD_PATH
+        content_type = "text/html; charset=utf-8"
+    elif route == "/acceptance/fixtures":
+        target = ACCEPTANCE_FIXTURE_PATH
+        content_type = "application/json; charset=utf-8"
+    if target is None:
+        return 404, "text/plain; charset=utf-8", b"not found"
+    try:
+        with open(target, "rb") as handle:
+            return 200, content_type, handle.read()
+    except OSError:
+        return 404, "text/plain; charset=utf-8", b"not found"
 
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        route = urlsplit(self.path).path
+        if route in ("/", "/index.html"):
             try:
                 with open(DASHBOARD_PATH, "rb") as handle:
                     content = handle.read()
@@ -339,14 +662,24 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content)
             return
-        if self.path.startswith("/api/status"):
-            content = read_dashboard_cache()
-            if content is None:
-                content = json.dumps(dashboard_payload(), ensure_ascii=False).encode("utf-8")
-                update_dashboard_cache(json.loads(content.decode("utf-8")))
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
+        if route.startswith("/acceptance"):
+            status, content_type, content = static_acceptance_response(route)
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'")
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
+        if route in ("/api/status", "/api/v1/status"):
+            status, content_type, content = cached_api_response(route)
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
@@ -358,6 +691,10 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
 
 def start_dashboard():
+    if read_dashboard_cache("v1") is None:
+        state = load_state()
+        state["controller_connected"] = False
+        update_dashboard_cache(build_status_snapshots(state, {}, []))
     server = http.server.HTTPServer((DASHBOARD_HOST, DASHBOARD_PORT), DashboardHandler)
     thread = threading.Thread(target=server.serve_forever, name="steadyroute-dashboard", daemon=True)
     thread.start()
@@ -667,6 +1004,10 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             group_state["last_switch_at"] = int(now)
             group_state["last_failover_at"] = int(now)
             group_state["recovery_mode"] = True
+            group_state["handover_old_node"] = None
+            group_state["handover_new_node"] = target
+            group_state["handover_grace_until"] = 0
+            group_state["recovery_observe_until"] = int(now + 60)
             group_state["better_candidate"] = None
             group_state["better_streak"] = 0
             return
@@ -738,6 +1079,10 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
     group_state["last_seen"] = leader
     group_state["last_switch_at"] = int(now)
     group_state["recovery_mode"] = False
+    group_state["handover_old_node"] = current
+    group_state["handover_new_node"] = leader
+    group_state["handover_grace_until"] = int(now + 300)
+    group_state["recovery_observe_until"] = int(now + 360)
     group_state["better_candidate"] = None
     group_state["better_streak"] = 0
     if active:
@@ -747,15 +1092,24 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
 
 
 def run_cycle(dry_run=False):
+    cycle_clock = time.perf_counter()
     cycle_started_at = int(time.time())
-    proxy_response = api_request("GET", "/proxies") or {}
+    state = load_state()
+    try:
+        proxy_response = api_request("GET", "/proxies") or {}
+    except Exception:
+        state["controller_connected"] = False
+        snapshots = build_status_snapshots(state, {}, [], now=cycle_started_at)
+        save_state(state)
+        update_dashboard_cache(snapshots)
+        raise
     proxy_data = proxy_response.get("proxies") or {}
+    state["controller_connected"] = True
     try:
         connection_response = api_request("GET", "/connections") or {}
         connections = connection_response.get("connections") or []
     except Exception:
         connections = []
-    state = load_state()
     targets = choose_probe_targets(state, proxy_data)
     base_results = {}
     business_results = {}
@@ -846,8 +1200,10 @@ def run_cycle(dry_run=False):
             state["last_sleep_gap_seconds"] = gap
             log("resume detected after %d seconds without probes" % gap)
     state["updated_at"] = cycle_started_at
+    state["last_cycle_duration_ms"] = int(round((time.perf_counter() - cycle_clock) * 1000))
+    snapshots = build_status_snapshots(state, proxy_data, connections, now=cycle_started_at)
     save_state(state)
-    update_dashboard_cache(dashboard_payload(state, proxy_data, connections))
+    update_dashboard_cache(snapshots)
 
 
 def show_status():
