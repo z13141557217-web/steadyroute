@@ -1,0 +1,33 @@
+name: 缺陷报告
+description: 报告可复现的错误、回退或异常
+title: "[Bug] "
+labels: ["type: bug"]
+body:
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 用户症状
+      description: 描述实际看到的问题。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现方法
+      description: 提供最小、确定、可重复的步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏证据
+      description: 版本、时间、状态和必要日志；不得包含订阅 URL 或凭据。
+    validations:
+      required: true
+

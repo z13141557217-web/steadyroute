@@ -9,6 +9,16 @@
 - 一项功能一个分支、一个明确验收目标。
 - 合并前必须通过 `./scripts/check.sh`。
 
+当前 GitHub 套餐不会对私有个人仓库强制执行 Ruleset。仓库因此使用本机 `pre-push` 钩子阻止直接推送 `main`，并以功能分支、Pull Request 和 GitHub Actions 作为实际门禁。升级到支持私有仓库规则强制执行的套餐后，再增加远端 Ruleset。
+
+紧急情况下只有在完成风险说明后，才允许一次性覆盖：
+
+```bash
+STEADYROUTE_ALLOW_MAIN_PUSH=1 git push origin main
+```
+
+覆盖变量只对单条命令有效，不得写入 shell 配置。
+
 ## 提交流程
 
 1. 明确需求、非目标和验收条件。
@@ -49,4 +59,3 @@ docs(runbook): add local rollback procedure
 4. 把生产修复同步回仓库。
 5. 补测试和变更日志。
 6. 发布 PATCH 版本。
-

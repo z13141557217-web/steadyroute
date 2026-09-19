@@ -1,0 +1,25 @@
+name: 工程维护
+description: 测试、发布、日志、安全、文档或技术债
+title: "[Maintenance] "
+labels: ["type: maintenance"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: 目标
+    validations:
+      required: true
+  - type: textarea
+    id: changes
+    attributes:
+      label: 计划变更
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 完成定义
+      description: 包含测试、文档、发布和回滚要求。
+    validations:
+      required: true
+
