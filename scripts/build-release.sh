@@ -28,8 +28,21 @@ else
   printf '%s\n' 'uncommitted-baseline' > "$PACKAGE_DIR/GIT_COMMIT"
 fi
 
+COMMIT=$(tr -d '[:space:]' < "$PACKAGE_DIR/GIT_COMMIT")
+BUILT_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+printf '{\n  "schema_version": 1,\n  "version": "%s",\n  "commit": "%s",\n  "built_at": "%s"\n}\n' \
+  "$VERSION" "$COMMIT" "$BUILT_AT" > "$PACKAGE_DIR/RELEASE.json"
+
+(
+  cd "$PACKAGE_DIR"
+  find . -type f ! -name MANIFEST.sha256 -print | LC_ALL=C sort | while IFS= read -r file; do
+    digest=$(shasum -a 256 "$file" | awk '{print $1}')
+    printf '%s  %s\n' "$digest" "${file#./}"
+  done > MANIFEST.sha256
+)
+
 (cd "$STAGE_DIR" && /usr/bin/zip -qr "$DIST_DIR/steadyroute-$VERSION.zip" "steadyroute-$VERSION")
-shasum -a 256 "$DIST_DIR/steadyroute-$VERSION.zip" > "$DIST_DIR/steadyroute-$VERSION.zip.sha256"
+PACKAGE_SHA=$(shasum -a 256 "$DIST_DIR/steadyroute-$VERSION.zip" | awk '{print $1}')
+printf '%s  %s\n' "$PACKAGE_SHA" "steadyroute-$VERSION.zip" > "$DIST_DIR/steadyroute-$VERSION.zip.sha256"
 
 echo "$DIST_DIR/steadyroute-$VERSION.zip"
-

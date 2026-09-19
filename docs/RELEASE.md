@@ -33,6 +33,10 @@
 10. 执行生产冒烟测试。
 11. 记录部署版本、时间、结果和备份位置。
 
+上述第 6 至 11 步由 `./scripts/deploy-local.sh` 执行。命令默认 dry-run；真实执行使用
+`--apply`。生产 apply 还要求当前 commit 带 `v<VERSION>` 标签，且首次生产写入必须
+交互式再次确认。完整命令和备份格式见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+
 ## 回滚触发条件
 
 - 服务无法持续运行。
@@ -46,3 +50,5 @@
 
 回滚恢复上一个完整版本，不在生产目录临时拼接多个版本的文件。回滚后再次执行生产冒烟测试，并保留故障版本日志用于复盘。
 
+标准命令为 `./scripts/rollback-local.sh`（预演）和
+`./scripts/rollback-local.sh --apply`（执行）。
