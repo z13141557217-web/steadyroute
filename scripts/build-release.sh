@@ -6,9 +6,13 @@ VERSION=$(tr -d '[:space:]' < "$PROJECT_DIR/VERSION")
 DIST_DIR="$PROJECT_DIR/dist"
 STAGE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/steadyroute-release.XXXXXX")
 PACKAGE_DIR="$STAGE_DIR/steadyroute-$VERSION"
+FINAL_ZIP="$DIST_DIR/steadyroute-$VERSION.zip"
+FINAL_SHA="$FINAL_ZIP.sha256"
+OUTPUT_STAGE=''
 
 cleanup() {
   rm -rf "$STAGE_DIR"
+  if [ -n "$OUTPUT_STAGE" ]; then rm -rf "$OUTPUT_STAGE"; fi
 }
 trap cleanup EXIT INT TERM
 
@@ -41,8 +45,15 @@ printf '{\n  "schema_version": 1,\n  "version": "%s",\n  "commit": "%s",\n  "bui
   done > MANIFEST.sha256
 )
 
-(cd "$STAGE_DIR" && /usr/bin/zip -qr "$DIST_DIR/steadyroute-$VERSION.zip" "steadyroute-$VERSION")
-PACKAGE_SHA=$(shasum -a 256 "$DIST_DIR/steadyroute-$VERSION.zip" | awk '{print $1}')
-printf '%s  %s\n' "$PACKAGE_SHA" "steadyroute-$VERSION.zip" > "$DIST_DIR/steadyroute-$VERSION.zip.sha256"
+OUTPUT_STAGE=$(mktemp -d "$DIST_DIR/.steadyroute-build.XXXXXX")
+TEMP_ZIP="$OUTPUT_STAGE/steadyroute-$VERSION.zip"
+TEMP_SHA="$OUTPUT_STAGE/steadyroute-$VERSION.zip.sha256"
+(cd "$STAGE_DIR" && /usr/bin/zip -qr "$TEMP_ZIP" "steadyroute-$VERSION")
+PACKAGE_SHA=$(shasum -a 256 "$TEMP_ZIP" | awk '{print $1}')
+printf '%s  %s\n' "$PACKAGE_SHA" "steadyroute-$VERSION.zip" > "$TEMP_SHA"
+mv -f "$TEMP_ZIP" "$FINAL_ZIP"
+mv -f "$TEMP_SHA" "$FINAL_SHA"
+rmdir "$OUTPUT_STAGE"
+OUTPUT_STAGE=''
 
-echo "$DIST_DIR/steadyroute-$VERSION.zip"
+echo "$FINAL_ZIP"

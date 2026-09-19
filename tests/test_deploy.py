@@ -10,6 +10,7 @@ import tempfile
 import time
 import unittest
 import zipfile
+from unittest import mock
 
 
 PROJECT_DIR = pathlib.Path(__file__).parents[1]
@@ -28,9 +29,10 @@ class DeploymentIntegrationTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.temporary.name)
         self.project = self.root / "repo"
-        self.target = self.root / "live"
-        self.backups = self.root / "backups"
-        self.plist = self.root / "LaunchAgents" / "service.plist"
+        self.development_root = self.root / "runtime"
+        self.target = self.development_root / "live"
+        self.backups = self.development_root / "backups"
+        self.plist = self.development_root / "LaunchAgents" / "service.plist"
         self.git_env = os.environ.copy()
         self.git_env.pop("GIT_DIR", None)
         self.git_env.pop("GIT_WORK_TREE", None)
@@ -48,17 +50,52 @@ class DeploymentIntegrationTests(unittest.TestCase):
         self.archive, self.checksum = self.make_release("0.2.0", self.commit, "new release")
         self.seed_live("old release", "0.1.0", "old-commit")
         self.launchctl_log = self.root / "launchctl.log"
+        self.service_state = self.root / "service.running"
+        self.service_state.touch()
+        self.advance_status = self.root / "advance_status.py"
+        self.advance_status.write_text(
+            "import json, pathlib, sys, time\n"
+            "path = pathlib.Path(sys.argv[1])\n"
+            "data = json.loads(path.read_text())\n"
+            "old = data['service']\n"
+            "started = max(int(time.time()), int(old.get('started_at', 0)) + 1)\n"
+            "old['started_at'] = started\n"
+            "old['updated_at'] = max(started, int(old.get('updated_at', 0)) + 1)\n"
+            "path.write_text(json.dumps(data))\n",
+            encoding="utf-8",
+        )
+        self.bootout_failure = self.root / "bootout.failure"
+        self.keep_service_alive = self.root / "keep-service-alive"
+        self.freeze_status = self.root / "freeze-status"
         self.launchctl = self.root / "launchctl"
         self.launchctl.write_text(
             "#!/bin/sh\n"
             "printf '%%s\\n' \"$*\" >> \"%s\"\n"
-            "if [ \"${1:-}\" = print ]; then echo 'state = running'; fi\n" % (self.launchctl_log,),
+            "case \"${1:-}\" in\n"
+            "  bootout)\n"
+            "    [ ! -e \"%s\" ] || exit 42\n"
+            "    [ -e \"%s\" ] || rm -f \"%s\"\n"
+            "    ;;\n"
+            "  bootstrap|kickstart)\n"
+            "    touch \"%s\"\n"
+            "    [ -e \"%s\" ] || python3 \"%s\" \"%s\"\n"
+            "    ;;\n"
+            "  print)\n"
+            "    if [ -e \"%s\" ]; then echo 'state = running'; else exit 3; fi\n"
+            "    ;;\n"
+            "esac\n" % (
+                self.launchctl_log, self.bootout_failure, self.keep_service_alive,
+                self.service_state, self.service_state, self.freeze_status,
+                self.advance_status, self.status_file if hasattr(self, "status_file") else self.root / "status.json",
+                self.service_state,
+            ),
             encoding="utf-8",
         )
         self.launchctl.chmod(0o755)
         self.status_file = self.root / "status.json"
+        initial = int(time.time()) - 60
         self.status_file.write_text(json.dumps({
-            "service": {"status": "running", "updated_at": int(time.time())},
+            "service": {"status": "running", "started_at": initial - 20, "updated_at": initial},
             "groups": [
                 {"name": name, "current": "%s-node" % index, "candidates": ["%s-node" % index]}
                 for index, name in enumerate(deploy.REQUIRED_GROUPS)
@@ -122,10 +159,12 @@ class DeploymentIntegrationTests(unittest.TestCase):
             "--checksum", str(self.checksum), "--target-dir", str(self.target),
             "--backup-dir", str(self.backups), "--launch-agent-path", str(self.plist),
             "--launchctl-bin", str(self.launchctl), "--status-url", self.status_url,
-            "--health-timeout", "2", "--skip-project-checks",
+            "--health-timeout", "2", "--stop-timeout", "0.5", "--skip-project-checks",
         ]
         if apply:
-            arguments.append("--apply")
+            arguments.extend([
+                "--apply", "--allow-non-production", "--non-production-root", str(self.development_root),
+            ])
         return arguments
 
     def test_default_dry_run_does_not_modify_target_or_service(self):
@@ -164,7 +203,8 @@ class DeploymentIntegrationTests(unittest.TestCase):
         result = deploy.main([
             "rollback", "--target-dir", str(self.target), "--backup-dir", str(self.backups),
             "--launch-agent-path", str(self.plist), "--launchctl-bin", str(self.launchctl),
-            "--status-url", self.status_url, "--health-timeout", "2", "--apply",
+            "--status-url", self.status_url, "--health-timeout", "2", "--stop-timeout", "0.5",
+            "--apply", "--allow-non-production", "--non-production-root", str(self.development_root),
         ])
         self.assertEqual(result, 0)
         self.assertEqual((self.target / "VERSION").read_text().strip(), "0.1.0")
@@ -174,6 +214,79 @@ class DeploymentIntegrationTests(unittest.TestCase):
         (self.project / "VERSION").write_text("dirty\n", encoding="utf-8")
         with self.assertRaises(deploy.DeploymentError):
             deploy.ensure_clean_worktree(self.project)
+
+    def test_bootout_failure_refuses_deployment(self):
+        self.bootout_failure.touch()
+        self.assertEqual(deploy.main(self.command(apply=True)), 1)
+        self.assertEqual((self.target / "VERSION").read_text().strip(), "0.1.0")
+        self.assertFalse(self.backups.exists())
+
+    def test_running_old_service_after_bootout_refuses_deployment(self):
+        self.keep_service_alive.touch()
+        self.assertEqual(deploy.main(self.command(apply=True)), 1)
+        self.assertEqual((self.target / "VERSION").read_text().strip(), "0.1.0")
+        self.assertFalse(self.backups.exists())
+
+    def test_listening_old_port_refuses_stop_even_after_launchagent_unloads(self):
+        runtime = deploy.ServiceRuntime(
+            str(self.launchctl), deploy.DEFAULT_LABEL, self.plist,
+            "http://127.0.0.1:17654/api/status", 90, 1, 0.05,
+        )
+        connection = mock.Mock()
+        with mock.patch.object(deploy.socket, "create_connection", return_value=connection):
+            with self.assertRaises(deploy.DeploymentError):
+                runtime.stop()
+
+    def test_stale_copied_state_cannot_prove_new_process_or_cycle(self):
+        self.freeze_status.touch()
+        arguments = self.command(apply=True)
+        arguments[arguments.index("--health-timeout") + 1] = "0.2"
+        self.assertEqual(deploy.main(arguments), 1)
+        self.assertEqual((self.target / "VERSION").read_text().strip(), "0.1.0")
+
+    def test_apply_requires_explicit_non_production_root(self):
+        arguments = self.command(apply=True)
+        arguments.remove("--allow-non-production")
+        root_index = arguments.index("--non-production-root")
+        del arguments[root_index:root_index + 2]
+        self.assertEqual(deploy.main(arguments), 1)
+        self.assertEqual((self.target / "VERSION").read_text().strip(), "0.1.0")
+
+    def test_deploy_apply_rejects_broad_and_overlapping_paths(self):
+        broad = self.command(apply=True)
+        broad[broad.index("--target-dir") + 1] = "/"
+        self.assertEqual(deploy.main(broad), 1)
+
+        overlap = self.command(apply=True)
+        overlap[overlap.index("--backup-dir") + 1] = str(self.target / "backups")
+        self.assertEqual(deploy.main(overlap), 1)
+
+        with self.assertRaises(deploy.DeploymentError):
+            deploy.validate_apply_paths(
+                deploy.PRODUCTION_TARGET.resolve(), self.backups, self.plist,
+                self.project, True, self.development_root,
+            )
+        with self.assertRaises(deploy.DeploymentError):
+            deploy.validate_apply_paths(
+                self.project, self.backups, self.plist,
+                self.project, True, self.development_root,
+            )
+
+    def test_rollback_apply_rejects_broad_path(self):
+        result = deploy.main([
+            "rollback", "--target-dir", "/", "--backup-dir", str(self.backups),
+            "--launch-agent-path", str(self.plist), "--apply",
+            "--allow-non-production", "--non-production-root", str(self.development_root),
+        ])
+        self.assertEqual(result, 1)
+
+        overlap = deploy.main([
+            "rollback", "--target-dir", str(self.target),
+            "--backup-dir", str(self.target / "backups"),
+            "--launch-agent-path", str(self.plist), "--apply",
+            "--allow-non-production", "--non-production-root", str(self.development_root),
+        ])
+        self.assertEqual(overlap, 1)
 
 
 if __name__ == "__main__":
