@@ -30,7 +30,13 @@ docs/                   产品、架构、运维、安全、发布与风险文�
 ./scripts/check.sh
 ./scripts/status.sh
 ./scripts/build-release.sh
+./scripts/deploy-local.sh
+./scripts/rollback-local.sh
 ```
+
+`deploy-local.sh` 和 `rollback-local.sh` 默认只预演。真实写入必须显式传入
+`--apply`；第一次生产部署还必须在交互终端再次输入完整确认短语。详见
+[本地部署与回滚](docs/DEPLOYMENT.md)。
 
 ## 版本策略
 

@@ -4,6 +4,7 @@ set -eu
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 python3 -m py_compile "$PROJECT_DIR/src/steadyroute/weighted_router.py"
+python3 -m py_compile "$PROJECT_DIR/scripts/deploy.py"
 python3 -m unittest discover -s "$PROJECT_DIR/tests" -p 'test_*.py' -v
 
 if command -v plutil >/dev/null 2>&1; then

@@ -6,9 +6,13 @@ VERSION=$(tr -d '[:space:]' < "$PROJECT_DIR/VERSION")
 DIST_DIR="$PROJECT_DIR/dist"
 STAGE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/steadyroute-release.XXXXXX")
 PACKAGE_DIR="$STAGE_DIR/steadyroute-$VERSION"
+FINAL_ZIP="$DIST_DIR/steadyroute-$VERSION.zip"
+FINAL_SHA="$FINAL_ZIP.sha256"
+OUTPUT_STAGE=''
 
 cleanup() {
   rm -rf "$STAGE_DIR"
+  if [ -n "$OUTPUT_STAGE" ]; then rm -rf "$OUTPUT_STAGE"; fi
 }
 trap cleanup EXIT INT TERM
 
@@ -28,8 +32,28 @@ else
   printf '%s\n' 'uncommitted-baseline' > "$PACKAGE_DIR/GIT_COMMIT"
 fi
 
-(cd "$STAGE_DIR" && /usr/bin/zip -qr "$DIST_DIR/steadyroute-$VERSION.zip" "steadyroute-$VERSION")
-shasum -a 256 "$DIST_DIR/steadyroute-$VERSION.zip" > "$DIST_DIR/steadyroute-$VERSION.zip.sha256"
+COMMIT=$(tr -d '[:space:]' < "$PACKAGE_DIR/GIT_COMMIT")
+BUILT_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+printf '{\n  "schema_version": 1,\n  "version": "%s",\n  "commit": "%s",\n  "built_at": "%s"\n}\n' \
+  "$VERSION" "$COMMIT" "$BUILT_AT" > "$PACKAGE_DIR/RELEASE.json"
 
-echo "$DIST_DIR/steadyroute-$VERSION.zip"
+(
+  cd "$PACKAGE_DIR"
+  find . -type f ! -name MANIFEST.sha256 -print | LC_ALL=C sort | while IFS= read -r file; do
+    digest=$(shasum -a 256 "$file" | awk '{print $1}')
+    printf '%s  %s\n' "$digest" "${file#./}"
+  done > MANIFEST.sha256
+)
 
+OUTPUT_STAGE=$(mktemp -d "$DIST_DIR/.steadyroute-build.XXXXXX")
+TEMP_ZIP="$OUTPUT_STAGE/steadyroute-$VERSION.zip"
+TEMP_SHA="$OUTPUT_STAGE/steadyroute-$VERSION.zip.sha256"
+(cd "$STAGE_DIR" && /usr/bin/zip -qr "$TEMP_ZIP" "steadyroute-$VERSION")
+PACKAGE_SHA=$(shasum -a 256 "$TEMP_ZIP" | awk '{print $1}')
+printf '%s  %s\n' "$PACKAGE_SHA" "steadyroute-$VERSION.zip" > "$TEMP_SHA"
+mv -f "$TEMP_ZIP" "$FINAL_ZIP"
+mv -f "$TEMP_SHA" "$FINAL_SHA"
+rmdir "$OUTPUT_STAGE"
+OUTPUT_STAGE=''
+
+echo "$FINAL_ZIP"
