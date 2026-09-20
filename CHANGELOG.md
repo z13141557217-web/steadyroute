@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-20
+
 ### Added
 
 - 增加由 `config/route-policies.json` 驱动的通用动态候选策略、Mihomo 原生筛选组和
