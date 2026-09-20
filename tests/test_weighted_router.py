@@ -1,6 +1,10 @@
 import importlib.util
+import os
 import pathlib
+import stat
+import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = pathlib.Path(__file__).parents[1] / "src" / "steadyroute" / "weighted_router.py"
@@ -20,6 +24,46 @@ def healthy(score):
         "jitter_ewma": 0.0,
         "score": float(score),
     }
+
+
+class ControllerSocketTests(unittest.TestCase):
+    def test_resolver_supports_new_service_socket_and_legacy_fallback(self):
+        missing = "/var/run/example/missing.sock"
+        available = "/var/run/example/service.sock"
+        original_paths = router.CONTROLLER_SOCKET_PATHS
+        original_override = os.environ.pop("STEADYROUTE_CONTROLLER_SOCKET", None)
+
+        def fake_lstat(path):
+            if path == available:
+                return os.stat_result((stat.S_IFSOCK | 0o600, 0, 0, 1, 0, 0, 0, 0, 0, 0))
+            raise FileNotFoundError(path)
+
+        try:
+            router.CONTROLLER_SOCKET_PATHS = (missing, available, "/tmp/verge/verge-mihomo.sock")
+            with mock.patch.object(router.os, "lstat", side_effect=fake_lstat):
+                self.assertEqual(router.resolve_controller_socket(), available)
+        finally:
+            router.CONTROLLER_SOCKET_PATHS = original_paths
+            if original_override is not None:
+                os.environ["STEADYROUTE_CONTROLLER_SOCKET"] = original_override
+
+    def test_resolver_rejects_regular_files_and_relative_overrides(self):
+        with tempfile.TemporaryDirectory() as directory:
+            regular = pathlib.Path(directory) / "not-a-socket"
+            regular.write_text("no", encoding="utf-8")
+            original_paths = router.CONTROLLER_SOCKET_PATHS
+            original_override = os.environ.get("STEADYROUTE_CONTROLLER_SOCKET")
+            try:
+                router.CONTROLLER_SOCKET_PATHS = (str(regular),)
+                os.environ["STEADYROUTE_CONTROLLER_SOCKET"] = "relative.sock"
+                with self.assertRaises(RuntimeError):
+                    router.resolve_controller_socket()
+            finally:
+                router.CONTROLLER_SOCKET_PATHS = original_paths
+                if original_override is None:
+                    os.environ.pop("STEADYROUTE_CONTROLLER_SOCKET", None)
+                else:
+                    os.environ["STEADYROUTE_CONTROLLER_SOCKET"] = original_override
 
 
 class RoutingDecisionTests(unittest.TestCase):

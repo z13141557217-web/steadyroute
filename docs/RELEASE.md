@@ -69,7 +69,8 @@ v2 状态。未知未来 schema 必须保留原文件并恢复能识别它的版
 本 PR 只构建候选包，不创建 tag、不部署。候选包校验会拒绝 `mode=active`。后续管理窗口
 如批准 v0.4.0，应先 dry-run，再观察 12–24 小时并覆盖一次真实订阅刷新；验收
 `/candidate-acceptance` 的静态/动态差异、预热、退役和资源指标。正式接管必须另开
-v0.4.1 审批，不能通过修改运行目录绕过策略、RSS 和发布门禁。
+v0.5.0 审批，不能通过修改运行目录绕过策略、RSS 和发布门禁。v0.4.1 是保持 shadow
+的控制面热修复，不代表动态接管获批。
 
 回滚目标为完整的 v0.3.0 / `60ea623` 包与部署前状态。`candidate_registry` 是 schema 2
 兼容扩展，旧版本会保留该字段；仍应使用完整目录回滚，不手工混装 Python 文件。
@@ -80,12 +81,15 @@ v0.4.1 审批，不能通过修改运行目录绕过策略、RSS 和发布门禁
 必须按以下顺序执行，且所有路径均显式传入，禁止写死订阅 UID：
 
 1. 先完成稳航候选包的 dry-run；获批后部署稳航应用目录。
-2. 对当前 `profiles.yaml` 与同级 `profiles/` 目录运行 group enhancement dry-run。
+2. 对当前 `profiles.yaml` 与同级 `profiles/` 目录运行 group enhancement dry-run；正式
+   apply 必须传入控制器 socket，以便把当前活动组选择写入备份元数据。
 3. 审核解析出的 current UID、`option.groups`、目标路径和新旧 SHA 后，才以 `--apply` 替换。
 4. 在 Clash Verge 中人工重载当前订阅配置。本工具不自动触发重载，也不声称文件替换已
    被 Mihomo 加载。
 5. 重载后通过 Unix socket `/proxies` 只读验证所有配置中的 discovery group 存在。
-6. 只有第 5 步成功后，才开始 12–24 小时影子观察计时。
+6. 先 dry-run、再显式 apply `restore-selections`，只恢复仍属于原组的发布前节点；不得
+   清理旧连接。
+7. 只有第 5、6 步成功后，才开始 12–24 小时影子观察计时。
 
 仓库命令（候选包中把 `scripts/` 替换为 `tools/`）：
 
@@ -99,10 +103,18 @@ python3 scripts/manage-clash-groups.py deploy \
   --profiles-yaml "/explicit/clash-verge/profiles.yaml" \
   --profile-dir "/explicit/clash-verge/profiles" \
   --core "/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo" \
+  --socket "/explicit/verge-mihomo.sock" \
   --apply
 
 # 人工重载 Clash Verge 后执行；此命令只读。
 python3 scripts/verify-clash-discovery.py --socket "/tmp/verge/verge-mihomo.sock"
+
+python3 scripts/manage-clash-groups.py restore-selections \
+  --profiles-yaml "/explicit/clash-verge/profiles.yaml" \
+  --profile-dir "/explicit/clash-verge/profiles" \
+  --core "/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo" \
+  --socket "/explicit/verge-mihomo.sock" \
+  --backup "/explicit/clash-verge/profiles/.steadyroute-group-backups/<backup-id>"
 ```
 
 group enhancement 回滚同样默认 dry-run，且只接受 apply 生成的备份根直接子目录：

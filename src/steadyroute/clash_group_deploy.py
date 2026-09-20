@@ -10,12 +10,131 @@ import tempfile
 import subprocess
 import socket
 import stat
+from urllib.parse import quote
 
 import route_policy
 
 
 class GroupEnhancementError(RuntimeError):
     """The enhancement target or transaction is unsafe."""
+
+
+MAX_CONTROLLER_RESPONSE_BYTES = 32 * 1024 * 1024
+
+
+def _decode_chunked_body(body, maximum):
+    output = bytearray()
+    cursor = 0
+    while True:
+        line_end = body.find(b"\r\n", cursor)
+        if line_end < 0:
+            raise GroupEnhancementError("controller response has malformed chunk framing")
+        size_text = body[cursor:line_end].split(b";", 1)[0].strip()
+        try:
+            size = int(size_text, 16)
+        except ValueError:
+            raise GroupEnhancementError("controller response has invalid chunk size")
+        cursor = line_end + 2
+        if size == 0:
+            if body[cursor:cursor + 2] == b"\r\n":
+                cursor += 2
+            elif b"\r\n\r\n" in body[cursor:]:
+                cursor = body.index(b"\r\n\r\n", cursor) + 4
+            else:
+                raise GroupEnhancementError("controller response has malformed chunk trailer")
+            if body[cursor:]:
+                raise GroupEnhancementError("controller response has bytes after chunked body")
+            return bytes(output)
+        if size < 0 or cursor + size + 2 > len(body):
+            raise GroupEnhancementError("controller response has truncated chunk")
+        output.extend(body[cursor:cursor + size])
+        if len(output) > maximum:
+            raise GroupEnhancementError("controller response exceeds size limit")
+        cursor += size
+        if body[cursor:cursor + 2] != b"\r\n":
+            raise GroupEnhancementError("controller response has malformed chunk terminator")
+        cursor += 2
+
+
+def parse_http_response(raw, maximum=MAX_CONTROLLER_RESPONSE_BYTES):
+    header, separator, body = raw.partition(b"\r\n\r\n")
+    if not separator:
+        raise GroupEnhancementError("controller response has no HTTP header terminator")
+    lines = header.split(b"\r\n")
+    parts = lines[0].split(b" ", 2)
+    if len(parts) < 2 or not parts[0].startswith(b"HTTP/1."):
+        raise GroupEnhancementError("controller response has invalid HTTP status line")
+    try:
+        status = int(parts[1])
+    except ValueError:
+        raise GroupEnhancementError("controller response has invalid HTTP status")
+    headers = {}
+    for line in lines[1:]:
+        name, colon, value = line.partition(b":")
+        if not colon:
+            raise GroupEnhancementError("controller response has malformed HTTP header")
+        key = name.strip().lower()
+        if key in headers:
+            raise GroupEnhancementError("controller response has duplicate HTTP header")
+        headers[key] = value.strip().lower()
+    transfer = headers.get(b"transfer-encoding")
+    length = headers.get(b"content-length")
+    if transfer is not None and length is not None:
+        raise GroupEnhancementError("controller response has conflicting body framing")
+    if transfer is not None:
+        if transfer != b"chunked":
+            raise GroupEnhancementError("controller response uses unsupported transfer encoding")
+        body = _decode_chunked_body(body, maximum)
+    elif length is not None:
+        try:
+            expected = int(length)
+        except ValueError:
+            raise GroupEnhancementError("controller response has invalid content length")
+        if expected < 0 or expected > maximum or len(body) != expected:
+            raise GroupEnhancementError("controller response content length mismatch")
+    elif len(body) > maximum:
+        raise GroupEnhancementError("controller response exceeds size limit")
+    return status, body
+
+
+def controller_request(socket_path, method, path, payload=None):
+    socket_path = pathlib.Path(socket_path)
+    if socket_path.is_symlink():
+        raise GroupEnhancementError("controller socket cannot be a symlink")
+    try:
+        metadata = socket_path.stat()
+    except OSError as error:
+        raise GroupEnhancementError("controller socket unavailable: %s" % error)
+    if not stat.S_ISSOCK(metadata.st_mode):
+        raise GroupEnhancementError("controller path is not a Unix socket")
+    body = b"" if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = [
+        "%s %s HTTP/1.1" % (method, path), "Host: localhost",
+        "Accept: application/json", "Connection: close",
+    ]
+    if body:
+        request.extend(["Content-Type: application/json", "Content-Length: %d" % len(body)])
+    encoded = ("\r\n".join(request) + "\r\n\r\n").encode("ascii") + body
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(5)
+    try:
+        client.connect(str(socket_path))
+        client.sendall(encoded)
+        chunks = []
+        total = 0
+        while True:
+            chunk = client.recv(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_CONTROLLER_RESPONSE_BYTES + 65536:
+                raise GroupEnhancementError("controller response exceeds size limit")
+            chunks.append(chunk)
+    except OSError as error:
+        raise GroupEnhancementError("controller request failed: %s" % error)
+    finally:
+        client.close()
+    return parse_http_response(b"".join(chunks))
 
 
 def mihomo_staged_validator(core):
@@ -67,38 +186,38 @@ def verify_discovery_payload(config, payload):
 
 
 def read_controller_proxies(socket_path):
-    socket_path = pathlib.Path(socket_path)
-    if socket_path.is_symlink():
-        raise GroupEnhancementError("controller socket cannot be a symlink")
-    try:
-        metadata = socket_path.stat()
-    except OSError as error:
-        raise GroupEnhancementError("controller socket unavailable: %s" % error)
-    if not stat.S_ISSOCK(metadata.st_mode):
-        raise GroupEnhancementError("controller path is not a Unix socket")
-    request = b"GET /proxies HTTP/1.1\r\nHost: localhost\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(5)
-    try:
-        client.connect(str(socket_path))
-        client.sendall(request)
-        chunks = []
-        while True:
-            chunk = client.recv(65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-    except OSError as error:
-        raise GroupEnhancementError("controller /proxies request failed: %s" % error)
-    finally:
-        client.close()
-    header, separator, body = b"".join(chunks).partition(b"\r\n\r\n")
-    if not separator or not header.startswith(b"HTTP/1.1 200"):
+    status, body = controller_request(socket_path, "GET", "/proxies")
+    if status != 200:
         raise GroupEnhancementError("controller /proxies response is not HTTP 200")
     try:
         return json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as error:
         raise GroupEnhancementError("controller /proxies response is invalid JSON: %s" % error)
+
+
+def capture_group_selections(config, payload):
+    proxies = payload.get("proxies") if isinstance(payload, dict) else None
+    if not isinstance(proxies, dict):
+        raise GroupEnhancementError("/proxies payload has no proxies object")
+    selections = {}
+    for policy in config["policies"]:
+        group_name = policy["group_name"]
+        group = proxies.get(group_name)
+        if not isinstance(group, dict) or not isinstance(group.get("all"), list):
+            raise GroupEnhancementError("active group missing from /proxies: %s" % group_name)
+        current = group.get("now")
+        if not isinstance(current, str) or current not in group["all"]:
+            raise GroupEnhancementError("active group has unsafe current selection: %s" % group_name)
+        selections[group_name] = current
+    return selections
+
+
+def put_controller_selection(socket_path, group_name, node_name):
+    status, _body = controller_request(
+        socket_path, "PUT", "/proxies/%s" % quote(group_name, safe=""), {"name": node_name}
+    )
+    if status not in {200, 204}:
+        raise GroupEnhancementError("controller selection response is not HTTP 200/204")
 
 
 def sha256_bytes(data):
@@ -224,13 +343,16 @@ class ClashGroupEnhancementManager:
 
     def __init__(
             self, profiles_yaml, profile_dir, policy_path, generated_groups_path,
-            staged_validator, post_write_validator=None):
+            staged_validator, post_write_validator=None, selection_reader=None,
+            selection_writer=None):
         self.profiles_yaml = pathlib.Path(profiles_yaml)
         self.profile_dir = pathlib.Path(profile_dir)
         self.policy_path = pathlib.Path(policy_path)
         self.generated_groups_path = pathlib.Path(generated_groups_path)
         self.staged_validator = staged_validator
         self.post_write_validator = post_write_validator or self._verify_written_target
+        self.selection_reader = selection_reader
+        self.selection_writer = selection_writer
 
     @staticmethod
     def _verify_written_target(target, expected_sha):
@@ -293,7 +415,7 @@ class ClashGroupEnhancementManager:
             "source_sha256": sha256_bytes(expected),
         }
 
-    def _prepare_backup(self, plan, original):
+    def _prepare_backup(self, plan, original, selected_nodes):
         backup_root = pathlib.Path(plan["backup_root"])
         if backup_root.exists() and (backup_root.is_symlink() or not backup_root.is_dir()):
             raise GroupEnhancementError("backup root is not a safe directory")
@@ -318,6 +440,7 @@ class ClashGroupEnhancementManager:
             "replacement_sha256": plan["replacement_sha256"],
             "source_sha256": plan["source_sha256"],
             "profiles_sha256": sha256_bytes(self.profiles_yaml.read_bytes()),
+            "selected_nodes": selected_nodes,
         }
         encoded = (json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
         _atomic_write(backup / "metadata.json", encoded, mode=0o600)
@@ -333,6 +456,10 @@ class ClashGroupEnhancementManager:
             result = dict(plan)
             result["result"] = "unchanged"
             return result
+        if self.selection_reader is None:
+            raise GroupEnhancementError("apply requires a controller selection snapshot")
+        config = route_policy.load_policy_config(self.policy_path)
+        selected_nodes = capture_group_selections(config, self.selection_reader())
         target = pathlib.Path(plan["target"])
         original = target.read_bytes()
         replacement = self.generated_groups_path.read_bytes()
@@ -340,7 +467,7 @@ class ClashGroupEnhancementManager:
             raise GroupEnhancementError("target changed after planning")
         if sha256_bytes(replacement) != plan["replacement_sha256"]:
             raise GroupEnhancementError("generated source changed after planning")
-        backup = self._prepare_backup(plan, original)
+        backup = self._prepare_backup(plan, original, selected_nodes)
         mode = target.stat().st_mode & 0o777
         try:
             _atomic_write(target, replacement, mode=mode)
@@ -357,10 +484,10 @@ class ClashGroupEnhancementManager:
                 )
             raise GroupEnhancementError("apply failed; original automatically restored: %s" % error)
         result = dict(plan)
-        result.update({"result": "applied", "backup": str(backup)})
+        result.update({"result": "applied", "backup": str(backup), "selected_nodes": selected_nodes})
         return result
 
-    def rollback(self, backup, apply=False):
+    def _verified_backup(self, backup, require_current_replacement=True):
         current_profile_uid, binding, target = self._resolve_binding()
         backup_root = self.profile_dir / ".steadyroute-group-backups"
         backup = pathlib.Path(backup)
@@ -390,8 +517,63 @@ class ClashGroupEnhancementManager:
             raise GroupEnhancementError("backup metadata does not match current binding")
         if sha256_bytes(original) != metadata.get("original_sha256"):
             raise GroupEnhancementError("backup original checksum mismatch")
-        if sha256_bytes(current) != metadata.get("replacement_sha256"):
+        if require_current_replacement and sha256_bytes(current) != metadata.get("replacement_sha256"):
             raise GroupEnhancementError("current target changed since the recorded apply")
+        return backup, metadata, original, current, target
+
+    def restore_selections(self, backup, apply=False):
+        backup, metadata, _original, _current, _target = self._verified_backup(backup)
+        if metadata.get("mode") != "shadow":
+            raise GroupEnhancementError("selection replay is only allowed for shadow deployments")
+        selections = metadata.get("selected_nodes")
+        if not isinstance(selections, dict) or not selections:
+            raise GroupEnhancementError("backup has no controller selection snapshot")
+        if self.selection_reader is None:
+            raise GroupEnhancementError("selection replay requires controller access")
+        config = route_policy.load_policy_config(self.policy_path)
+        payload = self.selection_reader()
+        current = capture_group_selections(config, payload)
+        proxies = payload["proxies"]
+        expected_groups = {policy["group_name"] for policy in config["policies"]}
+        if set(selections) != expected_groups:
+            raise GroupEnhancementError("selection snapshot does not match configured active groups")
+        actions = []
+        for group_name in sorted(expected_groups):
+            node_name = selections[group_name]
+            if not isinstance(node_name, str) or node_name not in proxies[group_name]["all"]:
+                raise GroupEnhancementError("saved node is no longer in active group: %s" % group_name)
+            actions.append({"group": group_name, "from": current[group_name], "to": node_name})
+        result = {"result": "dry-run", "backup": str(backup), "actions": actions, "mode": "shadow"}
+        if not apply:
+            return result
+        if self.selection_writer is None:
+            raise GroupEnhancementError("selection replay apply requires a controller writer")
+        changed = []
+        try:
+            for action in actions:
+                if action["from"] == action["to"]:
+                    continue
+                self.selection_writer(action["group"], action["to"])
+                changed.append(action)
+        except Exception as error:
+            recovery_errors = []
+            for action in reversed(changed):
+                try:
+                    self.selection_writer(action["group"], action["from"])
+                except Exception as recovery_error:
+                    recovery_errors.append("%s: %s" % (action["group"], recovery_error))
+            if recovery_errors:
+                raise GroupEnhancementError(
+                    "selection replay failed and recovery was partial: %s; recovery: %s" % (
+                        error, "; ".join(recovery_errors),
+                    )
+                )
+            raise GroupEnhancementError("selection replay failed; changed groups restored: %s" % error)
+        result["result"] = "applied"
+        return result
+
+    def rollback(self, backup, apply=False):
+        backup, metadata, original, current, target = self._verified_backup(backup)
         result = {
             "action": "restore",
             "target": str(target),
