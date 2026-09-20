@@ -10,6 +10,8 @@ Clash Verge/Mihomo
            │
            ▼
 SteadyRoute 后端
+  ├─ 策略配置与 Mihomo 组生成
+  ├─ 动态候选注册表（v0.4.0 shadow）
   ├─ 探测调度
   ├─ 健康模型
   ├─ 决策状态机
@@ -29,6 +31,7 @@ SteadyRoute 后端
 |---|---|
 | `controller_client` | Mihomo Unix Socket API |
 | `candidate_registry` | 动态候选发现和生命周期 |
+| `route_policy` | 单一 JSON 策略加载、验证、筛选与 Mihomo 组生成 |
 | `probe_scheduler` | 自适应基础/业务探测 |
 | `health_model` | 短期、长期、隔离与恢复 |
 | `decision_engine` | 故障切换、无损回优和手动保持 |
@@ -38,6 +41,32 @@ SteadyRoute 后端
 | `logging_setup` | 有界日志和异常入口 |
 
 拆分原则：先补边界测试，再移动代码；不得为“文件更漂亮”制造运行风险。
+
+## 动态候选影子数据流
+
+```text
+route-policies.json
+  ├─ 生成/校验 Mihomo active + discovery groups
+  └─ 驱动 SteadyRoute policies
+             │
+discovery group.all（仅成功且组存在）
+  → 连续两次相同差异确认
+  → generation / added / removed
+  → discovered → warming → healthy / … / retired
+  → shadow 差异与建议（不执行 PUT）
+```
+
+`route_policy` 以一个标准 JSON 接口隐藏正则兼容性、安全下限、组生成和激活预算。
+`candidate_registry` 的 seam 是一次不可变 `/proxies` 快照；离线、缺组和畸形响应不进入
+差异确认。台湾和香港只存在于策略数据中，核心模块不按地区或组名分支。
+
+`mode=shadow` 时 `evaluate_group` 只接收静态候选。未来 `mode=active` 才会接收已成熟的
+动态候选，且策略验证要求单独审批与 RSS ≤1 MB；v0.4.0 发布校验拒绝 active 包。
+
+仓库侧 `clash_group_deploy` 控制面是独立模块：它从 `profiles.yaml` current subscription
+解析 `option.groups`，对受限 profiles 目标执行 dry-run/备份/原子替换/自动恢复/回滚。
+该模块随候选包提供但不复制到稳航运行目录，也不成为常驻依赖。Clash Verge 重载保持
+显式人工动作，随后由只读 `/proxies` 验证 discovery groups 是否真正加载。
 
 ## 版本化状态投影
 
@@ -66,6 +95,8 @@ HTTP GET 只读取已编码字节，不连接 Mihomo、不扫描连接，也不�
 4. 没有安全候选时不得静默回落 DIRECT。
 5. 状态、事件和趋势数据必须有容量上限。
 6. 生产部署必须来自已提交、已标记、已验证的版本。
+7. 发现失败不得等价为空集合；只有确认的成功空快照可以移除全部候选。
+8. warming、内置策略和跨策略节点不得成为动态执行候选。
 
 ## 部署边界
 

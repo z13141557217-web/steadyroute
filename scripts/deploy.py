@@ -36,10 +36,14 @@ REQUIRED_GROUPS = ("香港家宽自动备援", "AI 台湾家宽线路")
 MANAGED_FILES = {
     "src/weighted_router.py": "weighted_router.py",
     "src/state_contract.py": "state_contract.py",
+    "src/route_policy.py": "route_policy.py",
+    "src/candidate_registry.py": "candidate_registry.py",
     "src/dashboard.html": "dashboard.html",
     "src/acceptance_dashboard.html": "acceptance_dashboard.html",
+    "src/candidate_dashboard.html": "candidate_dashboard.html",
     "src/fixtures/status_contract_v2.json": "fixtures/status_contract_v2.json",
     "config/groups.yaml": "config/groups.yaml",
+    "config/route-policies.json": "config/route-policies.json",
     "VERSION": "VERSION",
     "GIT_COMMIT": "GIT_COMMIT",
     "RELEASE.json": "RELEASE.json",
@@ -139,7 +143,12 @@ def parse_manifest(path):
 
 
 def validate_release_tree(root):
-    required = list(MANAGED_FILES) + ["deploy/com.nurture.clash-stability-router.plist"]
+    required = list(MANAGED_FILES) + [
+        "deploy/com.nurture.clash-stability-router.plist",
+        "src/clash_group_deploy.py",
+        "tools/manage-clash-groups.py",
+        "tools/verify-clash-discovery.py",
+    ]
     for relative in required:
         if not (root / relative).is_file():
             raise DeploymentError("发布包缺少 %s" % relative)
@@ -164,7 +173,15 @@ def validate_release_tree(root):
         raise DeploymentError("发布版本或 commit 为空")
     py_compile.compile(str(root / "src/weighted_router.py"), doraise=True)
     py_compile.compile(str(root / "src/state_contract.py"), doraise=True)
+    py_compile.compile(str(root / "src/route_policy.py"), doraise=True)
+    py_compile.compile(str(root / "src/candidate_registry.py"), doraise=True)
+    py_compile.compile(str(root / "src/clash_group_deploy.py"), doraise=True)
+    py_compile.compile(str(root / "tools/manage-clash-groups.py"), doraise=True)
+    py_compile.compile(str(root / "tools/verify-clash-discovery.py"), doraise=True)
     json.loads((root / "src/fixtures/status_contract_v2.json").read_text(encoding="utf-8"))
+    route_policies = json.loads((root / "config/route-policies.json").read_text(encoding="utf-8"))
+    if route_policies.get("mode") != "shadow":
+        raise DeploymentError("v0.4.0 发布包必须保持动态候选 shadow 模式")
     with (root / "deploy/com.nurture.clash-stability-router.plist").open("rb") as handle:
         plist = plistlib.load(handle)
     if plist.get("Label") != DEFAULT_LABEL:

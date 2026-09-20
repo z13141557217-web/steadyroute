@@ -19,6 +19,9 @@
 - 订阅新增、改名、消失和空集合。
 - 控制器断线、超时和格式错误。
 - 状态原子保存和损坏恢复。
+- discovery group `all` 的两快照确认、单次/连续空组、组缺失、离线和畸形响应。
+- 动态增加、批量增加、改名、删除非当前/当前、全部删除与重启恢复。
+- 16、50、100 节点规模、事件 200 条上限和 shadow 零 PUT。
 
 ### API/前端契约测试
 
@@ -52,6 +55,12 @@
 - dry-run 至少完成一个周期。
 - 有版本化备份和回滚命令。
 - 性能或界面变化记录修改前后 RSS、空闲 CPU、单次 API 和 100 次刷新结果。
+- `generate-groups.py --check` 必须证明增强配置与单一 JSON 源无漂移。
+- 安装了当前 Mihomo 核心时必须对临时独立配置执行 `-t -f` staged 校验。
+- v0.4.0 发布包中的策略模式必须是 `shadow`。
+- group enhancement 控制面必须在临时 `profiles.yaml`/`profiles/` 上验证默认 dry-run、
+  current `option.groups` 解析、越界/宽泛/符号链接拒绝、单一来源与 staged 校验、备份 SHA、
+  原子 apply、故障自动恢复、rollback 和 `/proxies` discovery 完整性。
 
 ## 独立验收看板
 
@@ -60,6 +69,16 @@
 订阅、不调用控制器、不修改生产看板。它用于候选验收，不是第二个常驻进程。
 
 本轮资源与接口对比见 [v0.3.0 性能记录](PERFORMANCE_0.3.0.md)。
+动态候选影子对比见 [v0.4.0 性能记录](PERFORMANCE_0.4.0.md)。
+
+## v0.4.0 筛选固定样本
+
+- 当前 11 条台湾、5 条香港家宽静态样本全部纳入。
+- 普通台湾/香港、其他地区和信息节点排除。
+- 中文、繁体、emoji、地区/住宅词两种顺序覆盖。
+- `3x`、`10x`、CF、HY2、VLESS 不作为排除条件。
+- `DIRECT`、`COMPATIBLE`、`REJECT`、`REJECT-DROP`、`PASS`、`PASS-RULE`
+  在注册表二次防御中永远被拒绝。
 
 ## 部署集成测试
 
@@ -68,3 +87,12 @@
 测试验证默认 dry-run 零写入、备份元数据与 SHA-256、原子切换、`bootout` 失败、
 旧服务或监听端口未退出、复制旧状态未产生新周期、危险与重叠路径、激活后故障注入
 自动恢复、独立回滚和脏工作树拒绝。
+
+`tests/test_clash_group_deploy.py` 只使用 `TemporaryDirectory` 和假 Mihomo core，不读取或
+写入当前机器的 Clash Verge profiles。真实重载属于管理窗口人工步骤，测试不伪造
+“已加载”结果。
+
+`tests/fixtures/profiles_nested_selected.yaml` 保留真实 profiles 的脱敏结构：`items:` 使用
+顶层 sequence，remote item 的 `selected` 与其他嵌套列表位于 `option` 之前。回归测试
+证明只有固定 item 缩进的 `- uid:` 会开启新 profile，并拒绝重复 current、重复 uid、
+重复/歧义 `option.groups`、奇数缩进、flow-style items 和复杂 option。

@@ -17,6 +17,38 @@
 - 日志是否接近上限。
 - RSS、CPU 和本地接口响应是否异常。
 - `/api/v1/status` 的 `service.state_stale`、`controller_connected` 和 `diagnostics.snapshot_id`。
+- `/candidate-acceptance` 的 generation、静态/动态差异、warming、retired、group status
+  与 fail-closed；它只读缓存，不代表已接管。
+
+## 动态候选影子告警
+
+- `GROUP_MISSING` 或控制器 offline：保留最后集合，禁止手工清空状态；等待恢复并确认
+  `GROUP_RECOVERED`。
+- 单次空组：属于 pending，不处置为删除；连续成功空快照才形成 `NO_CANDIDATE`。
+- `CURRENT_NODE_REMOVED`：影子模式只检查成熟同策略建议，不执行 PUT。
+- `NO_CANDIDATE`：确认 Mihomo 组仍是 `empty-fallback: REJECT`；不得改成 DIRECT 或
+  COMPATIBLE 临时恢复。
+- 误收/漏收：保持 shadow，修正 `route-policies.json`，重新生成并 staged 校验后再观察。
+
+## discovery group 上线检查
+
+应用部署和 Clash Verge group enhancement 是两个独立事务。`manage-clash-groups.py` 从
+注入的 `profiles.yaml` 读取 current remote subscription，再读取其 `option.groups`，不会
+猜测或写死 UID。它只允许同级、非符号链接、名为 `profiles` 的明确目录中的已有绑定文件。
+
+- `deploy` 与 `rollback` 默认只输出计划；写入必须显式 `--apply`。
+- apply 前确认生成文件与 `route-policies.json` 一致、模式仍为 shadow，并用指定 Mihomo
+  核心校验临时独立配置。
+- apply 先在 `profiles/.steadyroute-group-backups/` 保存原件、SHA 和元数据，再同目录原子
+  替换；替换后校验失败会自动恢复。
+- 本工具不自动重载 Clash Verge。人工重载后运行：
+
+```bash
+python3 scripts/verify-clash-discovery.py --socket "/tmp/verge/verge-mihomo.sock"
+```
+
+只有输出 `"ready": true` 且列出所有策略 discovery group 时才能开始影子观察。若仍有
+`GROUP_MISSING`，停止计时，不得把它当作动态筛选结果。
 
 ## 状态 schema 故障
 

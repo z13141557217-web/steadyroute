@@ -6,6 +6,34 @@
 
 ### Added
 
+- 增加由 `config/route-policies.json` 驱动的通用动态候选策略、Mihomo 原生筛选组和
+  `REJECT` 空组保护；台湾/香港仅作为首批配置，不进入核心业务分支。
+- 增加两次成功快照确认、generation、增加/改名/移除对账、节点预热、24 小时退役、
+  当前节点消失建议和有界结构化事件。
+- 增加独立 `/candidate-acceptance` 只读影子验收看板，以及筛选、假控制器、生命周期、
+  断线/缺组/空组、16/50/100 节点和无 PUT/DIRECT 泄漏测试。
+- 增加确定性增强配置生成与当前 Mihomo 核心 staged 校验工具。
+- 增加 Clash Verge 当前订阅 `option.groups` 绑定的 dry-run-first 部署/回滚控制面：受限
+  profiles 路径、SHA/元数据备份、原子替换、失败自动恢复和只读 `/proxies` 验证。
+
+### Changed
+
+- 版本升级到 0.4.0；默认且发布强制保持 `mode=shadow`，现有静态候选继续负责选路。
+- 运行时代理组、地区和业务探测配置改由单一 JSON 策略源派生。
+
+### Safety
+
+- `mode=active` 需要独立审批且实测 RSS 增量不得超过 1 MB；本版本未批准也未激活。
+- 控制器离线、发现组缺失或畸形响应不会把最后有效候选误判为全量删除。
+- group enhancement 不自动触发 Clash Verge 重载；必须人工重载并通过只读验证后才能
+  开始影子观察。
+- profiles 解析只识别 `items:` 直接序列中固定缩进的 `- uid:`；remote item 内的
+  `selected` 等嵌套列表不会被误判为新 profile，重复/歧义/复杂结构会 fail closed。
+
+## [0.3.0] - 2026-09-20
+
+### Added
+
 - 增加持久状态 schema v2、v1 原子备份迁移、损坏隔离重建和未知未来版本写保护。
 - 增加代理组决策状态机、节点生命周期、稳定中文文案和去重结构化转换事件。
 - 增加 `/api/v1/status` 统一契约、固定 JSON fixture 与独立只读验收看板。
