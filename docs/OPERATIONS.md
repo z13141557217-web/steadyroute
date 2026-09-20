@@ -40,7 +40,12 @@
 - apply 前确认生成文件与 `route-policies.json` 一致、模式仍为 shadow，并用指定 Mihomo
   核心校验临时独立配置。
 - apply 先在 `profiles/.steadyroute-group-backups/` 保存原件、SHA 和元数据，再同目录原子
-  替换；替换后校验失败会自动恢复。
+  替换；传入 controller socket 时同时保存当前活动组选择，替换后校验失败会自动恢复。
+- Clash Verge 2.5.4 服务模式通常使用
+  `/var/run/clash-verge-service/users/<uid>/verge-mihomo.sock`；旧版本可能仍使用
+  `/tmp/verge/verge-mihomo.sock`。稳航运行时自动在受限候选中选择真实 socket。
+- 重载后运行 `restore-selections` 的默认 dry-run，确认节点仍属于原组后再 `--apply`；
+  该事务只 PUT 代理组选择，不 DELETE 连接。
 - 本工具不自动重载 Clash Verge。人工重载后运行：
 
 ```bash

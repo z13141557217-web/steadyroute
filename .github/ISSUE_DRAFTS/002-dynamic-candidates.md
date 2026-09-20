@@ -24,7 +24,7 @@
 - [x] 人工重载后可只读验证 `/proxies` 中全部 discovery groups；验证前不开始影子计时。
 - [x] 独立 `/candidate-acceptance` 从缓存显示动态/静态差异与生命周期。
 - [ ] 影子生产观察 12–24 小时并覆盖一次真实订阅刷新（本 PR 不部署）。
-- [ ] v0.4.1 单独审批正式接管。
+- [ ] v0.5.0 单独审批正式接管。
 
 ## 风险与回滚
 
@@ -37,7 +37,7 @@
 - 预热要求 10 个基础样本、连续成功 3 次和至少一次业务成功。
 - 三轮隔离基准中位数：RSS +0.109 MB，空闲 CPU +0.0036 个百分点；兼容 API
   100 次总耗时 -0.524 ms，新 API -1.010 ms；空状态增加 731 bytes。
-- `mode=active` 受独立审批和 RSS ≤1 MB 双重门禁；v0.4.0 发布校验强制 shadow。
+- `mode=active` 受独立审批和 RSS ≤1 MB 双重门禁；v0.4.0/v0.4.1 发布校验强制 shadow。
 - group enhancement 从 `profiles.yaml` 的 current remote subscription 动态解析
   `option.groups`，不写死 UID；测试只使用临时目录，未触碰真实 Clash Verge 配置。
 - 脱敏真实结构 fixture 覆盖 remote item 内 `selected`/其他嵌套列表；实际 profiles 的

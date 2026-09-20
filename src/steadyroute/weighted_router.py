@@ -9,6 +9,8 @@ import json
 import os
 import resource
 import socket
+import stat
+import tempfile
 import sys
 import threading
 import time
@@ -25,7 +27,11 @@ except ModuleNotFoundError:
     import route_policy
 
 
-SOCKET_PATH = "/tmp/verge/verge-mihomo.sock"
+CONTROLLER_SOCKET_PATHS = (
+    "/var/run/clash-verge-service/users/%d/verge-mihomo.sock" % os.getuid(),
+    os.path.join(tempfile.gettempdir(), "verge-mihomo.sock"),
+    "/tmp/verge/verge-mihomo.sock",
+)
 BASE_DIR = "/Users/nurture/Library/Application Support/Clash-Verge-Stability-Router"
 STATE_PATH = os.path.join(BASE_DIR, "state.json")
 LOCK_PATH = os.path.join(BASE_DIR, "router.lock")
@@ -93,6 +99,23 @@ def log(message):
     print("[%s] %s" % (stamp, message), flush=True)
 
 
+def resolve_controller_socket():
+    configured = os.environ.get("STEADYROUTE_CONTROLLER_SOCKET")
+    candidates = ([configured] if configured else []) + list(CONTROLLER_SOCKET_PATHS)
+    seen = set()
+    for path in candidates:
+        if not path or path in seen or not os.path.isabs(path):
+            continue
+        seen.add(path)
+        try:
+            metadata = os.lstat(path)
+        except OSError:
+            continue
+        if stat.S_ISSOCK(metadata.st_mode):
+            return path
+    raise RuntimeError("Mihomo controller socket is unavailable")
+
+
 def decode_chunked(data):
     output = bytearray()
     cursor = 0
@@ -130,7 +153,7 @@ def api_request(method, path, payload=None, timeout=10):
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.settimeout(timeout)
     try:
-        client.connect(SOCKET_PATH)
+        client.connect(resolve_controller_socket())
         client.sendall(raw_request)
         chunks = []
         while True:

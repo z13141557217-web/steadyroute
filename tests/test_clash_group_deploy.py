@@ -44,12 +44,21 @@ class ClashGroupEnhancementManagerTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def manager(self, **overrides):
+        config = route_policy.load_policy_config(PROJECT_DIR / "config" / "route-policies.json")
+        payload = {"proxies": {}}
+        for policy in config["policies"]:
+            payload["proxies"][policy["group_name"]] = {
+                "all": list(policy["static_candidates"]),
+                "now": policy["static_candidates"][0],
+            }
         arguments = {
             "profiles_yaml": self.profiles_yaml,
             "profile_dir": self.profiles,
             "policy_path": PROJECT_DIR / "config" / "route-policies.json",
             "generated_groups_path": PROJECT_DIR / "config" / "clash-verge" / "groups.yaml",
             "staged_validator": lambda _rendered: None,
+            "selection_reader": lambda: payload,
+            "selection_writer": lambda _group, _node: None,
         }
         arguments.update(overrides)
         return clash_group_deploy.ClashGroupEnhancementManager(**arguments)
@@ -175,6 +184,49 @@ class ClashGroupEnhancementManagerTests(unittest.TestCase):
         self.assertEqual(metadata["original_sha256"], clash_group_deploy.sha256_bytes(self.original))
         self.assertEqual(metadata["replacement_sha256"], clash_group_deploy.sha256_bytes(expected))
         self.assertEqual(metadata["mode"], "shadow")
+        self.assertEqual(set(metadata["selected_nodes"]), {
+            "AI 台湾家宽线路", "香港家宽自动备援",
+        })
+
+    def test_restore_selections_is_dry_run_first_and_transactional(self):
+        config = route_policy.load_policy_config(PROJECT_DIR / "config" / "route-policies.json")
+        payload = {"proxies": {}}
+        saved = {}
+        for policy in config["policies"]:
+            candidates = list(policy["static_candidates"])
+            saved[policy["group_name"]] = candidates[0]
+            payload["proxies"][policy["group_name"]] = {"all": candidates, "now": candidates[-1]}
+        calls = []
+        manager = self.manager(
+            selection_reader=lambda: payload,
+            selection_writer=lambda group, node: calls.append((group, node)),
+        )
+        applied = manager.apply(apply=True)
+        metadata_path = pathlib.Path(applied["backup"]) / "metadata.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["selected_nodes"] = saved
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+        dry_run = manager.restore_selections(applied["backup"], apply=False)
+        self.assertEqual(dry_run["result"], "dry-run")
+        self.assertEqual(calls, [])
+        result = manager.restore_selections(applied["backup"], apply=True)
+        self.assertEqual(result["result"], "applied")
+        self.assertEqual(dict(calls), saved)
+
+    def test_restore_selections_rejects_missing_saved_node_before_any_put(self):
+        manager = self.manager()
+        applied = manager.apply(apply=True)
+        backup = pathlib.Path(applied["backup"])
+        metadata_path = backup / "metadata.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["selected_nodes"]["AI 台湾家宽线路"] = "missing-node"
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        calls = []
+        rejecting = self.manager(selection_writer=lambda group, node: calls.append((group, node)))
+        with self.assertRaises(clash_group_deploy.GroupEnhancementError):
+            rejecting.restore_selections(backup, apply=True)
+        self.assertEqual(calls, [])
 
     def test_failure_after_replace_automatically_restores_original(self):
         def fail_after_write(_target, _expected_sha):
@@ -258,6 +310,32 @@ class ClashGroupEnhancementManagerTests(unittest.TestCase):
         del payload["proxies"][config["policies"][0]["discovery_group_name"]]
         with self.assertRaises(clash_group_deploy.GroupEnhancementError):
             clash_group_deploy.verify_discovery_payload(config, payload)
+
+    def test_http_parser_accepts_content_length_and_chunked_extensions(self):
+        body = b'{"proxies":{}}'
+        raw = b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n" % len(body) + body
+        self.assertEqual(clash_group_deploy.parse_http_response(raw), (200, body))
+
+        chunked = (
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+            b"5;source=test\r\n{\"pro\r\n9\r\nxies\":{}}\r\n0\r\n\r\n"
+        )
+        self.assertEqual(clash_group_deploy.parse_http_response(chunked), (200, body))
+
+    def test_http_parser_rejects_ambiguous_malformed_and_oversized_bodies(self):
+        cases = [
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\n\r\n{}",
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nZ\r\n{}\r\n0\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n{}",
+        ]
+        for raw in cases:
+            with self.subTest(raw=raw[:50]):
+                with self.assertRaises(clash_group_deploy.GroupEnhancementError):
+                    clash_group_deploy.parse_http_response(raw)
+        with self.assertRaises(clash_group_deploy.GroupEnhancementError):
+            clash_group_deploy.parse_http_response(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc", maximum=2
+            )
 
 
 if __name__ == "__main__":

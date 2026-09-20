@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-21
+
+### Fixed
+
+- 兼容 Clash Verge 2.5.4 服务模式的新 Unix socket 路径，同时保留旧路径和显式环境变量覆盖。
+- 正确解析 Mihomo 控制器的 `Content-Length` 与 chunked HTTP 响应，严格拒绝歧义、畸形和超限响应。
+- group enhancement 应用前保存活动代理组选择，重载后以默认 dry-run、显式 apply 的事务方式安全回放；失败时恢复已改组且从不清理连接。
+
+### Safety
+
+- v0.4.1 仍强制 `shadow`；动态候选正式接管顺延到 v0.5.0 单独审批。
+- 发布实测发现 Clash Verge 重载会把 select 组重置到首项；本版本把选择快照和安全回放纳入标准发布事务。
+
 ## [0.4.0] - 2026-09-20
 
 ### Added
