@@ -82,9 +82,9 @@ GROUP_DECISION_COPY = {
         "next_action_code": "wait_cooldown", "next_action": "等待冷却结束后重新比较候选。",
     },
     "manual_hold": {
-        "severity": "info", "title": "已尊重手动选择，暂停自动回优",
-        "description": "检测到人工选择，性能回优在保持期内暂停。",
-        "next_action_code": "respect_manual_choice", "next_action": "保留人工选择，保持期结束后恢复自动比较。",
+        "severity": "info", "title": "人工偏好保护，故障保护仍启用",
+        "description": "仅暂停性能回优；健康检测、隔离和真实故障切换继续运行。",
+        "next_action_code": "respect_manual_choice", "next_action": "保持人工选择，到期后恢复性能比较；真实故障立即安全备援。",
     },
     "degraded": {
         "severity": "warning", "title": "当前线路质量下降",
@@ -340,12 +340,12 @@ def resolve_group_decision(facts, updated_at):
         code, reason = "controller_offline", "controller_unreachable"
     elif int(facts.get("candidate_count", 0)) <= 0:
         code, reason = "no_candidate", "safe_candidate_unavailable"
-    elif int(facts.get("manual_hold_remaining_seconds", 0)) > 0:
-        code, reason = "manual_hold", "manual_selection_active"
     elif facts.get("current_failed") and facts.get("target_id"):
         code, reason = "failover_now", "confirmed_current_failure"
     elif facts.get("current_failed"):
         code, reason = "no_candidate", "failed_without_safe_candidate"
+    elif int(facts.get("manual_hold_remaining_seconds", 0)) > 0:
+        code, reason = "manual_hold", "manual_selection_active"
     elif facts.get("handover_active"):
         code, reason = "handover_grace", "healthy_old_connections_present"
     elif facts.get("recovery_observing"):
@@ -364,10 +364,18 @@ def resolve_group_decision(facts, updated_at):
     detail = copy_item["description"]
     if code == "candidate_confirming":
         detail = "%s 当前为 %d/%d。" % (detail.rstrip("。"), current, required)
+    title = copy_item["title"]
+    if code == "manual_hold":
+        remaining = max(0, int(facts.get("manual_hold_remaining_seconds", 0)))
+        if facts.get("safe_backup_available"):
+            title = "人工偏好保护（剩余 %02d:%02d），故障时将预检成熟备援" % divmod(remaining, 60)
+        else:
+            title = "人工偏好保护（剩余 %02d:%02d），暂无成熟备援" % divmod(remaining, 60)
+            detail = "故障保护仍启用；当前没有成熟安全备援，故障时将 fail-closed 并继续检测。"
     return {
         "code": code,
         "severity": copy_item["severity"],
-        "title": copy_item["title"],
+        "title": title,
         "detail": detail,
         "reason_code": reason,
         "updated_at": int(updated_at),

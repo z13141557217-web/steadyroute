@@ -60,7 +60,7 @@ PERFORMANCE_CONFIRMATIONS = 3
 MIN_ABSOLUTE_GAIN_MS = 180
 MIN_RELATIVE_GAIN = 0.30
 PERFORMANCE_COOLDOWN_SECONDS = 30 * 60
-MANUAL_HOLD_SECONDS = 6 * 60 * 60
+MANUAL_HOLD_SECONDS = 60 * 60
 LATENCY_ALPHA = 0.25
 AVAILABILITY_ALPHA = 0.20
 JITTER_ALPHA = 0.25
@@ -97,6 +97,25 @@ BUSINESS_TEST_URLS = {item["group_name"]: list(item["business_test_urls"]) for i
 def log(message):
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
     print("[%s] %s" % (stamp, message), flush=True)
+
+
+def record_manual_preference_event(state, group_name, code, reason, now):
+    event = {
+        "code": code,
+        "severity": "info" if code != "MANUAL_PREFERENCE_INTERRUPTED" else "warning",
+        "scope": "group",
+        "subject_id": state_contract.group_ui_id(group_name),
+        "group_id": state_contract.group_ui_id(group_name),
+        "node_id": None,
+        "from_state": "manual_hold" if code != "MANUAL_PREFERENCE_STARTED" else None,
+        "to_state": "manual_hold" if code == "MANUAL_PREFERENCE_STARTED" else None,
+        "reason_code": reason,
+        "occurred_at": int(now),
+        "occurred_at_iso": state_contract.utc_iso(now),
+    }
+    events = list(state.get("events", []))
+    events.append(event)
+    state["events"] = events[-state_contract.EVENT_LIMIT:]
 
 
 def resolve_controller_socket():
@@ -263,6 +282,10 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
     last_switch = int(group_state.get("last_switch_at", 0))
     cooldown = max(0, PERFORMANCE_COOLDOWN_SECONDS - (int(now) - last_switch)) if last_switch else 0
     manual_hold = max(0, int(group_state.get("manual_hold_until", 0)) - int(now))
+    safe_backup_available = any(
+        name != current and eligible_for_optimization(state.get("nodes", {}).get(name, {}))
+        for name in candidates
+    )
     old_node = group_state.get("handover_old_node")
     old_connections = connection_count_for_node(group_name, old_node, connections) if old_node else 0
     handover_until = int(group_state.get("handover_grace_until", 0))
@@ -290,6 +313,9 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         "recovery_observing": bool(int(now) < recovery_until),
         "cooldown_remaining_seconds": cooldown,
         "manual_hold_remaining_seconds": manual_hold,
+        "performance_optimization_paused": manual_hold > 0,
+        "safety_failover_active": bool(state.get("controller_connected", bool(proxy_data)) and candidates),
+        "safe_backup_available": safe_backup_available,
     }
 
 
@@ -499,6 +525,15 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
                 "estimated_action_at_iso": (
                     iso_timestamp(now + facts["grace_remaining_seconds"])
                     if facts["grace_remaining_seconds"] else None
+                ),
+            },
+            "automation": {
+                "performance_optimization_paused": facts["performance_optimization_paused"],
+                "safety_failover_active": facts["safety_failover_active"],
+                "safe_backup_available": facts["safe_backup_available"],
+                "manual_preference_remaining_seconds": facts["manual_hold_remaining_seconds"],
+                "manual_preference_remaining_text": "%02d:%02d" % divmod(
+                    facts["manual_hold_remaining_seconds"], 60
                 ),
             },
         })
@@ -1016,14 +1051,8 @@ def best_failover(candidates, nodes, current):
     available = [
         name for name in candidates
         if name != current
-        and nodes.get(name, {}).get("last_success")
-        and not is_quarantined(nodes.get(name, {}))
+        and eligible_for_optimization(nodes.get(name, {}))
     ]
-    if not available:
-        available = [
-            name for name in candidates
-            if name != current and nodes.get(name, {}).get("last_success")
-        ]
     if not available:
         return None
     return min(available, key=lambda name: float(nodes[name].get("score", 1000000.0)))
@@ -1034,11 +1063,37 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
     current = group_info.get("now")
     group_state = state["groups"].setdefault(group_name, {})
     now = time.time()
+    existing_manual_hold = int(group_state.get("manual_hold_until", 0))
+    if existing_manual_hold and now >= existing_manual_hold:
+        if int(group_state.get("manual_preference_expired_for", 0)) != existing_manual_hold:
+            record_manual_preference_event(
+                state, group_name, "MANUAL_PREFERENCE_EXPIRED",
+                "manual_preference_elapsed", now,
+            )
+            group_state["manual_preference_expired_for"] = existing_manual_hold
+        group_state["manual_hold_until"] = 0
+    maximum_manual_hold = int(now + MANUAL_HOLD_SECONDS)
+    if int(group_state.get("manual_hold_until", 0)) > maximum_manual_hold:
+        group_state["manual_hold_until"] = maximum_manual_hold
+        group_state["manual_hold_capped_at"] = int(now)
+        log("%s: capped legacy manual preference to 60 minutes" % group_name)
     if not candidates:
+        if int(group_state.get("manual_hold_until", 0)) > now:
+            record_manual_preference_event(
+                state, group_name, "MANUAL_PREFERENCE_INTERRUPTED",
+                "safe_candidate_unavailable", now,
+            )
+        group_state["manual_hold_until"] = 0
         group_state["dynamic_no_candidate"] = True
         log("%s: no safe candidate; fail closed" % group_name)
         return
     if current not in candidates:
+        if int(group_state.get("manual_hold_until", 0)) > now:
+            record_manual_preference_event(
+                state, group_name, "MANUAL_PREFERENCE_INTERRUPTED",
+                "selected_node_not_in_candidates", now,
+            )
+        group_state["manual_hold_until"] = 0
         log("%s: current selection is unavailable: %r" % (group_name, current))
         mature = [name for name in candidates if eligible_for_optimization(state["nodes"].get(name, {}))]
         target = min(
@@ -1072,13 +1127,28 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
 
     if previous_seen and current != previous_seen and current != router_choice:
         group_state["manual_hold_until"] = int(now + MANUAL_HOLD_SECONDS)
+        group_state["manual_preference_expired_for"] = 0
+        group_state["last_seen"] = current
         group_state["better_candidate"] = None
         group_state["better_streak"] = 0
-        log("%s: manual selection detected; optimization paused for 6 hours" % group_name)
+        record_manual_preference_event(
+            state, group_name, "MANUAL_PREFERENCE_STARTED",
+            "manual_selection_detected", now,
+        )
+        log("%s: manual preference detected; performance optimization paused for 60 minutes; safety failover remains active" % group_name)
 
     current_stats = state["nodes"].get(current, {})
     current_failures = int(current_stats.get("effective_failure_streak", current_stats.get("failure_streak", 0)))
-    if current_failures >= FAILURES_BEFORE_SWITCH:
+    current_quarantined = is_quarantined(current_stats, now)
+    if current_failures >= FAILURES_BEFORE_SWITCH or current_quarantined:
+        if int(group_state.get("manual_hold_until", 0)) > now:
+            record_manual_preference_event(
+                state, group_name, "MANUAL_PREFERENCE_INTERRUPTED",
+                "current_quarantined" if current_quarantined else "confirmed_current_failure", now,
+            )
+        group_state["manual_hold_until"] = 0
+        group_state["better_candidate"] = None
+        group_state["better_streak"] = 0
         remaining = list(candidates)
         target = None
         while remaining:
@@ -1108,14 +1178,20 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             group_state["recovery_observe_until"] = int(now + 60)
             group_state["better_candidate"] = None
             group_state["better_streak"] = 0
+            group_state["manual_hold_until"] = 0
+            group_state["dynamic_no_candidate"] = False
             return
         log("%s: current node failed but no tested backup is available" % group_name)
+        group_state["dynamic_no_candidate"] = True
+        return
 
     active = active_connections(group_name, connections)
 
     if now < float(group_state.get("manual_hold_until", 0)):
         group_state["last_seen"] = current
-        log("%s: keep %s; manual hold is active" % (group_name, current))
+        log("%s: keep %s; manual preference pauses performance optimization; safety failover remains active" % (
+            group_name, current,
+        ))
         return
 
     last_switch = float(group_state.get("last_switch_at", 0))

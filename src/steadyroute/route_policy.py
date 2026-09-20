@@ -133,6 +133,7 @@ def discovery_group(policy):
         "exclude-filter": policy["exclude_pattern"],
         "exclude-type": "|".join(policy["exclude_types"]),
         "empty-fallback": policy["empty_fallback"],
+        "hidden": True,
         "interrupt-exist-connections": False,
     }
 
@@ -141,6 +142,7 @@ def active_group(policy, mode="shadow"):
     if mode == "active":
         group = discovery_group(policy)
         group["name"] = policy["group_name"]
+        group["hidden"] = False
         group.update(policy.get("group_options") or {})
         return group
     group = {

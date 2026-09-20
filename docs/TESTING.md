@@ -58,6 +58,10 @@
 - `generate-groups.py --check` 必须证明增强配置与单一 JSON 源无漂移。
 - 安装了当前 Mihomo 核心时必须对临时独立配置执行 `-t -f` staged 校验。
 - v0.4.0 发布包中的策略模式必须是 `shadow`。
+- discovery group 必须生成 `hidden: true`；当前 Mihomo staged 校验通过，API 仍返回
+  `hidden/all`。Clash Verge Rev 前端源码会过滤 `group.hidden`，桌面验收不得出现重复发现组。
+- 人工偏好测试必须同时证明：健康节点不因普通性能差异提前切换，真实故障绕过偏好并
+  清除计时，旧六小时状态封顶为一小时，故障决策优先于 `manual_hold` 文案。
 - group enhancement 控制面必须在临时 `profiles.yaml`/`profiles/` 上验证默认 dry-run、
   current `option.groups` 解析、越界/宽泛/符号链接拒绝、单一来源与 staged 校验、备份 SHA、
   原子 apply、故障自动恢复、rollback 和 `/proxies` discovery 完整性。
@@ -70,6 +74,7 @@
 
 本轮资源与接口对比见 [v0.3.0 性能记录](PERFORMANCE_0.3.0.md)。
 动态候选影子对比见 [v0.4.0 性能记录](PERFORMANCE_0.4.0.md)。
+人工偏好与隐藏发现组对比见 [v0.4.2 性能记录](PERFORMANCE_0.4.2.md)。
 
 ## v0.4.0 筛选固定样本
 

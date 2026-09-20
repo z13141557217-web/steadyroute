@@ -29,6 +29,10 @@
 - `NO_CANDIDATE`：确认 Mihomo 组仍是 `empty-fallback: REJECT`；不得改成 DIRECT 或
   COMPATIBLE 临时恢复。
 - 误收/漏收：保持 shadow，修正 `route-policies.json`，重新生成并 staged 校验后再观察。
+- `SteadyRoute 发现·*` 是隐藏的内部发现组；它们应存在于 `/proxies` 且返回
+  `hidden=true`，但不应出现在 Clash Verge 代理页。若再次可见，停止发布并回滚增强配置。
+- `manual_hold` 的兼容语义是最长 60 分钟“人工偏好保护”：只暂停性能回优。当前节点
+  连续失败、消失或没有安全候选时仍执行故障保护；看板必须显示剩余时间和安全开关。
 
 ## discovery group 上线检查
 

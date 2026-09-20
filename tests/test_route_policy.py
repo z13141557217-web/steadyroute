@@ -24,6 +24,7 @@ class RoutePolicyConfigTests(unittest.TestCase):
         for policy in self.policies.values():
             discovery = route_policy.discovery_group(policy)
             self.assertTrue(discovery["include-all-proxies"])
+            self.assertTrue(discovery["hidden"])
             self.assertEqual(discovery["empty-fallback"], "REJECT")
             self.assertIn("direct", discovery["exclude-type"])
             self.assertNotIn("(?=", discovery["filter"])
@@ -63,6 +64,7 @@ class RoutePolicyConfigTests(unittest.TestCase):
         self.assertEqual(committed, rendered)
         self.assertEqual(rendered.count("include-all-proxies: true"), 2)
         self.assertEqual(rendered.count("empty-fallback: REJECT"), 2)
+        self.assertEqual(rendered.count("hidden: true"), 2)
         self.assertIn("name: SteadyRoute 发现·台湾家宽", rendered)
         self.assertIn("name: SteadyRoute 发现·香港家宽", rendered)
         self.assertIn("name: Verve AI 稳定线路", rendered)
@@ -90,6 +92,7 @@ class RoutePolicyConfigTests(unittest.TestCase):
         generated = route_policy.active_group(active["policies"][0], mode="active")
         self.assertTrue(generated["include-all-proxies"])
         self.assertEqual(generated["empty-fallback"], "REJECT")
+        self.assertFalse(generated["hidden"], "the traffic-carrying active group must remain visible")
 
     def test_policy_string_lists_reject_non_string_elements(self):
         for field, bad_value in (

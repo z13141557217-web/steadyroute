@@ -302,10 +302,17 @@ class ClashGroupEnhancementManagerTests(unittest.TestCase):
         for policy in config["policies"]:
             payload["proxies"][policy["discovery_group_name"]] = {
                 "all": list(policy["static_candidates"]), "now": policy["static_candidates"][0],
+                "hidden": True,
             }
         result = clash_group_deploy.verify_discovery_payload(config, payload)
         self.assertTrue(result["ready"])
         self.assertEqual(len(result["groups"]), 2)
+        self.assertTrue(all(group["hidden"] for group in result["groups"]))
+
+        payload["proxies"][config["policies"][0]["discovery_group_name"]]["hidden"] = False
+        with self.assertRaises(clash_group_deploy.GroupEnhancementError):
+            clash_group_deploy.verify_discovery_payload(config, payload)
+        payload["proxies"][config["policies"][0]["discovery_group_name"]]["hidden"] = True
 
         del payload["proxies"][config["policies"][0]["discovery_group_name"]]
         with self.assertRaises(clash_group_deploy.GroupEnhancementError):
