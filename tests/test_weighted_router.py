@@ -75,6 +75,25 @@ class RoutingDecisionTests(unittest.TestCase):
         self.assertEqual(self.selected, [(group, "better")])
         self.assertEqual(self.closed, [(group, "current")])
 
+    def test_confirmed_current_removal_selects_mature_backup_without_closing_connections(self):
+        group = "test-group"
+        state = {
+            "nodes": {"backup": healthy(100)},
+            "groups": {group: {"last_seen": "removed"}},
+        }
+        original_preflight = router.business_preflight
+        router.business_preflight = lambda *args, **kwargs: True
+        try:
+            router.evaluate_group(
+                group, ["backup"], {group: {"now": "removed"}},
+                [{"id": "old", "chains": ["removed", group]}], state, False,
+            )
+        finally:
+            router.business_preflight = original_preflight
+        self.assertEqual(self.selected, [(group, "backup")])
+        self.assertEqual(self.closed, [], "removal is not proof of a failed old connection")
+        self.assertEqual(state["groups"][group]["last_seen"], "backup")
+
 
 class HealthModelTests(unittest.TestCase):
     def test_quarantine_requires_time_and_three_recovery_successes(self):

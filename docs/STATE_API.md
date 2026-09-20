@@ -57,12 +57,25 @@ policies, groups, nodes, events, history_summary, diagnostics
 HTTP 请求只读取缓存。缓存尚未生成时返回 `503 snapshot_unavailable`，绝不以同步探测
 补齐。
 
+v0.4.0 在 `subscription.dynamic` 增加兼容字段，响应 schema 仍为 2。它包含 `mode`、
+`generation` 和逐策略的上一代/当前/提议计数、静态/动态差异、group status、当前节点
+存在性、fail-closed、节点生命周期、预热进度、疑似改名与退役倒计时。该投影与旧/新
+API 一起从周期缓存编码；访问 `/candidate-acceptance` 仍不会读取控制器或触发测速。
+
+持久状态继续使用 schema 2 的兼容扩展 `candidate_registry`。v0.3.0 会保留未知扩展字段，
+因此 shadow 回滚不会破坏原状态；未来若出现不兼容结构变化再递增持久 schema。
+
 ## 结构化事件
 
 代理组决策码或节点生命周期真实变化时追加一条事件，相同状态重复投影不会追加。
 事件包含 `code`、`severity`、`scope`、group/node ID、旧状态、新状态、
 `reason_code`、Unix 时间和 ISO 时间。当前实现保留最近 200 条以维持既有有界状态
 不变量；日志轮换仍属于后续阶段。
+
+候选事件使用稳定 ID 和白名单字段，支持 `SUBSCRIPTION_CHANGED`、`NODE_DISCOVERED`、
+`NODE_WARMUP_STARTED`、`NODE_WARMUP_COMPLETED`、`NODE_REMOVED`、`NODE_RETIRED`、
+`NODE_RETIREMENT_PURGED`、`CURRENT_NODE_REMOVED`、`GROUP_MISSING`、`GROUP_RECOVERED`、
+`NO_CANDIDATE` 和 `CANDIDATES_RECOVERED`，不包含订阅 URL、服务器地址或凭据。
 
 ## 固定验收
 

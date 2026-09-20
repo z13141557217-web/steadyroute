@@ -169,6 +169,41 @@ class StatusApiContractTests(unittest.TestCase):
         self.assertNotIn("a>d.service.probe_interval_seconds", source)
         self.assertNotIn("name.startsWith", source)
 
+    def test_dynamic_candidate_acceptance_projection_is_cache_only_and_complete(self):
+        policy = router.POLICIES[0]
+        discovery = policy["discovery_group_name"]
+        observed = policy["static_candidates"][:2]
+        proxy = dict(self.proxy_data)
+        proxy[discovery] = {"all": observed, "now": observed[0]}
+        router.candidate_registry.reconcile(router.POLICY_CONFIG, self.state, proxy, self.now - 20)
+        router.candidate_registry.reconcile(router.POLICY_CONFIG, self.state, proxy, self.now)
+        snapshots = router.build_status_snapshots(self.state, proxy, [], now=self.now, memory_mb=24.1)
+        dynamic = snapshots["v1"]["subscription"]["dynamic"]
+        self.assertEqual(dynamic["mode"], "shadow")
+        self.assertEqual(dynamic["generation"], 18)
+        case = next(item for item in dynamic["policies"] if item["id"] == policy["id"])
+        self.assertEqual(case["scenario_type"], "real_shadow_snapshot")
+        self.assertEqual(case["group_status"], "ready")
+        self.assertEqual(case["current_candidate_count"], 2)
+        self.assertIn("static_only", case["differences"])
+        self.assertIn("dynamic_only", case["differences"])
+        self.assertIn("fail_closed", case)
+        router.update_dashboard_cache(snapshots)
+        with mock.patch.object(router, "api_request", side_effect=AssertionError("dashboard must be cached")):
+            self.assertEqual(router.cached_api_response("/api/v1/status")[0], 200)
+
+    def test_candidate_acceptance_dashboard_is_a_separate_read_only_route(self):
+        status, content_type, body = router.static_acceptance_response("/candidate-acceptance")
+        self.assertEqual(status, 200)
+        self.assertEqual(content_type, "text/html; charset=utf-8")
+        source = body.decode("utf-8")
+        self.assertIn("动态候选影子验收", source)
+        self.assertIn("/api/v1/status", source)
+        self.assertIn("真实影子快照", source)
+        self.assertIn("瞬时事件", source)
+        self.assertIn("边界模拟", source)
+        self.assertNotIn("fetch('/proxies", source)
+
 
 if __name__ == "__main__":
     unittest.main()

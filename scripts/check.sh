@@ -4,8 +4,17 @@ set -eu
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 python3 -m py_compile "$PROJECT_DIR/src/steadyroute/weighted_router.py"
+python3 -m py_compile "$PROJECT_DIR/src/steadyroute/state_contract.py"
+python3 -m py_compile "$PROJECT_DIR/src/steadyroute/route_policy.py"
+python3 -m py_compile "$PROJECT_DIR/src/steadyroute/candidate_registry.py"
 python3 -m py_compile "$PROJECT_DIR/scripts/deploy.py"
+python3 "$PROJECT_DIR/scripts/generate-groups.py" --check
 python3 -m unittest discover -s "$PROJECT_DIR/tests" -p 'test_*.py' -v
+
+MIHOMO_CORE="/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo"
+if [ -x "$MIHOMO_CORE" ]; then
+  python3 "$PROJECT_DIR/scripts/validate-mihomo-config.py" --core "$MIHOMO_CORE"
+fi
 
 if command -v plutil >/dev/null 2>&1; then
   plutil -lint "$PROJECT_DIR/deploy/macos/com.nurture.clash-stability-router.plist"

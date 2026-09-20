@@ -127,12 +127,18 @@ class DeploymentIntegrationTests(unittest.TestCase):
         (package_root / "deploy").mkdir()
         (package_root / "src/weighted_router.py").write_text("print('release')\n", encoding="utf-8")
         (package_root / "src/state_contract.py").write_text("STATE_SCHEMA_VERSION = 2\n", encoding="utf-8")
+        (package_root / "src/route_policy.py").write_text("SCHEMA_VERSION = 1\n", encoding="utf-8")
+        (package_root / "src/candidate_registry.py").write_text("EVENT_LIMIT = 200\n", encoding="utf-8")
         (package_root / "src/dashboard.html").write_text(dashboard, encoding="utf-8")
         (package_root / "src/acceptance_dashboard.html").write_text("acceptance", encoding="utf-8")
+        (package_root / "src/candidate_dashboard.html").write_text("candidate acceptance", encoding="utf-8")
         (package_root / "src/fixtures/status_contract_v2.json").write_text('{"schema_version": 2}\n', encoding="utf-8")
         (package_root / "config/groups.yaml").write_text(
             "# test\nprepend:\n  - name: 香港家宽自动备援\n    type: select\n  - name: AI 台湾家宽线路\n    type: select\nappend: []\ndelete: []\n",
             encoding="utf-8",
+        )
+        (package_root / "config/route-policies.json").write_text(
+            '{"schema_version":1,"mode":"shadow","policies":[]}\n', encoding="utf-8"
         )
         (package_root / "deploy/com.nurture.clash-stability-router.plist").write_bytes(
             plistlib.dumps({"Label": deploy.DEFAULT_LABEL})

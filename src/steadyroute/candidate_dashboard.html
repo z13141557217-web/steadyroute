@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SteadyRoute 动态候选影子验收</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b1020;--card:#151d32;--muted:#9aa7bd;--ok:#64d8a1;--warn:#ffd166;--bad:#ff6b7a}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#eef3ff;font:14px/1.5 system-ui,sans-serif}
+    main{max-width:1180px;margin:auto;padding:28px 20px}.top{display:flex;gap:16px;align-items:end;justify-content:space-between;flex-wrap:wrap}
+    h1{margin:0;font-size:26px}.muted{color:var(--muted)}.pill{padding:5px 10px;border:1px solid #34415f;border-radius:999px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:14px;margin-top:18px}.card{min-width:0;overflow:hidden;background:var(--card);border:1px solid #263452;border-radius:14px;padding:16px}
+    .row{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #273450;padding:8px 0}.row:first-of-type{border-top:0}.ok{color:var(--ok)}.bad{color:var(--bad)}
+    table{display:block;width:100%;overflow-x:auto;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:6px;border-top:1px solid #273450}td:first-child{overflow-wrap:anywhere}code{color:#b9d6ff}ul{padding-left:18px}
+    @media(max-width:600px){main{padding:18px 10px}.top{align-items:start}h1{font-size:22px}.card{padding:12px}th,td{padding:5px 4px;font-size:11px}}
+  </style>
+</head>
+<body><main>
+  <div class="top"><div><h1>动态候选影子验收</h1><div class="muted">独立只读看板 · 不修改生产主看板 · 不触发控制器或测速</div></div><div id="summary" class="pill">读取缓存…</div></div>
+  <p class="muted">场景标签：真实影子快照展示当前缓存；瞬时事件来自结构化事件；边界模拟由测试矩阵验证，不伪装成实时状态。</p>
+  <div class="grid" id="policies"></div>
+  <section class="card" style="margin-top:14px"><h2>最近瞬时事件</h2><div id="events"></div></section>
+  <section class="card" style="margin-top:14px"><h2>边界模拟</h2><ul><li>控制器离线、组缺失、畸形响应不删除候选</li><li>单次空组不生效，连续两次确认后 fail-closed</li><li>当前节点消失仅建议成熟同策略备援；warming 与 DIRECT 永不接管</li><li>16 / 50 / 100 节点规模与 24 小时退役清理</li></ul></section>
+  <script>
+  const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  fetch('/api/v1/status',{cache:'no-store'}).then(r=>r.json()).then(data=>{
+    const d=data.subscription.dynamic;document.querySelector('#summary').textContent=`${d.mode} · generation ${d.generation}`;
+    document.querySelector('#policies').innerHTML=d.policies.map(p=>`<article class="card"><h2>${esc(p.group_name)}</h2><div class="muted">真实影子快照 · ${esc(p.region)} · discovery ${esc(p.group_status)}</div><div class="row"><span>上一代 / 当前 / 提议</span><b>${p.previous_candidate_count} / ${p.current_candidate_count} / ${p.proposed_candidate_count}</b></div><div class="row"><span>静态缺失 / 动态新增</span><b>${p.differences.static_only.length} / ${p.differences.dynamic_only.length}</b></div><div class="row"><span>当前节点存在</span><b class="${p.current_node_exists===false?'bad':'ok'}">${esc(p.current_node_exists)}</b></div><div class="row"><span>fail-closed</span><b class="${p.fail_closed?'bad':'ok'}">${esc(p.fail_closed)}</b></div><table><thead><tr><th>节点</th><th>生命周期</th><th>预热</th><th>退役倒计时</th></tr></thead><tbody>${p.nodes.map(n=>`<tr><td>${esc(n.name)}${n.suspected_rename?' · 疑似改名':''}</td><td>${esc(n.lifecycle)}</td><td>${n.samples}/${n.samples_required} · ${n.success_streak}/${n.successes_required} · 业务 ${n.business_probe_succeeded?'✓':'—'}</td><td>${n.retirement_remaining_seconds??'—'}</td></tr>`).join('')}</tbody></table></article>`).join('');
+    document.querySelector('#events').innerHTML=(data.events||[]).slice(-20).reverse().map(e=>`<div class="row"><code>${esc(e.code)}</code><span>${esc(e.reason_code)}</span></div>`).join('')||'<span class="muted">暂无事件</span>';
+  }).catch(e=>{document.querySelector('#summary').textContent='缓存不可用';});
+  </script>
+</main></body></html>

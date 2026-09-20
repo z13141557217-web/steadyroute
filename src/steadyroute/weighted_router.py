@@ -16,9 +16,13 @@ from urllib.parse import quote, urlsplit
 
 try:
     import state_contract
+    import candidate_registry
+    import route_policy
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import state_contract
+    import candidate_registry
+    import route_policy
 
 
 SOCKET_PATH = "/tmp/verge/verge-mihomo.sock"
@@ -29,6 +33,7 @@ DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard.html")
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ACCEPTANCE_DASHBOARD_PATH = os.path.join(APP_DIR, "acceptance_dashboard.html")
 ACCEPTANCE_FIXTURE_PATH = os.path.join(APP_DIR, "fixtures", "status_contract_v2.json")
+CANDIDATE_DASHBOARD_PATH = os.path.join(APP_DIR, "candidate_dashboard.html")
 DASHBOARD_HOST = "127.0.0.1"
 DASHBOARD_PORT = 17654
 SERVICE_NAME = "稳航 SteadyRoute"
@@ -63,36 +68,24 @@ QUARANTINE_WINDOW_SECONDS = 10 * 60
 QUARANTINE_SECONDS = 30 * 60
 QUARANTINE_RECOVERY_SUCCESSES = 3
 
-GROUPS = {
-    "香港家宽自动备援": [
-        "香港家宽hy2🇭🇰",
-        "优秀|【3x】中转|香港家宽🇭🇰",
-        "优秀|cf加速|香港动态家宽🇭🇰",
-        "优秀|cf加速|香港动态家宽二🇭🇰",
-        "【10x】三网优化|香港动态家宽🇭🇰",
-    ],
-    "AI 台湾家宽线路": [
-        "[03]台湾hinet家宽🇨🇳hy2",
-        "[01]台湾hinet家宽🇨🇳hy2",
-        "[02]台湾hinet家宽🇨🇳hy2",
-        "【10x】三网优化|台湾hinet家宽02",
-        "【10x】三网优化|台湾hinet动态家宽01",
-        "优秀|[3x]中转|台湾hinet家宽02",
-        "优秀|[3x]中转|台湾hinet家宽03",
-        "优秀|【3x】中转|台湾hinet动态家宽01",
-        "【3x】中转|台湾seednet动态家宽🇹🇼",
-        "优秀|cf加速|台湾动态家宽🇹🇼",
-        "台湾seednet动态家宽🇹🇼hy2",
-    ],
-}
+POLICY_CONFIG_PATHS = (
+    os.path.join(APP_DIR, "config", "route-policies.json"),
+    os.path.join(os.path.dirname(os.path.dirname(APP_DIR)), "config", "route-policies.json"),
+)
 
-BUSINESS_TEST_URLS = {
-    "香港家宽自动备援": ["https://grok.com/cdn-cgi/trace"],
-    "AI 台湾家宽线路": [
-        "https://chatgpt.com/cdn-cgi/trace",
-        "https://claude.ai/cdn-cgi/trace",
-    ],
-}
+
+def load_runtime_policy_config():
+    for path in POLICY_CONFIG_PATHS:
+        if os.path.exists(path):
+            return route_policy.load_policy_config(path)
+    raise route_policy.PolicyConfigError("route-policies.json is unavailable")
+
+
+POLICY_CONFIG = load_runtime_policy_config()
+POLICIES = list(POLICY_CONFIG["policies"])
+POLICY_BY_GROUP = {item["group_name"]: item for item in POLICIES}
+GROUPS = {item["group_name"]: list(item["static_candidates"]) for item in POLICIES}
+BUSINESS_TEST_URLS = {item["group_name"]: list(item["business_test_urls"]) for item in POLICIES}
 
 
 def log(message):
@@ -224,7 +217,8 @@ def read_service_version():
 
 
 def region_for_group(group_name):
-    return "TW" if "台湾" in group_name else "HK" if "香港" in group_name else "unknown"
+    policy = POLICY_BY_GROUP.get(group_name)
+    return policy["region"] if policy else "unknown"
 
 
 def connection_count_for_node(group_name, node_name, connections):
@@ -521,6 +515,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "warming_count": sum(1 for node in nodes if node["lifecycle"] == "warming"),
             "quarantined_count": sum(1 for node in nodes if node["lifecycle"] == "quarantined"),
             "changes": [public_subscription_change(item) for item in subscription.get("changes", [])],
+            "dynamic": candidate_registry.public_snapshot(POLICY_CONFIG, state, proxy_data, now),
         },
         "policies": {
             "probe_interval_seconds": PROBE_INTERVAL_SECONDS,
@@ -683,6 +678,9 @@ def static_acceptance_response(path):
     elif route == "/acceptance/fixtures":
         target = ACCEPTANCE_FIXTURE_PATH
         content_type = "application/json; charset=utf-8"
+    elif route in ("/candidate-acceptance", "/candidate-acceptance/"):
+        target = CANDIDATE_DASHBOARD_PATH
+        content_type = "text/html; charset=utf-8"
     if target is None:
         return 404, "text/plain; charset=utf-8", b"not found"
     try:
@@ -708,7 +706,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content)
             return
-        if route.startswith("/acceptance"):
+        if route.startswith("/acceptance") or route.startswith("/candidate-acceptance"):
             status, content_type, content = static_acceptance_response(route)
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -882,6 +880,7 @@ def record_business_result(node_state, success, observed_at):
     node_state["business_checked_at"] = int(observed_at)
     node_state["business_last_success"] = bool(success)
     if success:
+        node_state["business_successes"] = int(node_state.get("business_successes", 0)) + 1
         node_state["business_success_streak"] = int(node_state.get("business_success_streak", 0)) + 1
         node_state["business_failure_streak"] = 0
     else:
@@ -919,6 +918,7 @@ def choose_probe_targets(state, proxy_data):
             for offset in range(min(STANDBY_PROBES_PER_GROUP, len(standbys))):
                 targets.add(standbys[(cursor + offset) % len(standbys)])
             group_state["standby_probe_cursor"] = (cursor + STANDBY_PROBES_PER_GROUP) % len(standbys)
+    targets.update(name for _policy, name in candidate_registry.warmup_probe_targets(POLICY_CONFIG, state))
     return sorted(targets)
 
 
@@ -1009,14 +1009,43 @@ def best_failover(candidates, nodes, current):
 def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run):
     group_info = proxy_data.get(group_name) or {}
     current = group_info.get("now")
+    group_state = state["groups"].setdefault(group_name, {})
+    now = time.time()
+    if not candidates:
+        group_state["dynamic_no_candidate"] = True
+        log("%s: no safe candidate; fail closed" % group_name)
+        return
     if current not in candidates:
         log("%s: current selection is unavailable: %r" % (group_name, current))
-        current = candidates[0]
+        mature = [name for name in candidates if eligible_for_optimization(state["nodes"].get(name, {}))]
+        target = min(
+            mature,
+            key=lambda name: float(state["nodes"].get(name, {}).get("score", 1000000.0)),
+        ) if mature else None
+        if target and business_preflight(group_name, target, state, dry_run):
+            select_node(group_name, target, dry_run)
+            group_state.update({
+                "last_router_selection": target,
+                "last_seen": target,
+                "last_switch_at": int(now),
+                "handover_old_node": current,
+                "handover_new_node": target,
+                "handover_grace_until": int(now + 300),
+                "recovery_observe_until": int(now + 360),
+                "better_candidate": None,
+                "better_streak": 0,
+                "dynamic_no_candidate": False,
+            })
+            log("%s: current removed; selected mature backup %s without closing old connections" % (
+                group_name, target,
+            ))
+            return
+        group_state["dynamic_no_candidate"] = True
+        log("%s: current removed but no mature backup passed preflight" % group_name)
+        return
 
-    group_state = state["groups"].setdefault(group_name, {})
     previous_seen = group_state.get("last_seen")
     router_choice = group_state.get("last_router_selection")
-    now = time.time()
 
     if previous_seen and current != previous_seen and current != router_choice:
         group_state["manual_hold_until"] = int(now + MANUAL_HOLD_SECONDS)
@@ -1150,12 +1179,14 @@ def run_cycle(dry_run=False):
         proxy_response = api_request("GET", "/proxies") or {}
     except Exception:
         state["controller_connected"] = False
+        candidate_registry.reconcile(POLICY_CONFIG, state, {}, cycle_started_at, controller_ok=False)
         snapshots = build_status_snapshots(state, {}, [], now=cycle_started_at)
         save_state(state)
         update_dashboard_cache(snapshots)
         raise
     proxy_data = proxy_response.get("proxies") or {}
     state["controller_connected"] = True
+    candidate_registry.reconcile(POLICY_CONFIG, state, proxy_data, cycle_started_at)
     try:
         connection_response = api_request("GET", "/connections") or {}
         connections = connection_response.get("connections") or []
@@ -1169,6 +1200,7 @@ def run_cycle(dry_run=False):
         for name in targets:
             future = executor.submit(probe_url, name, TEST_URL, PROBE_TIMEOUT_MS)
             future_meta[future] = ("base", None, name, TEST_URL)
+        scheduled_business = set()
         for group_name, candidates in GROUPS.items():
             current = (proxy_data.get(group_name) or {}).get("now")
             if current not in candidates:
@@ -1187,13 +1219,22 @@ def run_cycle(dry_run=False):
                 group_state["last_business_probe_at"] = cycle_started_at
                 future = executor.submit(probe_url, current, url, BUSINESS_PROBE_TIMEOUT_MS)
                 future_meta[future] = ("business", group_name, current, url)
+                scheduled_business.add((group_name, current))
+        for policy, name in candidate_registry.warmup_probe_targets(POLICY_CONFIG, state):
+            group_name = policy["group_name"]
+            urls = policy.get("business_test_urls", [])
+            node_state = state["nodes"].get(name, {})
+            if urls and not node_state.get("business_successes") and (group_name, name) not in scheduled_business:
+                future = executor.submit(probe_url, name, urls[0], BUSINESS_PROBE_TIMEOUT_MS)
+                future_meta[future] = ("business", group_name, name, urls[0])
+                scheduled_business.add((group_name, name))
         for future in concurrent.futures.as_completed(future_meta):
             kind, group_name, name, url = future_meta[future]
             delay = future.result()
             if kind == "base":
                 base_results[name] = delay
             else:
-                business_results[group_name] = {"name": name, "url": url, "delay": delay}
+                business_results[(group_name, name)] = {"name": name, "url": url, "delay": delay}
 
     for name in targets:
         node_state = state["nodes"].setdefault(name, {})
@@ -1205,7 +1246,7 @@ def run_cycle(dry_run=False):
         if current not in candidates:
             current = candidates[0]
         node_state = state["nodes"].setdefault(current, {})
-        business = business_results.get(group_name)
+        business = business_results.get((group_name, current))
         business_checked = business is not None
         business_success = False
         if business_checked:
@@ -1222,6 +1263,15 @@ def run_cycle(dry_run=False):
             business_success,
         )
 
+    for (group_name, name), business in business_results.items():
+        current = (proxy_data.get(group_name) or {}).get("now")
+        if name == current:
+            continue
+        success = business["delay"] is not None
+        if not success:
+            success = probe_url(name, business["url"], BUSINESS_PROBE_TIMEOUT_MS) is not None
+        record_business_result(state["nodes"].setdefault(name, {}), success, cycle_started_at)
+
     summary = []
     for name in targets:
         stats = state["nodes"][name]
@@ -1236,12 +1286,20 @@ def run_cycle(dry_run=False):
             result["url"].split("/")[2],
             ("%dms" % result["delay"]) if result.get("delay") is not None else "FAIL",
         )
-        for group_name, result in business_results.items()
+        for (group_name, _name), result in business_results.items()
     ]
     log("probe: " + " | ".join(summary) + (" | business " + " | ".join(business_summary) if business_summary else ""))
 
-    for group_name, candidates in GROUPS.items():
+    for policy in POLICIES:
+        group_name = policy["group_name"]
+        candidates = candidate_registry.routing_candidates(POLICY_CONFIG, policy, state)
+        if not candidates:
+            state["groups"].setdefault(group_name, {})["dynamic_no_candidate"] = True
+            continue
+        state["groups"].setdefault(group_name, {})["dynamic_no_candidate"] = False
         evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run)
+    candidate_registry.refresh_lifecycles(POLICY_CONFIG, state, cycle_started_at)
+    candidate_registry.purge_retired(POLICY_CONFIG, state, cycle_started_at)
     previous_update = int(state.get("updated_at", 0))
     if previous_update:
         gap = max(0, cycle_started_at - previous_update)
