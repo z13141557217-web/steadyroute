@@ -13,6 +13,8 @@
 - 增加独立 `/candidate-acceptance` 只读影子验收看板，以及筛选、假控制器、生命周期、
   断线/缺组/空组、16/50/100 节点和无 PUT/DIRECT 泄漏测试。
 - 增加确定性增强配置生成与当前 Mihomo 核心 staged 校验工具。
+- 增加 Clash Verge 当前订阅 `option.groups` 绑定的 dry-run-first 部署/回滚控制面：受限
+  profiles 路径、SHA/元数据备份、原子替换、失败自动恢复和只读 `/proxies` 验证。
 
 ### Changed
 
@@ -23,6 +25,8 @@
 
 - `mode=active` 需要独立审批且实测 RSS 增量不得超过 1 MB；本版本未批准也未激活。
 - 控制器离线、发现组缺失或畸形响应不会把最后有效候选误判为全量删除。
+- group enhancement 不自动触发 Clash Verge 重载；必须人工重载并通过只读验证后才能
+  开始影子观察。
 
 ## [0.3.0] - 2026-09-20
 

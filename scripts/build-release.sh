@@ -17,18 +17,21 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 "$PROJECT_DIR/scripts/check.sh"
-mkdir -p "$DIST_DIR" "$PACKAGE_DIR/src/fixtures" "$PACKAGE_DIR/config" "$PACKAGE_DIR/deploy" "$PACKAGE_DIR/docs"
+mkdir -p "$DIST_DIR" "$PACKAGE_DIR/src/fixtures" "$PACKAGE_DIR/config" "$PACKAGE_DIR/deploy" "$PACKAGE_DIR/docs" "$PACKAGE_DIR/tools"
 
 cp "$PROJECT_DIR/src/steadyroute/weighted_router.py" "$PACKAGE_DIR/src/"
 cp "$PROJECT_DIR/src/steadyroute/state_contract.py" "$PACKAGE_DIR/src/"
 cp "$PROJECT_DIR/src/steadyroute/route_policy.py" "$PACKAGE_DIR/src/"
 cp "$PROJECT_DIR/src/steadyroute/candidate_registry.py" "$PACKAGE_DIR/src/"
+cp "$PROJECT_DIR/src/steadyroute/clash_group_deploy.py" "$PACKAGE_DIR/src/"
 cp "$PROJECT_DIR/src/steadyroute/dashboard.html" "$PACKAGE_DIR/src/"
 cp "$PROJECT_DIR/src/steadyroute/acceptance_dashboard.html" "$PACKAGE_DIR/src/"
 cp "$PROJECT_DIR/src/steadyroute/candidate_dashboard.html" "$PACKAGE_DIR/src/"
 cp "$PROJECT_DIR/src/steadyroute/fixtures/status_contract_v2.json" "$PACKAGE_DIR/src/fixtures/"
 cp "$PROJECT_DIR/config/clash-verge/groups.yaml" "$PACKAGE_DIR/config/"
 cp "$PROJECT_DIR/config/route-policies.json" "$PACKAGE_DIR/config/"
+cp "$PROJECT_DIR/scripts/manage-clash-groups.py" "$PACKAGE_DIR/tools/"
+cp "$PROJECT_DIR/scripts/verify-clash-discovery.py" "$PACKAGE_DIR/tools/"
 cp "$PROJECT_DIR/deploy/macos/com.nurture.clash-stability-router.plist" "$PACKAGE_DIR/deploy/"
 cp "$PROJECT_DIR/VERSION" "$PROJECT_DIR/CHANGELOG.md" "$PACKAGE_DIR/"
 cp "$PROJECT_DIR/docs/RELEASE.md" "$PROJECT_DIR/docs/OPERATIONS.md" "$PACKAGE_DIR/docs/"

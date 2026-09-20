@@ -63,6 +63,11 @@ discovery group.all（仅成功且组存在）
 `mode=shadow` 时 `evaluate_group` 只接收静态候选。未来 `mode=active` 才会接收已成熟的
 动态候选，且策略验证要求单独审批与 RSS ≤1 MB；v0.4.0 发布校验拒绝 active 包。
 
+仓库侧 `clash_group_deploy` 控制面是独立模块：它从 `profiles.yaml` current subscription
+解析 `option.groups`，对受限 profiles 目标执行 dry-run/备份/原子替换/自动恢复/回滚。
+该模块随候选包提供但不复制到稳航运行目录，也不成为常驻依赖。Clash Verge 重载保持
+显式人工动作，随后由只读 `/proxies` 验证 discovery groups 是否真正加载。
+
 ## 版本化状态投影
 
 `state_contract.py` 负责持久状态 schema、确定性迁移、决策/生命周期文案和转换事件；

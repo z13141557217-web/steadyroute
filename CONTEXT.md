@@ -47,3 +47,9 @@ _Avoid_: 已激活候选、自动接管
 空候选时以 `no_candidate` 和 `REJECT` 明确拒绝，不使用 DIRECT、COMPATIBLE、warming、
 跨地区或普通节点兜底。
 _Avoid_: 兼容回落、尽力而为
+
+**组增强绑定**：
+Clash Verge `profiles.yaml` 当前 remote subscription 的 `option.groups` 所指向的已有
+`profiles/<uid>.yaml`；只有替换该绑定文件并经人工重载后，生成的 discovery groups
+才可能出现在 Mihomo `/proxies`。
+_Avoid_: 稳航应用目录中的配置副本、猜测 UID、已加载配置

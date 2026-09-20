@@ -21,6 +21,11 @@
 增强配置的必需结构。输出 `DRY-RUN validated` 后即结束，不创建备份，也不调用
 `launchctl`。
 
+该命令只部署稳航应用目录，不会修改 Clash Verge `profiles.yaml` 当前订阅的
+`option.groups` 绑定。v0.4.0 动态发现还必须在应用部署后单独执行 group enhancement
+流程；完整顺序、命令和人工重载门禁见 [RELEASE.md](RELEASE.md)。未在 `/proxies`
+看到全部 discovery groups 时，部署不能被视为已具备影子观察条件。
+
 ## 首次生产部署
 
 合并并创建 `v<VERSION>` 标签后，重新从该 commit 构建发布包，再运行：
@@ -96,9 +101,14 @@ commit、UTC 时间、每个文件的 SHA-256 以及清单总 SHA-256。回滚�
 
 ```bash
 python3 -m unittest tests.test_deploy -v
+python3 -m unittest tests.test_clash_group_deploy -v
 ```
 
 测试覆盖默认无写入、完整备份、成功部署、bootout 失败、旧服务或端口仍存活、旧状态
 无法证明新周期、危险路径拒绝、激活后故障注入自动恢复、独立回滚以及脏工作树拒绝。
 `STEADYROUTE_TEST_FAIL_AFTER_ACTIVATE` 仅允许非生产目标用于测试，
 生产路径会拒绝故障注入。
+
+group enhancement 测试另行覆盖 current 绑定解析、profiles 目录限制、符号链接与越界
+拒绝、默认 dry-run、SHA/元数据备份、原子替换、失败自动恢复和独立 rollback；同样只用
+`TemporaryDirectory` 与假 Mihomo core。

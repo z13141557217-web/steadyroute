@@ -20,6 +20,8 @@
 - [x] 使用测试配置覆盖新增、改名、删除、空集合、断线与 16/50/100 节点。
 - [x] `route-policies.json` 同时驱动运行时与 Mihomo 组生成。
 - [x] 当前 Mihomo 核心 staged 配置校验通过。
+- [x] 当前订阅 group enhancement 有默认 dry-run、受限目标、备份、原子 apply、自动恢复和 rollback seam。
+- [x] 人工重载后可只读验证 `/proxies` 中全部 discovery groups；验证前不开始影子计时。
 - [x] 独立 `/candidate-acceptance` 从缓存显示动态/静态差异与生命周期。
 - [ ] 影子生产观察 12–24 小时并覆盖一次真实订阅刷新（本 PR 不部署）。
 - [ ] v0.4.1 单独审批正式接管。
@@ -36,3 +38,5 @@
 - 三轮隔离基准中位数：RSS +0.109 MB，空闲 CPU +0.0036 个百分点；兼容 API
   100 次总耗时 -0.524 ms，新 API -1.010 ms；空状态增加 731 bytes。
 - `mode=active` 受独立审批和 RSS ≤1 MB 双重门禁；v0.4.0 发布校验强制 shadow。
+- group enhancement 从 `profiles.yaml` 的 current remote subscription 动态解析
+  `option.groups`，不写死 UID；测试只使用临时目录，未触碰真实 Clash Verge 配置。

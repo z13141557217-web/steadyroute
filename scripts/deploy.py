@@ -143,7 +143,12 @@ def parse_manifest(path):
 
 
 def validate_release_tree(root):
-    required = list(MANAGED_FILES) + ["deploy/com.nurture.clash-stability-router.plist"]
+    required = list(MANAGED_FILES) + [
+        "deploy/com.nurture.clash-stability-router.plist",
+        "src/clash_group_deploy.py",
+        "tools/manage-clash-groups.py",
+        "tools/verify-clash-discovery.py",
+    ]
     for relative in required:
         if not (root / relative).is_file():
             raise DeploymentError("发布包缺少 %s" % relative)
@@ -170,6 +175,9 @@ def validate_release_tree(root):
     py_compile.compile(str(root / "src/state_contract.py"), doraise=True)
     py_compile.compile(str(root / "src/route_policy.py"), doraise=True)
     py_compile.compile(str(root / "src/candidate_registry.py"), doraise=True)
+    py_compile.compile(str(root / "src/clash_group_deploy.py"), doraise=True)
+    py_compile.compile(str(root / "tools/manage-clash-groups.py"), doraise=True)
+    py_compile.compile(str(root / "tools/verify-clash-discovery.py"), doraise=True)
     json.loads((root / "src/fixtures/status_contract_v2.json").read_text(encoding="utf-8"))
     route_policies = json.loads((root / "config/route-policies.json").read_text(encoding="utf-8"))
     if route_policies.get("mode") != "shadow":

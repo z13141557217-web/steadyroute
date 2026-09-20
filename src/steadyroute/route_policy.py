@@ -28,6 +28,15 @@ def _require_string(item, name):
         raise PolicyConfigError("policy %s must be a non-empty string" % name)
 
 
+def _require_string_list(item, name):
+    value = item.get(name)
+    if (
+        not isinstance(value, list) or not value
+        or any(not isinstance(entry, str) or not entry.strip() for entry in value)
+    ):
+        raise PolicyConfigError("policy %s must be a non-empty string array" % name)
+
+
 def validate_policy_config(config):
     if not isinstance(config, dict) or config.get("schema_version") != SCHEMA_VERSION:
         raise PolicyConfigError("unsupported route policy schema")
@@ -65,7 +74,9 @@ def validate_policy_config(config):
             raise PolicyConfigError("active and discovery groups must differ")
         if item.get("empty_fallback") != "REJECT":
             raise PolicyConfigError("empty_fallback must be REJECT")
-        if "direct" not in {str(value).lower() for value in item.get("exclude_types", [])}:
+        for name in ("exclude_types", "business_test_urls", "static_candidates"):
+            _require_string_list(item, name)
+        if "direct" not in {value.lower() for value in item["exclude_types"]}:
             raise PolicyConfigError("exclude_types must contain direct")
         for name in ("warmup_samples", "warmup_successes", "retire_after_seconds"):
             if not isinstance(item.get(name), int) or isinstance(item.get(name), bool) or item[name] <= 0:
@@ -82,8 +93,6 @@ def validate_policy_config(config):
                 re.compile(item[name])
             except re.error as error:
                 raise PolicyConfigError("invalid %s: %s" % (name, error))
-        if not isinstance(item.get("static_candidates"), list) or not item["static_candidates"]:
-            raise PolicyConfigError("static_candidates must be a non-empty array")
         if any(name in BUILTIN_CANDIDATES for name in item["static_candidates"]):
             raise PolicyConfigError("built-in policies cannot be static candidates")
     additional = config.get("additional_groups", [])

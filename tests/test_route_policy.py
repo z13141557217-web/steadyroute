@@ -91,6 +91,18 @@ class RoutePolicyConfigTests(unittest.TestCase):
         self.assertTrue(generated["include-all-proxies"])
         self.assertEqual(generated["empty-fallback"], "REJECT")
 
+    def test_policy_string_lists_reject_non_string_elements(self):
+        for field, bad_value in (
+            ("exclude_types", ["direct", 7]),
+            ("business_test_urls", ["https://example.invalid/", None]),
+            ("static_candidates", ["台湾 HINET 家宽", {"name": "not-a-string"}]),
+        ):
+            with self.subTest(field=field):
+                invalid = copy.deepcopy(self.config)
+                invalid["policies"][0][field] = bad_value
+                with self.assertRaises(route_policy.PolicyConfigError):
+                    route_policy.validate_policy_config(invalid)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,11 +32,17 @@ docs/                   产品、架构、运维、安全、发布与风险文�
 ./scripts/build-release.sh
 ./scripts/deploy-local.sh
 ./scripts/rollback-local.sh
+python3 scripts/manage-clash-groups.py --help
+python3 scripts/verify-clash-discovery.py --help
 ```
 
 `deploy-local.sh` 和 `rollback-local.sh` 默认只预演。真实写入必须显式传入
 `--apply`；第一次生产部署还必须在交互终端再次输入完整确认短语。详见
 [本地部署与回滚](docs/DEPLOYMENT.md)。
+
+Clash Verge 当前订阅的 group enhancement 是独立控制面；管理命令同样默认 dry-run，
+必须显式注入 `profiles.yaml`、`profiles/` 和 Mihomo core。文件 apply 后仍需人工重载
+Clash Verge，并通过 `/proxies` 只读验证 discovery groups，详见[发布流程](docs/RELEASE.md)。
 
 ## 版本策略
 

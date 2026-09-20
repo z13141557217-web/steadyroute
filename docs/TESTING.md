@@ -58,6 +58,9 @@
 - `generate-groups.py --check` 必须证明增强配置与单一 JSON 源无漂移。
 - 安装了当前 Mihomo 核心时必须对临时独立配置执行 `-t -f` staged 校验。
 - v0.4.0 发布包中的策略模式必须是 `shadow`。
+- group enhancement 控制面必须在临时 `profiles.yaml`/`profiles/` 上验证默认 dry-run、
+  current `option.groups` 解析、越界/宽泛/符号链接拒绝、单一来源与 staged 校验、备份 SHA、
+  原子 apply、故障自动恢复、rollback 和 `/proxies` discovery 完整性。
 
 ## 独立验收看板
 
@@ -84,3 +87,7 @@
 测试验证默认 dry-run 零写入、备份元数据与 SHA-256、原子切换、`bootout` 失败、
 旧服务或监听端口未退出、复制旧状态未产生新周期、危险与重叠路径、激活后故障注入
 自动恢复、独立回滚和脏工作树拒绝。
+
+`tests/test_clash_group_deploy.py` 只使用 `TemporaryDirectory` 和假 Mihomo core，不读取或
+写入当前机器的 Clash Verge profiles。真实重载属于管理窗口人工步骤，测试不伪造
+“已加载”结果。
