@@ -11,6 +11,11 @@
 shadow 模式和 Mihomo staged 配置，随后保存带 SHA/元数据的原件并原子替换。失败自动恢复，
 rollback 同样默认 dry-run。
 
+解析器只支持本决策所需的 profiles 子集：唯一 top-level `current`、唯一 `items` block
+sequence、固定 item 缩进的 `- uid:`、直接 `type` 与 plain-mapping `option.groups`。
+`selected` 等更深层列表被忽略；重复或歧义字段、异常缩进和复杂 YAML 表达一律拒绝，
+不尝试猜测。
+
 工具不自动触发 Clash Verge 重载。管理窗口人工重载后，必须从 Unix socket `/proxies`
 只读确认所有 discovery groups 存在，才能开始影子观察。
 

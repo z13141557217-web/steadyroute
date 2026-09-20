@@ -131,42 +131,92 @@ def _scalar(raw):
 def _profile_bindings(text):
     if "\t" in text:
         raise GroupEnhancementError("profiles.yaml cannot contain tabs")
-    current = None
+    current_values = []
     items = []
     item = None
-    in_option = False
+    in_items = False
+    items_seen = False
+    item_indent = None
+    direct_section = None
+    option_seen = False
+
+    def finish_item():
+        nonlocal item
+        if item is not None:
+            items.append(item)
+            item = None
+
     for raw in text.splitlines():
         stripped = raw.strip()
         if not stripped or stripped.startswith("#"):
             continue
         indent = len(raw) - len(raw.lstrip(" "))
+        if indent % 2:
+            raise GroupEnhancementError("profiles.yaml uses unsupported indentation")
         if indent == 0 and stripped.startswith("current:"):
-            current = _scalar(stripped.partition(":")[2])
+            current_values.append(_scalar(stripped.partition(":")[2]))
+            continue
+        if indent == 0 and stripped.startswith("items:"):
+            if items_seen or in_items or stripped.partition(":")[2].strip():
+                raise GroupEnhancementError("profiles.yaml items must be one block sequence")
+            in_items = True
+            items_seen = True
+            continue
+        if not in_items:
             continue
         if stripped.startswith("- "):
-            if item is not None:
-                items.append(item)
-            item = {}
-            in_option = False
             content = stripped[2:].strip()
-            if content.startswith("uid:"):
-                item["uid"] = _scalar(content.partition(":")[2])
+            is_uid_entry = content.startswith("uid:")
+            if item_indent is None:
+                if not is_uid_entry or indent not in {0, 2}:
+                    raise GroupEnhancementError("profiles.yaml items must start with a top-level - uid entry")
+                item_indent = indent
+            if indent == item_indent:
+                if not is_uid_entry:
+                    raise GroupEnhancementError("profiles.yaml top-level item must start with uid")
+                finish_item()
+                item = {"uid": _scalar(content.partition(":")[2])}
+                direct_section = None
+                option_seen = False
+            # Any deeper sequence belongs to a field such as selected and is ignored.
             continue
-        if item is None or ":" not in stripped:
+        if item is None:
+            raise GroupEnhancementError("profiles.yaml items contains content before its first uid")
+        if indent <= item_indent:
+            finish_item()
+            in_items = False
             continue
+        if ":" not in stripped:
+            raise GroupEnhancementError("profiles.yaml contains unsupported complex YAML")
         key, _, raw_value = stripped.partition(":")
         key = key.strip()
-        if key == "option":
-            in_option = True
-        elif indent <= 4:
-            in_option = False
-            if key in {"uid", "type"}:
-                item[key] = _scalar(raw_value)
-        elif in_option and key == "groups":
+        if indent == item_indent + 2:
+            direct_section = key
+            if key == "uid":
+                raise GroupEnhancementError("profile item contains duplicate uid")
+            if key == "type":
+                if "type" in item:
+                    raise GroupEnhancementError("profile item contains duplicate type")
+                item["type"] = _scalar(raw_value)
+            elif key == "option":
+                if option_seen or raw_value.strip():
+                    raise GroupEnhancementError("profile item option must be one plain mapping")
+                option_seen = True
+        elif indent == item_indent + 4 and direct_section == "option" and key == "groups":
+            if "groups" in item or not raw_value.strip():
+                raise GroupEnhancementError("profile item contains duplicate or empty option.groups")
             item["groups"] = _scalar(raw_value)
-    if item is not None:
-        items.append(item)
-    return current, items
+        # Other deeper mappings and lists are unrelated profile metadata and ignored.
+    finish_item()
+    if len(current_values) != 1 or not current_values[0]:
+        raise GroupEnhancementError("profiles.yaml must contain exactly one current value")
+    seen = set()
+    for parsed in items:
+        uid = parsed.get("uid")
+        if not uid or uid in seen:
+            raise GroupEnhancementError("profiles.yaml contains missing or duplicate item uid")
+        seen.add(uid)
+    return current_values[0], items
 
 
 class ClashGroupEnhancementManager:

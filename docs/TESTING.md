@@ -91,3 +91,8 @@
 `tests/test_clash_group_deploy.py` 只使用 `TemporaryDirectory` 和假 Mihomo core，不读取或
 写入当前机器的 Clash Verge profiles。真实重载属于管理窗口人工步骤，测试不伪造
 “已加载”结果。
+
+`tests/fixtures/profiles_nested_selected.yaml` 保留真实 profiles 的脱敏结构：`items:` 使用
+顶层 sequence，remote item 的 `selected` 与其他嵌套列表位于 `option` 之前。回归测试
+证明只有固定 item 缩进的 `- uid:` 会开启新 profile，并拒绝重复 current、重复 uid、
+重复/歧义 `option.groups`、奇数缩进、flow-style items 和复杂 option。

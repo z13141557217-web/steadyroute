@@ -40,3 +40,5 @@
 - `mode=active` 受独立审批和 RSS ≤1 MB 双重门禁；v0.4.0 发布校验强制 shadow。
 - group enhancement 从 `profiles.yaml` 的 current remote subscription 动态解析
   `option.groups`，不写死 UID；测试只使用临时目录，未触碰真实 Clash Verge 配置。
+- 脱敏真实结构 fixture 覆盖 remote item 内 `selected`/其他嵌套列表；实际 profiles 的
+  默认 dry-run 已正确解析 current、binding 和同目录目标，目标 SHA 未变且未创建备份。

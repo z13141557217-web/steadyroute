@@ -27,6 +27,8 @@
 - 控制器离线、发现组缺失或畸形响应不会把最后有效候选误判为全量删除。
 - group enhancement 不自动触发 Clash Verge 重载；必须人工重载并通过只读验证后才能
   开始影子观察。
+- profiles 解析只识别 `items:` 直接序列中固定缩进的 `- uid:`；remote item 内的
+  `selected` 等嵌套列表不会被误判为新 profile，重复/歧义/复杂结构会 fail closed。
 
 ## [0.3.0] - 2026-09-20
 

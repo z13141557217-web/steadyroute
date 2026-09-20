@@ -8,6 +8,7 @@ import subprocess
 
 PROJECT_DIR = pathlib.Path(__file__).parents[1]
 MODULE_DIR = PROJECT_DIR / "src" / "steadyroute"
+FIXTURE_DIR = PROJECT_DIR / "tests" / "fixtures"
 sys.path.insert(0, str(MODULE_DIR))
 
 import clash_group_deploy
@@ -62,6 +63,47 @@ class ClashGroupEnhancementManagerTests(unittest.TestCase):
         self.assertEqual(plan["action"], "replace")
         self.assertEqual(self.target.read_bytes(), self.original)
         self.assertFalse((self.profiles / ".steadyroute-group-backups").exists())
+
+    def test_plan_ignores_real_shape_nested_selected_and_other_lists(self):
+        self.profiles_yaml.write_text(
+            (FIXTURE_DIR / "profiles_nested_selected.yaml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        plan = self.manager().plan()
+        self.assertEqual(plan["current_profile_uid"], "current-remote")
+        self.assertEqual(plan["binding_uid"], "group-binding-123")
+        self.assertEqual(plan["target"], str(self.target))
+        self.assertEqual(self.target.read_bytes(), self.original)
+
+    def test_profile_parser_rejects_duplicate_ambiguous_or_complex_structures(self):
+        valid = (FIXTURE_DIR / "profiles_nested_selected.yaml").read_text(encoding="utf-8")
+        cases = {
+            "duplicate current": "current: second-current\n" + valid,
+            "duplicate items block": valid + "\nitems:\n- uid: extra\n  type: remote\n",
+            "duplicate item uid": valid + "\n- uid: current-remote\n  type: remote\n",
+            "duplicate direct uid": valid.replace(
+                "  type: remote\n  name: Sanitized Remote",
+                "  type: remote\n  uid: second-uid\n  name: Sanitized Remote",
+            ),
+            "duplicate option groups": valid.replace(
+                "    groups: group-binding-123",
+                "    groups: group-binding-123\n    groups: second-binding",
+            ),
+            "duplicate option mapping": valid.replace(
+                "  option:\n", "  option:\n  option:\n", 1
+            ),
+            "odd indentation": valid.replace("  type: remote", "   type: remote", 1),
+            "inline items flow": "current: current-remote\nitems: [{uid: current-remote, type: remote}]\n",
+            "complex option flow": valid.replace(
+                "  option:\n", "  option: {groups: group-binding-123}\n", 1
+            ),
+            "top item without uid": valid.replace("- uid: local-profile", "- name: local-profile", 1),
+        }
+        for label, source in cases.items():
+            with self.subTest(case=label):
+                self.profiles_yaml.write_text(source, encoding="utf-8")
+                with self.assertRaises(clash_group_deploy.GroupEnhancementError):
+                    self.manager().plan()
 
     def test_plan_rejects_missing_unsafe_or_unvalidated_bindings(self):
         cases = []
