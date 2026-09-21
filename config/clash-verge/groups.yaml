@@ -25,6 +25,7 @@ prepend:
     exclude-filter: "(?i)(?:到期|剩余|流量|套餐|官网|公告|客服|重置|倍率说明|expire|traffic|official)"
     exclude-type: direct
     empty-fallback: REJECT
+    hidden: true
     interrupt-exist-connections: false
   - name: 香港家宽自动备援
     type: select
@@ -42,6 +43,7 @@ prepend:
     exclude-filter: "(?i)(?:到期|剩余|流量|套餐|官网|公告|客服|重置|倍率说明|expire|traffic|official)"
     exclude-type: direct
     empty-fallback: REJECT
+    hidden: true
     interrupt-exist-connections: false
   - name: Verve AI 稳定线路
     type: fallback

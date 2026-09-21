@@ -52,6 +52,17 @@ class DecisionContractTests(unittest.TestCase):
             self.assertEqual(len(descriptions), len(set(descriptions)))
             self.assertEqual(len(next_actions), len(set(next_actions)))
 
+    def test_confirmed_failure_overrides_manual_preference(self):
+        facts = {
+            "controller_connected": True,
+            "candidate_count": 2,
+            "current_failed": True,
+            "target_id": "node-backup",
+            "manual_hold_remaining_seconds": 1800,
+        }
+        decision = contract.resolve_group_decision(facts, 1789762600)
+        self.assertEqual(decision["code"], "failover_now")
+
     def test_transition_event_is_emitted_once_per_real_change(self):
         state = contract.new_state()
         first = contract.record_transition(

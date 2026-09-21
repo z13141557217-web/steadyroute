@@ -174,11 +174,14 @@ def verify_discovery_payload(config, payload):
         if not isinstance(group, dict) or not isinstance(group.get("all"), list):
             missing.append(name)
             continue
+        if group.get("hidden") is not True:
+            raise GroupEnhancementError("discovery group is visible in dashboard: %s" % name)
         groups.append({
             "policy_id": policy["id"],
             "discovery_group_name": name,
             "candidate_count": len(group["all"]),
             "current": group.get("now"),
+            "hidden": True,
         })
     if missing:
         raise GroupEnhancementError("discovery groups missing from /proxies: %s" % ", ".join(missing))

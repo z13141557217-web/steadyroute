@@ -84,6 +84,49 @@ class StatusApiContractTests(unittest.TestCase):
         self.assertEqual(group["timers"]["cooldown_remaining_seconds"], 0)
         self.assertEqual(snapshots["v1"]["service"]["last_cycle_at_iso"], "2026-09-18T20:16:35Z")
 
+    def test_manual_preference_copy_exposes_safety_and_countdown(self):
+        group_name = "AI 台湾家宽线路"
+        safe_backup = router.GROUPS[group_name][0]
+        self.state["nodes"][safe_backup] = {
+            "last_success": True, "samples": 20, "success_streak": 10, "failure_streak": 0,
+            "availability_ewma": 1.0, "latency_ewma": 90.0, "jitter_ewma": 4.0,
+            "score": 100.0, "short_results": [1] * 20,
+            "long_buckets": [{"hour": 1, "success": 20, "total": 20, "latency_sum": 1800}],
+        }
+        self.state["groups"][group_name].update({
+            "better_candidate": None,
+            "better_streak": 0,
+            "manual_hold_until": self.now + 125,
+        })
+        snapshots = router.build_status_snapshots(
+            self.state, self.proxy_data, self.connections, now=self.now, memory_mb=24.1
+        )
+        group = next(item for item in snapshots["v1"]["groups"] if item["name"] == group_name)
+        self.assertEqual(group["decision"]["code"], "manual_hold")
+        self.assertTrue(group["automation"]["performance_optimization_paused"])
+        self.assertTrue(group["automation"]["safety_failover_active"])
+        self.assertTrue(group["automation"]["safe_backup_available"])
+        self.assertEqual(group["automation"]["manual_preference_remaining_seconds"], 125)
+        self.assertEqual(group["automation"]["manual_preference_remaining_text"], "02:05")
+        self.assertIn("故障时将预检成熟备援", group["decision"]["title"])
+        legacy = next(item for item in snapshots["legacy"]["groups"] if item["name"] == group_name)
+        self.assertIn("02:05", legacy["decision"])
+
+    def test_manual_preference_never_promises_a_missing_safe_backup(self):
+        group_name = "AI 台湾家宽线路"
+        current = self.proxy_data[group_name]["now"]
+        self.state["nodes"] = {current: self.state["nodes"][current]}
+        self.state["groups"][group_name].update({
+            "better_candidate": None,
+            "manual_hold_until": self.now + 60,
+        })
+        payload = router.build_status_snapshots(
+            self.state, self.proxy_data, [], now=self.now, memory_mb=24.1
+        )["v1"]
+        group = next(item for item in payload["groups"] if item["name"] == group_name)
+        self.assertFalse(group["automation"]["safe_backup_available"])
+        self.assertIn("暂无成熟备援", group["decision"]["title"])
+
     def test_state_staleness_is_calculated_by_backend(self):
         self.state["updated_at"] = self.now - (router.PROBE_INTERVAL_SECONDS * 3 + 1)
         payload = router.build_status_snapshots(

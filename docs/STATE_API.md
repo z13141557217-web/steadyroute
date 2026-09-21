@@ -62,6 +62,12 @@ v0.4.0 在 `subscription.dynamic` 增加兼容字段，响应 schema 仍为 2。
 存在性、fail-closed、节点生命周期、预热进度、疑似改名与退役倒计时。该投影与旧/新
 API 一起从周期缓存编码；访问 `/candidate-acceptance` 仍不会读取控制器或触发测速。
 
+v0.4.2 在每个代理组增加 `automation`：`performance_optimization_paused` 表示人工偏好期
+只暂停性能回优，`safety_failover_active` 表示真实故障保护仍运行；同时提供
+`manual_preference_remaining_seconds` 和 `manual_preference_remaining_text`。兼容机器码
+继续使用 `manual_hold`，但不再表示停止故障切换。`safe_backup_available` 只根据现有缓存
+中的成熟、未隔离候选计算；没有安全备援时文案必须明确 fail-closed，不能承诺一定切换。
+
 持久状态继续使用 schema 2 的兼容扩展 `candidate_registry`。v0.3.0 会保留未知扩展字段，
 因此 shadow 回滚不会破坏原状态；未来若出现不兼容结构变化再递增持久 schema。
 

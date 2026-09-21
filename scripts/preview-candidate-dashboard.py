@@ -35,11 +35,17 @@ def main():
                 "business_successes": 1 if index == 0 else 0,
                 "score": 80 + index * 20,
             }
+    first_group = router.POLICIES[0]["group_name"]
+    state["groups"].setdefault(first_group, {}).update({
+        "last_seen": proxy_data[first_group]["now"],
+        "manual_hold_until": now + 125,
+    })
     router.candidate_registry.refresh_lifecycles(router.POLICY_CONFIG, state, now)
     state.update({"updated_at": now, "controller_connected": True})
     router.update_dashboard_cache(router.build_status_snapshots(state, proxy_data, [], now=now))
     router.DASHBOARD_PORT = args.port
     server = router.http.server.HTTPServer((router.DASHBOARD_HOST, args.port), router.DashboardHandler)
+    print("http://127.0.0.1:%d/" % args.port, flush=True)
     print("http://127.0.0.1:%d/candidate-acceptance" % args.port, flush=True)
     try:
         server.serve_forever()

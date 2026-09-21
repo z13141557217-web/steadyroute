@@ -119,6 +119,78 @@ class RoutingDecisionTests(unittest.TestCase):
         self.assertEqual(self.selected, [(group, "better")])
         self.assertEqual(self.closed, [(group, "current")])
 
+    def test_manual_preference_pauses_optimization_but_never_failure_safety(self):
+        group = "test-group"
+        now = 1800000000
+        current = healthy(500)
+        failed = dict(current, last_success=False, failure_streak=router.FAILURES_BEFORE_SWITCH)
+        state = {
+            "nodes": {"manual": current, "backup": healthy(100)},
+            "groups": {group: {
+                "last_seen": "old", "last_router_selection": "old",
+                "manual_hold_until": now + 5000,
+            }},
+        }
+        with mock.patch.object(router.time, "time", return_value=now):
+            router.evaluate_group(group, ["manual", "backup"], {group: {"now": "manual"}}, [], state, False)
+        self.assertEqual(self.selected, [])
+        self.assertLessEqual(state["groups"][group]["manual_hold_until"], now + router.MANUAL_HOLD_SECONDS)
+
+        state["nodes"]["manual"] = failed
+        with mock.patch.object(router.time, "time", return_value=now + 1):
+            router.evaluate_group(group, ["manual", "backup"], {group: {"now": "manual"}}, [], state, False)
+        self.assertEqual(self.selected, [(group, "backup")])
+        self.assertEqual(state["groups"][group]["manual_hold_until"], 0)
+        self.assertEqual(
+            [event["code"] for event in state["events"]],
+            ["MANUAL_PREFERENCE_STARTED", "MANUAL_PREFERENCE_INTERRUPTED"],
+        )
+
+    def test_quarantined_manual_node_requires_mature_backup_or_fails_closed(self):
+        group = "test-group"
+        now = 1800000000
+        quarantined = healthy(500)
+        quarantined["quarantine_until"] = now + 600
+        immature = healthy(100)
+        immature["samples"] = 2
+        state = {
+            "nodes": {"manual": quarantined, "immature": immature},
+            "groups": {group: {
+                "last_seen": "old", "last_router_selection": "old",
+                "manual_hold_until": now + 500,
+            }},
+            "events": [],
+        }
+        with mock.patch.object(router.time, "time", return_value=now):
+            router.evaluate_group(
+                group, ["manual", "immature"], {group: {"now": "manual"}}, [], state, False
+            )
+            router.evaluate_group(
+                group, ["manual", "immature"], {group: {"now": "manual"}}, [], state, False
+            )
+        self.assertEqual(self.selected, [])
+        self.assertEqual(state["groups"][group]["manual_hold_until"], 0)
+        self.assertTrue(state["groups"][group]["dynamic_no_candidate"])
+        self.assertEqual(
+            [event["code"] for event in state["events"]],
+            ["MANUAL_PREFERENCE_STARTED", "MANUAL_PREFERENCE_INTERRUPTED"],
+        )
+
+    def test_manual_preference_expiry_event_is_emitted_once(self):
+        group = "test-group"
+        now = 1800000000
+        state = {
+            "nodes": {"current": healthy(100), "backup": healthy(200)},
+            "groups": {group: {"last_seen": "current", "manual_hold_until": now - 1}},
+            "events": [],
+        }
+        with mock.patch.object(router.time, "time", return_value=now):
+            router.evaluate_group(group, ["current", "backup"], {group: {"now": "current"}}, [], state, False)
+            router.evaluate_group(group, ["current", "backup"], {group: {"now": "current"}}, [], state, False)
+        self.assertEqual(
+            [event["code"] for event in state["events"]], ["MANUAL_PREFERENCE_EXPIRED"]
+        )
+
     def test_confirmed_current_removal_selects_mature_backup_without_closing_connections(self):
         group = "test-group"
         state = {
