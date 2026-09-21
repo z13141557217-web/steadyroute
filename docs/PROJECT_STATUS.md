@@ -32,7 +32,7 @@
 ## 下一步与开放门槛
 
 1. **先完成 v0.4.2 生产观察记录**：需要时间跨度和一次可核实的真实订阅刷新；若未发生刷新，明确写“未覆盖”，不得以普通检测轮次替代。
-2. **v0.5.0 候选：运维可观测性**。分开开发并测试[Issue #3](https://github.com/z13141557217-web/steadyroute/issues/3) 的有界日志与错误边界，以及看板只读版本历史入口；候选验收后再决定合并、tag 和生产部署。不包含动态接管。
+2. **v0.5.0 候选：运维可观测性**。分开开发并测试[Issue #3](https://github.com/z13141557217-web/steadyroute/issues/3) 的有界日志与错误边界，以及[Issue #16](https://github.com/z13141557217-web/steadyroute/issues/16) 看板只读版本历史入口；候选验收后再决定合并、tag 和生产部署。不包含动态接管。
 3. **动态接管另设条件版本，暂按 v0.6.0 规划**。必须有影子观察、真实订阅刷新、[Issue #6](https://github.com/z13141557217-web/steadyroute/issues/6) 假控制器集成测试、资源门槛、降级/回滚演练和独立用户批准；版本号是规划，不是承诺。
 4. [Issue #5](https://github.com/z13141557217-web/steadyroute/issues/5) 完整看板和[Issue #9](https://github.com/z13141557217-web/steadyroute/issues/9) 内存治理继续单独跟踪，不因文档更新视为完成。
 
