@@ -1,6 +1,8 @@
 # 变更日志
 
 本项目遵循 Keep a Changelog 和语义化版本。
+每版详细交付、验收、限制与回滚记录见[版本历史](docs/VERSION_HISTORY.md)；
+本文件只保留简要变更索引。tag、GitHub Release 与生产部署分别确认。
 
 ## [Unreleased]
 
