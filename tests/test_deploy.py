@@ -202,6 +202,9 @@ class DeploymentIntegrationTests(unittest.TestCase):
     def test_apply_creates_complete_backup_and_passes_health_check(self):
         self.assertEqual(deploy.main(self.command(apply=True)), 0)
         self.assertEqual((self.target / "VERSION").read_text().strip(), "0.2.0")
+        self.assertTrue((self.target / "runtime_logging.py").is_file())
+        self.assertTrue((self.target / "release_notes.html").is_file())
+        self.assertTrue((self.target / "release_notes.json").is_file())
         self.assertEqual((self.target / "state.json").read_text(), '{"keep": true}\n')
         backup = deploy.newest_backup(self.backups)
         metadata = deploy.validate_backup(backup)
@@ -218,6 +221,7 @@ class DeploymentIntegrationTests(unittest.TestCase):
             os.environ.pop("STEADYROUTE_TEST_FAIL_AFTER_ACTIVATE", None)
         self.assertEqual((self.target / "VERSION").read_text().strip(), "0.1.0")
         self.assertEqual((self.target / "dashboard.html").read_text(), "old release")
+        self.assertTrue(plistlib.loads(self.plist.read_bytes())["Old"])
         self.assertEqual((self.target / "state.json").read_text(), '{"keep": true}\n')
         failures = list((self.backups / "diagnostics").glob("failed-*"))
         self.assertEqual(len(failures), 1)
@@ -234,6 +238,9 @@ class DeploymentIntegrationTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual((self.target / "VERSION").read_text().strip(), "0.1.0")
         self.assertEqual((self.target / "dashboard.html").read_text(), "old release")
+        self.assertTrue(plistlib.loads(self.plist.read_bytes())["Old"])
+        self.assertFalse((self.target / "runtime_logging.py").exists())
+        self.assertFalse((self.target / "release_notes.json").exists())
 
     def test_dirty_worktree_is_rejected(self):
         (self.project / "VERSION").write_text("dirty\n", encoding="utf-8")
