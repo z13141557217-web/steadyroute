@@ -86,6 +86,17 @@ class BoundedLoggingTests(unittest.TestCase):
             self.assertIn("thread sentinel", content)
             self.assertIn("test-worker", content)
 
+    def test_single_multibyte_record_cannot_exceed_small_error_cap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            context = runtime_logging.install(directory, main_max_bytes=160, main_backups=1,
+                                              error_max_bytes=120, error_backups=1)
+            try:
+                print("异常" * 200, file=sys.stderr)
+            finally:
+                context.close()
+            files = pathlib.Path(directory).glob("router-error.log*")
+            self.assertTrue(all(path.stat().st_size <= 120 for path in files))
+
     def test_probe_detail_is_capped_but_failure_change_is_immediate(self):
         router.LAST_PROBE_DETAIL_LOG_AT = None
         router.LAST_PROBE_FAILURES = None

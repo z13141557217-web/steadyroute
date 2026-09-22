@@ -82,7 +82,7 @@
       try{
         const response=await fetch('/api/v1/status',{cache:'no-store'});if(!response.ok)throw Error('status unavailable');
         const data=await response.json();const service=data.service||{};
-        if(data.schema_version!==2||service.state_stale||typeof service.version!=='string'||!/^\d+\.\d+\.\d+$/.test(service.version))throw Error('status stale or version missing');
+        if(data.schema_version!==2||service.state_stale!==false||typeof service.version!=='string'||!/^\d+\.\d+\.\d+$/.test(service.version))throw Error('status stale or version missing');
         runningVersion=`v${service.version}`;byId('running-version').textContent=runningVersion;
         if(service.preview_mode)byId('running-heading').textContent='候选预览版本 · 模拟状态 API';
         byId('running-status').textContent=service.preview_mode?'候选模拟状态 · 未连接 Mihomo，也不代表生产运行版本':service.last_cycle_at_iso?`最近成功周期：${service.last_cycle_at_iso}`:'运行版本已确认，周期时间未知';
@@ -93,6 +93,8 @@
       try{
         const response=await fetch('/api/v1/release-notes',{cache:'no-store'});if(!response.ok)throw Error('notes unavailable');
         const data=await response.json();if(data.schema_version!==1||!Array.isArray(data.releases))throw Error('invalid notes');
+        const fields=['version','date','title','release_status','references','actual_changes','verification','limitations','rollback'];
+        if(!data.releases.every(item=>item&&fields.every(key=>typeof item[key]==='string'&&item[key].length)))throw Error('incomplete notes');
         renderReleases(data.releases);
       }catch(_error){renderReleases([]);}
       compareVersions();

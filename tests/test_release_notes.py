@@ -76,6 +76,8 @@ class ReleaseNotesEndpointTests(unittest.TestCase):
         self.assertNotIn("fetch('https://", page)
         self.assertIn("无法确认运行版本", page)
         self.assertIn("releaseVersions.includes(runningVersion)", page)
+        self.assertIn("service.state_stale!==false", page)
+        self.assertIn("fields.every", page)
 
 
 if __name__ == "__main__":
