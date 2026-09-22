@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>更新日志 · 稳航 SteadyRoute</title>
+  <style>
+    :root { color-scheme:light dark; --bg:light-dark(#f4f6f9,#0e1117); --surface:light-dark(#fff,#171b23); --text:light-dark(#16191f,#f3f5f8); --muted:light-dark(#687180,#9fa8b7); --line:light-dark(#dfe3e9,#303744); --blue:light-dark(#356ad8,#79a3ff); --amber:light-dark(#9b6200,#efb44d); --amber-bg:light-dark(#fff5df,#382b13); --green:light-dark(#16834d,#50d78d); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(900px,calc(100% - 32px)); margin:28px auto 64px; }
+    a { color:var(--blue); } a:focus-visible,summary:focus-visible { outline:2px solid var(--blue); outline-offset:3px; }
+    .back { display:inline-block; margin-bottom:18px; text-decoration:none; font-weight:600; }
+    h1 { margin:0; font-size:clamp(26px,4vw,36px); line-height:1.2; }
+    h2 { margin:0; font-size:18px; }
+    p { margin:0; }
+    .intro { margin-top:8px; color:var(--muted); }
+    .card { background:var(--surface); border:1px solid var(--line); border-radius:15px; padding:18px 20px; margin-top:16px; }
+    .eyebrow { color:var(--muted); font-size:12px; }
+    .running { font-size:22px; font-weight:700; margin-top:2px; }
+    .status { color:var(--muted); margin-top:4px; }
+    .notice { background:var(--amber-bg); color:var(--amber); border-radius:10px; padding:10px 12px; margin-top:14px; }
+    .history-head { margin:28px 0 10px; }
+    .history-head p { color:var(--muted); margin-top:3px; }
+    .release { padding:0; overflow:hidden; }
+    .release summary { cursor:pointer; list-style:none; padding:16px 20px; display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+    .release summary::-webkit-details-marker { display:none; }
+    .release summary::after { content:"展开"; color:var(--blue); font-size:12px; white-space:nowrap; }
+    .release[open] summary::after { content:"收起"; }
+    .release-title { font-size:16px; font-weight:650; }
+    .release-meta { display:block; color:var(--muted); font-size:12px; font-weight:400; }
+    .release-body { border-top:1px solid var(--line); padding:3px 20px 18px; }
+    .field { margin-top:14px; }
+    .field h3 { font-size:12px; color:var(--muted); font-weight:650; margin:0 0 3px; }
+    .field p { overflow-wrap:anywhere; white-space:pre-wrap; }
+    .empty { color:var(--muted); }
+    footer { margin-top:20px; color:var(--muted); font-size:12px; }
+    @media (max-width:520px) { main { width:calc(100% - 20px); margin-top:18px; } .card { padding:15px; } .release { padding:0; } .release summary { padding:14px 15px; } .release-body { padding:3px 15px 16px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <nav aria-label="返回看板"><a class="back" href="/">← 返回看板</a></nav>
+    <h1>更新日志</h1>
+    <p class="intro">实际交付、验收与限制。版本历史随本地发布包提供；打开本页不会测速或改变线路。</p>
+    <section class="card" aria-labelledby="running-heading">
+      <div class="eyebrow" id="running-heading">当前运行版本 · 来自本机状态 API</div>
+      <div class="running" id="running-version" aria-live="polite">正在确认…</div>
+      <p class="status" id="running-status">正在读取本机状态</p>
+      <p class="notice" id="version-notice" role="status" hidden></p>
+    </section>
+    <section aria-labelledby="history-heading">
+      <div class="history-head"><h2 id="history-heading">版本历史</h2><p>历史记录不代表当前正在运行或已经部署。</p></div>
+      <div id="releases" aria-live="polite"><p class="card empty">正在读取本地版本记录…</p></div>
+    </section>
+    <footer>仅从本机读取状态与随发布包打包的历史；不自动访问 GitHub。</footer>
+  </main>
+  <script>
+    const byId=id=>document.getElementById(id);
+    let runningVersion=null;
+    let releaseVersions=[];
+    function notice(message){const element=byId('version-notice');element.textContent=message;element.hidden=!message;}
+    function addField(container,title,value){const field=document.createElement('div');field.className='field';const label=document.createElement('h3');label.textContent=title;const body=document.createElement('p');body.textContent=value;field.append(label,body);container.append(field);}
+    function renderReleases(releases){
+      const root=byId('releases');root.replaceChildren();releaseVersions=releases.map(item=>item.version);
+      if(!releases.length){const empty=document.createElement('p');empty.className='card empty';empty.textContent='本地发布包没有可用的版本记录。';root.append(empty);return;}
+      releases.forEach(item=>{
+        const card=document.createElement('details');card.className='card release';
+        const summary=document.createElement('summary');const title=document.createElement('span');title.className='release-title';title.textContent=`${item.version} · ${item.title}`;
+        const meta=document.createElement('span');meta.className='release-meta';meta.textContent=`${item.date} · ${item.release_status}`;title.append(meta);summary.append(title);card.append(summary);
+        const body=document.createElement('div');body.className='release-body';
+        addField(body,'关联记录',item.references);addField(body,'实际改变',item.actual_changes);addField(body,'测试与生产验收',item.verification);addField(body,'已知限制',item.limitations);addField(body,'备份与回滚',item.rollback);
+        card.append(body);root.append(card);
+      });
+    }
+    function compareVersions(){
+      if(runningVersion&&releaseVersions.length&&!releaseVersions.includes(runningVersion)){
+        notice(`当前运行的 ${runningVersion} 不在打包的历史记录中，可能是尚未发布的候选版本或记录不匹配。请勿据此推断发布/部署状态。`);
+      } else notice('');
+    }
+    async function loadRunning(){
+      try{
+        const response=await fetch('/api/v1/status',{cache:'no-store'});if(!response.ok)throw Error('status unavailable');
+        const data=await response.json();const service=data.service||{};
+        if(data.schema_version!==2||service.state_stale||typeof service.version!=='string'||!/^\d+\.\d+\.\d+$/.test(service.version))throw Error('status stale or version missing');
+        runningVersion=`v${service.version}`;byId('running-version').textContent=runningVersion;
+        if(service.preview_mode)byId('running-heading').textContent='候选预览版本 · 模拟状态 API';
+        byId('running-status').textContent=service.preview_mode?'候选模拟状态 · 未连接 Mihomo，也不代表生产运行版本':service.last_cycle_at_iso?`最近成功周期：${service.last_cycle_at_iso}`:'运行版本已确认，周期时间未知';
+      }catch(_error){runningVersion=null;byId('running-version').textContent='无法确认运行版本';byId('running-status').textContent='本机状态接口不可用、数据已过期或未提供版本。历史最新版本不代表当前运行版本。';}
+      compareVersions();
+    }
+    async function loadHistory(){
+      try{
+        const response=await fetch('/api/v1/release-notes',{cache:'no-store'});if(!response.ok)throw Error('notes unavailable');
+        const data=await response.json();if(data.schema_version!==1||!Array.isArray(data.releases))throw Error('invalid notes');
+        renderReleases(data.releases);
+      }catch(_error){renderReleases([]);}
+      compareVersions();
+    }
+    loadRunning();loadHistory();
+  </script>
+</body>
+</html>

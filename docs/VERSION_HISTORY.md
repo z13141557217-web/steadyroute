@@ -12,7 +12,7 @@ Git tag、GitHub Release、生产部署是三项独立事实，不能互相推�
 | v0.3.0 | 2026-09-20 | `60ea623`；[PR #8](https://github.com/z13141557217-web/steadyroute/pull/8) | 已发布并曾部署生产，现已被后续版本取代 |
 | v0.4.0 | 2026-09-20 | `27010e9`；[PR #10](https://github.com/z13141557217-web/steadyroute/pull/10) | 已发布并曾部署生产；动态发现仅影子运行 |
 | v0.4.1 | 2026-09-21 | `a833625`；[PR #12](https://github.com/z13141557217-web/steadyroute/pull/12) | 已发布并曾部署生产；动态发现仍仅影子运行 |
-| v0.4.2 | 2026-09-21 | `082e8f6`；[PR #14](https://github.com/z13141557217-web/steadyroute/pull/14) | 已发布；生产目录当前发布清单为 v0.4.2，动态发现仍仅影子运行 |
+| v0.4.2 | 2026-09-21 | `082e8f6`；[PR #14](https://github.com/z13141557217-web/steadyroute/pull/14) | 已发布；2026-09-22 核对时生产发布清单为 v0.4.2，动态发现仍仅影子运行 |
 
 “测试通过”只指该版本发布时的检查，不替代长期生产观察或真实订阅刷新验证。
 生产备份根目录为 `/Users/nurture/Library/Application Support/Clash-Verge-Stability-Router Backups`。

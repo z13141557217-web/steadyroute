@@ -7,10 +7,13 @@ python3 -m py_compile "$PROJECT_DIR/src/steadyroute/weighted_router.py"
 python3 -m py_compile "$PROJECT_DIR/src/steadyroute/state_contract.py"
 python3 -m py_compile "$PROJECT_DIR/src/steadyroute/route_policy.py"
 python3 -m py_compile "$PROJECT_DIR/src/steadyroute/candidate_registry.py"
+python3 -m py_compile "$PROJECT_DIR/src/steadyroute/runtime_logging.py"
 python3 -m py_compile "$PROJECT_DIR/src/steadyroute/clash_group_deploy.py"
 python3 -m py_compile "$PROJECT_DIR/scripts/deploy.py"
 python3 -m py_compile "$PROJECT_DIR/scripts/manage-clash-groups.py"
 python3 -m py_compile "$PROJECT_DIR/scripts/verify-clash-discovery.py"
+python3 -m py_compile "$PROJECT_DIR/scripts/build-release-notes.py"
+python3 "$PROJECT_DIR/scripts/build-release-notes.py" --check
 python3 "$PROJECT_DIR/scripts/generate-groups.py" --check
 python3 -m unittest discover -s "$PROJECT_DIR/tests" -p 'test_*.py' -v
 

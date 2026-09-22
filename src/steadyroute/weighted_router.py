@@ -16,15 +16,18 @@ import threading
 import time
 from urllib.parse import quote, urlsplit
 
-try:
-    import state_contract
-    import candidate_registry
-    import route_policy
-except ModuleNotFoundError:
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import state_contract
-    import candidate_registry
-    import route_policy
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
+import runtime_logging
+
+LOG_DIR = "/Users/nurture/Library/Logs/Clash-Verge-Stability-Router"
+if __name__ == "__main__" and "--daemon" in sys.argv and "--status" not in sys.argv:
+    runtime_logging.install(LOG_DIR)
+
+import state_contract
+import candidate_registry
+import route_policy
 
 
 CONTROLLER_SOCKET_PATHS = (
@@ -36,7 +39,8 @@ BASE_DIR = "/Users/nurture/Library/Application Support/Clash-Verge-Stability-Rou
 STATE_PATH = os.path.join(BASE_DIR, "state.json")
 LOCK_PATH = os.path.join(BASE_DIR, "router.lock")
 DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard.html")
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+RELEASE_NOTES_HTML_PATH = os.path.join(BASE_DIR, "release_notes.html")
+RELEASE_NOTES_PATH = os.path.join(BASE_DIR, "release_notes.json")
 ACCEPTANCE_DASHBOARD_PATH = os.path.join(APP_DIR, "acceptance_dashboard.html")
 ACCEPTANCE_FIXTURE_PATH = os.path.join(APP_DIR, "fixtures", "status_contract_v2.json")
 CANDIDATE_DASHBOARD_PATH = os.path.join(APP_DIR, "candidate_dashboard.html")
@@ -73,6 +77,9 @@ QUARANTINE_FAILURES = 3
 QUARANTINE_WINDOW_SECONDS = 10 * 60
 QUARANTINE_SECONDS = 30 * 60
 QUARANTINE_RECOVERY_SUCCESSES = 3
+PROBE_DETAIL_LOG_INTERVAL_SECONDS = 10 * 60
+LAST_PROBE_DETAIL_LOG_AT = None
+LAST_PROBE_FAILURES = None
 
 POLICY_CONFIG_PATHS = (
     os.path.join(APP_DIR, "config", "route-policies.json"),
@@ -95,8 +102,24 @@ BUSINESS_TEST_URLS = {item["group_name"]: list(item["business_test_urls"]) for i
 
 
 def log(message):
-    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print("[%s] %s" % (stamp, message), flush=True)
+    runtime_logging.info(message)
+
+
+def log_probe_results(summary, business_summary, failures, now):
+    """Full detail is periodic; failure/recovery changes are immediate and compact."""
+    global LAST_PROBE_DETAIL_LOG_AT, LAST_PROBE_FAILURES
+    failure_signature = tuple(sorted(failures))
+    if failure_signature != LAST_PROBE_FAILURES:
+        if failure_signature:
+            log("probe failure changed: %s" % ", ".join(failure_signature))
+        elif LAST_PROBE_FAILURES:
+            log("probe failures recovered")
+        LAST_PROBE_FAILURES = failure_signature
+    if LAST_PROBE_DETAIL_LOG_AT is None or now - LAST_PROBE_DETAIL_LOG_AT >= PROBE_DETAIL_LOG_INTERVAL_SECONDS:
+        log("probe: " + " | ".join(summary) + (
+            " | business " + " | ".join(business_summary) if business_summary else ""
+        ))
+        LAST_PROBE_DETAIL_LOG_AT = now
 
 
 def record_manual_preference_event(state, group_name, code, reason, now):
@@ -747,7 +770,37 @@ def static_acceptance_response(path):
     except OSError:
         return 404, "text/plain; charset=utf-8", b"not found"
 
+
+def release_notes_response():
+    try:
+        with open(RELEASE_NOTES_PATH, "rb") as handle:
+            content = handle.read(256 * 1024 + 1)
+    except OSError:
+        return 503, "application/json; charset=utf-8", b'{"error":"release_notes_unavailable"}'
+    if len(content) > 256 * 1024:
+        return 503, "application/json; charset=utf-8", b'{"error":"release_notes_too_large"}'
+    return 200, "application/json; charset=utf-8", content
+
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
+    def write_response(self, status, content_type, content, acceptance=False):
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            if acceptance:
+                self.send_header(
+                    "Content-Security-Policy",
+                    "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+                )
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # The client closed its read side while this response was being written.
+            return
+
     def do_GET(self):
         route = urlsplit(self.path).path
         if route in ("/", "/index.html"):
@@ -755,41 +808,40 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 with open(DASHBOARD_PATH, "rb") as handle:
                     content = handle.read()
             except OSError:
-                self.send_error(404)
+                self.write_response(404, "text/plain; charset=utf-8", b"not found")
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
+            self.write_response(200, "text/html; charset=utf-8", content)
+            return
+        if route in ("/release-notes", "/release-notes/"):
+            try:
+                with open(RELEASE_NOTES_HTML_PATH, "rb") as handle:
+                    content = handle.read()
+            except OSError:
+                self.write_response(404, "text/plain; charset=utf-8", b"not found")
+                return
+            self.write_response(200, "text/html; charset=utf-8", content, acceptance=True)
             return
         if route.startswith("/acceptance") or route.startswith("/candidate-acceptance"):
             status, content_type, content = static_acceptance_response(route)
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
+            self.write_response(status, content_type, content, acceptance=True)
             return
         if route in ("/api/status", "/api/v1/status"):
             status, content_type, content = cached_api_response(route)
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
+            self.write_response(status, content_type, content)
             return
-        self.send_error(404)
+        if route == "/api/v1/release-notes":
+            status, content_type, content = release_notes_response()
+            self.write_response(status, content_type, content)
+            return
+        self.write_response(404, "text/plain; charset=utf-8", b"not found")
 
     def log_message(self, _format, *_args):
         return
+
+
+class DashboardServer(http.server.HTTPServer):
+    def handle_error(self, _request, _client_address):
+        runtime_logging.exception("unhandled dashboard request exception")
 
 
 def start_dashboard():
@@ -797,7 +849,7 @@ def start_dashboard():
         state = load_state()
         state["controller_connected"] = False
         update_dashboard_cache(build_status_snapshots(state, {}, []))
-    server = http.server.HTTPServer((DASHBOARD_HOST, DASHBOARD_PORT), DashboardHandler)
+    server = DashboardServer((DASHBOARD_HOST, DASHBOARD_PORT), DashboardHandler)
     thread = threading.Thread(target=server.serve_forever, name="steadyroute-dashboard", daemon=True)
     thread.start()
     log("%s dashboard: http://%s:%d" % (SERVICE_NAME, DASHBOARD_HOST, DASHBOARD_PORT))
@@ -1387,7 +1439,12 @@ def run_cycle(dry_run=False):
         )
         for (group_name, _name), result in business_results.items()
     ]
-    log("probe: " + " | ".join(summary) + (" | business " + " | ".join(business_summary) if business_summary else ""))
+    failures = [name for name in targets if base_results.get(name) is None]
+    failures.extend(
+        "%s:%s" % (group_name, result["url"].split("/")[2])
+        for (group_name, _name), result in business_results.items() if result.get("delay") is None
+    )
+    log_probe_results(summary, business_summary, failures, cycle_started_at)
 
     for policy in POLICIES:
         group_name = policy["group_name"]
@@ -1461,7 +1518,7 @@ def main():
         try:
             run_cycle(dry_run=args.dry_run)
         except Exception as error:
-            log("cycle failed: %s" % error)
+            runtime_logging.exception("cycle failed: %s" % error)
         if not args.daemon:
             break
         time.sleep(PROBE_INTERVAL_SECONDS)

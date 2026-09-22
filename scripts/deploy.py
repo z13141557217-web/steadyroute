@@ -9,6 +9,7 @@ import os
 import pathlib
 import plistlib
 import py_compile
+import re
 import shutil
 import socket
 import subprocess
@@ -38,10 +39,13 @@ MANAGED_FILES = {
     "src/state_contract.py": "state_contract.py",
     "src/route_policy.py": "route_policy.py",
     "src/candidate_registry.py": "candidate_registry.py",
+    "src/runtime_logging.py": "runtime_logging.py",
     "src/dashboard.html": "dashboard.html",
+    "src/release_notes.html": "release_notes.html",
     "src/acceptance_dashboard.html": "acceptance_dashboard.html",
     "src/candidate_dashboard.html": "candidate_dashboard.html",
     "src/fixtures/status_contract_v2.json": "fixtures/status_contract_v2.json",
+    "src/release_notes.json": "release_notes.json",
     "config/groups.yaml": "config/groups.yaml",
     "config/route-policies.json": "config/route-policies.json",
     "VERSION": "VERSION",
@@ -145,6 +149,7 @@ def parse_manifest(path):
 def validate_release_tree(root):
     required = list(MANAGED_FILES) + [
         "deploy/com.nurture.clash-stability-router.plist",
+        "docs/VERSION_HISTORY.md",
         "src/clash_group_deploy.py",
         "tools/manage-clash-groups.py",
         "tools/verify-clash-discovery.py",
@@ -175,13 +180,30 @@ def validate_release_tree(root):
     py_compile.compile(str(root / "src/state_contract.py"), doraise=True)
     py_compile.compile(str(root / "src/route_policy.py"), doraise=True)
     py_compile.compile(str(root / "src/candidate_registry.py"), doraise=True)
+    py_compile.compile(str(root / "src/runtime_logging.py"), doraise=True)
     py_compile.compile(str(root / "src/clash_group_deploy.py"), doraise=True)
     py_compile.compile(str(root / "tools/manage-clash-groups.py"), doraise=True)
     py_compile.compile(str(root / "tools/verify-clash-discovery.py"), doraise=True)
     json.loads((root / "src/fixtures/status_contract_v2.json").read_text(encoding="utf-8"))
+    notes = json.loads((root / "src/release_notes.json").read_text(encoding="utf-8"))
+    if notes.get("schema_version") != 1 or notes.get("generated_from") != "docs/VERSION_HISTORY.md":
+        raise DeploymentError("更新日志数据契约无效")
+    if notes.get("source_sha256") != sha256(root / "docs/VERSION_HISTORY.md"):
+        raise DeploymentError("更新日志与版本历史来源不一致")
+    releases = notes.get("releases")
+    if not isinstance(releases, list) or not releases:
+        raise DeploymentError("更新日志没有可用版本")
+    required_note_fields = ("version", "date", "title", "release_status", "references", "actual_changes", "verification", "limitations", "rollback")
+    if any(not isinstance(item, dict) or not all(isinstance(item.get(key), str) and item[key] for key in required_note_fields) for item in releases):
+        raise DeploymentError("更新日志版本详情不完整")
+    versions = [item["version"] for item in releases]
+    if len(set(versions)) != len(versions) or any(not re.fullmatch(r"v\d+\.\d+\.\d+", value) for value in versions):
+        raise DeploymentError("更新日志版本号重复或无效")
+    if versions != sorted(versions, key=lambda value: tuple(map(int, value[1:].split("."))), reverse=True):
+        raise DeploymentError("更新日志版本顺序无效")
     route_policies = json.loads((root / "config/route-policies.json").read_text(encoding="utf-8"))
     if route_policies.get("mode") != "shadow":
-        raise DeploymentError("v0.4.0 发布包必须保持动态候选 shadow 模式")
+        raise DeploymentError("当前发布包必须保持动态候选 shadow 模式")
     with (root / "deploy/com.nurture.clash-stability-router.plist").open("rb") as handle:
         plist = plistlib.load(handle)
     if plist.get("Label") != DEFAULT_LABEL:
