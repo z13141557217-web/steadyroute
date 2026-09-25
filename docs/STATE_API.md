@@ -71,6 +71,16 @@ v0.4.2 在每个代理组增加 `automation`：`performance_optimization_paused`
 持久状态继续使用 schema 2 的兼容扩展 `candidate_registry`。v0.3.0 会保留未知扩展字段，
 因此 shadow 回滚不会破坏原状态；未来若出现不兼容结构变化再递增持久 schema。
 
+v0.4.3（阶段 1）在 `service` 追加：`last_cycle_started_at`、`cycle_count`、
+`cycle_duration_p50_ms`、`cycle_duration_p95_ms`（不足 5 轮为 `null`）、`stale_at`、
+`stale_at_iso`、`stale_title`、`stale_detail`、`local_network_ok`；`updated_at`/`last_cycle_at`
+语义改为周期完成时间，`next_cycle_at` 以周期开始时间加 20 秒计算，过期阈值为
+`2 × 20 + 10 = 50` 秒。服务状态码新增 `local_network_offline`。每个代理组追加
+`hot_standby`（节点 ID 或 `null`）、`business_targets_down`（仅数量，不暴露 URL）和
+`metrics`：`failovers_24h`、`performance_switches_24h`、`last_failover_detect_seconds`。
+legacy `service` 追加 `cycle_count`、`stale_at`、`stale_title`、`stale_detail`。看板只用
+`stale_at` 与后端文案切换显示，不自行计算阈值。
+
 ## 结构化事件
 
 代理组决策码或节点生命周期真实变化时追加一条事件，相同状态重复投影不会追加。
