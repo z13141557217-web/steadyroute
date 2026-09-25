@@ -50,7 +50,9 @@ class FastFailoverCycleTests(unittest.TestCase):
         self.net.down_nodes.add(self.current)
         self.net.run_cycle(self.state)
         base_calls = [call for call in self.net.calls_to(self.current) if call[1] == router.TEST_URL]
-        self.assertEqual(len(base_calls), 1 + router.CONFIRM_PROBES)
+        light_calls = [call for call in self.net.calls_to(self.current) if call[1] == router.FAST_PROBE_URL]
+        self.assertEqual(len(base_calls), 1)
+        self.assertEqual(len(light_calls), 1 + router.CONFIRM_PROBES, "one live-strip probe plus two confirmations")
 
     def test_business_success_skips_confirmation(self):
         self.net.fail_once[self.current] = 0
@@ -70,7 +72,18 @@ class FastFailoverCycleTests(unittest.TestCase):
         self.assertTrue(url)
 
     def test_transient_failure_does_not_switch(self):
-        self.net.fail_once[self.current] = 1
+        original = self.net.probe
+        light_failures = {"left": 2}   # the live-strip probe and the first confirmation fail
+
+        def probe(name, url, timeout_ms):
+            if name == self.current and url == router.TEST_URL:
+                return None
+            if name == self.current and url == router.FAST_PROBE_URL and light_failures["left"] > 0:
+                light_failures["left"] -= 1
+                return None
+            return original(name, url, timeout_ms)
+
+        self.net.probe = probe
         self.net.run_cycle(self.state)
         self.assertEqual(self.net.puts, [])
         self.assertEqual(self.state["nodes"][self.current]["failure_streak"], 1)

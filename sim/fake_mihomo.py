@@ -69,6 +69,8 @@ class World(object):
             value = max(5.0, self.rng.gauss(base, spread / 1.5))
             if "cdn-cgi/trace" in url:
                 value *= 1.6
+            elif url.startswith("http://"):
+                value *= 0.6          # plain HTTP skips the TLS handshake
             return int(value) if value < timeout_ms else None
 
     def proxies_payload(self):

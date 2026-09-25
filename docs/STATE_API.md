@@ -78,7 +78,10 @@ v0.4.3（阶段 1）在 `service` 追加：`last_cycle_started_at`、`cycle_coun
 `2 × 20 + 10 = 50` 秒。服务状态码新增 `local_network_offline`。每个代理组追加
 `hot_standby`（节点 ID 或 `null`）、`business_targets_down`（仅数量，不暴露 URL）和
 `metrics`：`failovers_24h`、`performance_switches_24h`、`last_failover_detect_seconds`。
-legacy `service` 追加 `cycle_count`、`stale_at`、`stale_title`、`stale_detail`。看板只用
+legacy `service` 追加 `cycle_count`、`stale_at`、`stale_title`、`stale_detail`、
+`last_probe_at`（完整周期或快速通道最近一次探测）、`fast_probe_interval_seconds`、
+`timeline_window_seconds`；legacy 组追加 `timeline`、v1 组追加 `recent_probes`，元素为
+`[unix 秒, 毫秒或 null, "probe"|"switch", 节点名]`，只保存在内存，最近 5 分钟、每组最多 90 点。看板只用
 `stale_at` 与后端文案切换显示，不自行计算阈值。
 
 ## 结构化事件

@@ -104,5 +104,14 @@ class FakeNetwork(object):
                 mock.patch.object(self.router, "probe_url", side_effect=self.probe):
             self.router.run_cycle(dry_run=False)
 
+    def run_fast_tick(self, state):
+        with mock.patch.object(self.router, "load_state", return_value=state), \
+                mock.patch.object(self.router, "save_state"), \
+                mock.patch.object(self.router, "update_dashboard_cache"), \
+                mock.patch.object(self.router, "log"), \
+                mock.patch.object(self.router, "api_request", side_effect=self.api), \
+                mock.patch.object(self.router, "probe_url", side_effect=self.probe):
+            return self.router.run_fast_tick(dry_run=False)
+
     def calls_to(self, name):
         return [call for call in self.probe_calls if call[0] == name]

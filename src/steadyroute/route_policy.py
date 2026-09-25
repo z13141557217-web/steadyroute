@@ -95,6 +95,17 @@ def validate_policy_config(config):
                 raise PolicyConfigError("invalid %s: %s" % (name, error))
         if any(name in BUILTIN_CANDIDATES for name in item["static_candidates"]):
             raise PolicyConfigError("built-in policies cannot be static candidates")
+        outside = [name for name in item["static_candidates"] if not name_matches(item, name)]
+        if outside:
+            raise PolicyConfigError(
+                "static candidates must match their own region and residential pattern: %s" % outside[0])
+    for item in policies:
+        for other in policies:
+            if other is item:
+                continue
+            shared = [name for name in item["static_candidates"] if name_matches(other, name)]
+            if shared:
+                raise PolicyConfigError("candidate matches more than one region policy: %s" % shared[0])
     additional = config.get("additional_groups", [])
     if not isinstance(additional, list) or any(not isinstance(item, dict) for item in additional):
         raise PolicyConfigError("additional_groups must be an array of objects")
