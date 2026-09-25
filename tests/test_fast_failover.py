@@ -102,6 +102,29 @@ class FastFailoverCycleTests(unittest.TestCase):
         self.assertIn("LOCAL_NETWORK_RECOVERED", [event["code"] for event in self.state["events"]])
         self.assertEqual(self.net.puts, [])
 
+    def test_network_back_before_local_check_still_not_charged(self):
+        """Everything failed, but the network recovered before the DIRECT check ran."""
+        original = self.net.probe
+
+        def probe(name, url, timeout_ms):
+            if name == "DIRECT":
+                return 20
+            return None
+
+        self.net.probe = probe
+        before = {name: len(item["short_results"]) for name, item in self.state["nodes"].items()}
+        self.net.run_cycle(self.state)
+        self.net.probe = original
+        self.assertEqual(self.net.puts, [])
+        for name, length in before.items():
+            self.assertEqual(len(self.state["nodes"][name]["short_results"]), length, name)
+        self.assertIs(self.state["local_network_ok"], True)
+
+    def test_single_node_failure_is_not_a_blackout(self):
+        self.net.down_nodes.add(self.current)
+        self.net.run_cycle(self.state)
+        self.assertEqual(self.state["groups"][TW_GROUP]["last_confirm"]["verdict"], "confirmed")
+
     def test_local_check_runs_once_per_cycle(self):
         self.net.local_offline = True
         self.net.run_cycle(self.state)

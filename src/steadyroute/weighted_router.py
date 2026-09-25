@@ -67,6 +67,7 @@ LOCAL_CHECK_URLS = (
 )
 FAILOVER_STORM_WINDOW_SECONDS = 10 * 60
 FAILOVER_STORM_THRESHOLD = 3
+MASS_FAILURE_MIN_TARGETS = 3
 BUSINESS_PROBE_INTERVAL_SECONDS = 60
 STANDBY_PROBES_PER_GROUP = 1
 FAILURES_BEFORE_SWITCH = 2
@@ -1628,15 +1629,23 @@ def run_cycle(dry_run=False):
         )
 
     # 4) Confirm a failed current node inside this cycle, with a local-network guard.
+    #    When every probed node failed at once (both regions), the cause is local or
+    #    controller-wide; the network may already be back by the time we check, so
+    #    those samples are never charged to nodes.
     cycle_cache = {}
     confirmations = {}
+    blackout = len(targets) >= MASS_FAILURE_MIN_TARGETS and all(
+        base_results.get(name) is None for name in targets)
+    if blackout:
+        ensure_local_check(cycle_cache)
+        log("all %d probes failed at once; treating the cycle as a local outage" % len(targets))
     for group_name, candidates in GROUPS.items():
         current = current_for_group(proxy_data, group_name, candidates)
         if base_results.get(current) is not None or verdicts.get(group_name) == "ok":
             continue
-        if resume_cycle:
+        if resume_cycle or blackout:
             ensure_local_check(cycle_cache)
-            confirmations[group_name] = "resume"
+            confirmations[group_name] = "resume" if resume_cycle else "blackout"
             continue
         if cycle_cache.get("local_ok") is False:
             confirmations[group_name] = "local_offline"
@@ -1646,7 +1655,7 @@ def run_cycle(dry_run=False):
             "verdict": confirmations[group_name], "at": cycle_started_at,
         }
     local_offline = cycle_cache.get("local_ok") is False
-    record_failures = not (local_offline or resume_cycle)
+    record_failures = not (local_offline or resume_cycle or blackout)
     update_local_network_state(state, not local_offline, cycle_started_at)
 
     # 5) Record samples.
@@ -1707,8 +1716,9 @@ def run_cycle(dry_run=False):
             continue
         state["groups"].setdefault(group_name, {})["dynamic_no_candidate"] = False
         if not record_failures:
-            log("%s: decisions paused this cycle (%s)" % (
-                group_name, "local network offline" if local_offline else "resumed from sleep"))
+            reason = ("local network offline" if local_offline
+                      else "resumed from sleep" if resume_cycle else "all probes failed at once")
+            log("%s: decisions paused this cycle (%s)" % (group_name, reason))
             continue
         evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run)
     candidate_registry.refresh_lifecycles(POLICY_CONFIG, state, cycle_started_at)
