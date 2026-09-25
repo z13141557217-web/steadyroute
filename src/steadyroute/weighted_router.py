@@ -1130,7 +1130,9 @@ def timeline_add(group_name, point):
     TIMELINE[group_name] = [item for item in items if float(item["t"]) >= cutoff][-TIMELINE_LIMIT:]
 
 
-def record_health_window(node_state, success, delay, observed_at):
+def record_health_window(node_state, success, delay, observed_at, quarantine=True):
+    """quarantine=False: a failure the same cycle proved transient; it lowers availability
+    but never counts toward the 3-failures-in-10-minutes quarantine."""
     short = list(node_state.get("short_results", []))
     short.append(1 if success else 0)
     node_state["short_results"] = short[-SHORT_WINDOW_SIZE:]
@@ -1155,7 +1157,7 @@ def record_health_window(node_state, success, delay, observed_at):
     if success:
         if int(node_state.get("quarantine_until", 0)):
             node_state["quarantine_recovery_streak"] = int(node_state.get("quarantine_recovery_streak", 0)) + 1
-    else:
+    elif quarantine:
         failures.append(int(observed_at))
         node_state["quarantine_recovery_streak"] = 0
         if len(failures) >= QUARANTINE_FAILURES:
@@ -1193,7 +1195,7 @@ def is_quarantined(node_state, now=None):
     return True
 
 
-def update_node_stats(node_state, delay, observed_at=None):
+def update_node_stats(node_state, delay, observed_at=None, quarantine=True):
     observed_at = time.time() if observed_at is None else observed_at
     success = delay is not None
     node_state["samples"] = int(node_state.get("samples", 0)) + 1
@@ -1230,7 +1232,7 @@ def update_node_stats(node_state, delay, observed_at=None):
         node_state["failure_streak"] = int(node_state.get("failure_streak", 0)) + 1
         node_state["last_delay"] = None
 
-    record_health_window(node_state, success, delay, observed_at)
+    record_health_window(node_state, success, delay, observed_at, quarantine=quarantine)
 
     latency = node_state.get("latency_ewma")
     if latency is None:
@@ -1551,8 +1553,12 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             remaining.remove(candidate)
             log("%s: skip %s; business preflight failed" % (group_name, candidate))
         if target:
-            log("%s: FAILOVER %s -> %s after %d consecutive failures" % (
-                group_name, current, target, current_failures
+            reason = "confirmed_failure" if current_failures >= FAILURES_BEFORE_SWITCH else "quarantined"
+            log("%s: FAILOVER %s -> %s (%s)" % (
+                group_name, current, target,
+                "%d consecutive failures" % current_failures if reason == "confirmed_failure"
+                else "quarantined: %d failures within %d minutes" % (
+                    len(current_stats.get("recent_failures", [])), QUARANTINE_WINDOW_SECONDS // 60),
             ))
             select_node(group_name, target, dry_run)
             timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": target, "kind": "switch"})
@@ -1560,7 +1566,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             log("%s: closed %d stale connections" % (group_name, closed))
             logging_setup.write_event(
                 "failover", group=group_name, **{"from": current}, to=target,
-                failures=current_failures, closed_connections=closed, storm=storm,
+                reason=reason, failures=current_failures, closed_connections=closed, storm=storm,
                 lane=(group_state.get("last_confirm") or {}).get("lane", "cycle"),
                 detect_seconds=max(0, int(now) - int(current_stats.get("first_failure_at", now))),
                 recent_probes=recent_points(group_name))
@@ -1709,14 +1715,15 @@ def current_for_group(proxy_data, group_name, candidates):
     return current if current in candidates else candidates[0]
 
 
-def record_probe_results(state, targets, base_results, observed_at, record_failures):
-    """Write base probe samples. Failures are dropped when record_failures is False."""
+def record_probe_results(state, targets, base_results, observed_at, record_failures, transient=()):
+    """Write base probe samples. Failures are dropped when record_failures is False;
+    failures of nodes in `transient` (re-probed fine this cycle) skip the quarantine window."""
     for name in targets:
         delay = base_results.get(name)
         if delay is None and not record_failures:
             continue
         node_state = state["nodes"].setdefault(name, {})
-        update_node_stats(node_state, delay, observed_at)
+        update_node_stats(node_state, delay, observed_at, quarantine=name not in transient)
         node_state["last_probe_at"] = observed_at
 
 
@@ -1995,7 +2002,11 @@ def run_cycle(dry_run=False):
     update_local_network_state(state, not local_offline, cycle_started_at)
 
     # 5) Record samples.
-    record_probe_results(state, targets, base_results, cycle_started_at, record_failures)
+    transient = {
+        current_for_group(proxy_data, group_name, candidates)
+        for group_name, candidates in GROUPS.items() if confirmations.get(group_name) == "transient"
+    }
+    record_probe_results(state, targets, base_results, cycle_started_at, record_failures, transient)
     for (kind, group_name, name), result in business.items():
         success = result["delay"] is not None
         if success or record_failures:
@@ -2018,8 +2029,9 @@ def run_cycle(dry_run=False):
     for group_name, candidates in GROUPS.items():
         current = current_for_group(proxy_data, group_name, candidates)
         node_state = state["nodes"].setdefault(current, {})
+        # A blip that the confirmation probes disproved is not a failure of a live node.
         update_effective_health(
-            node_state, base_results.get(current) is not None, False, False,
+            node_state, base_results.get(current) is not None or current in transient, False, False,
             business_verdict=verdicts.get(group_name), record_failures=record_failures,
         )
         if confirmations.get(group_name) == "confirmed":
