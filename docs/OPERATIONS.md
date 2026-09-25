@@ -34,6 +34,18 @@
 - `manual_hold` 的兼容语义是最长 60 分钟“人工偏好保护”：只暂停性能回优。当前节点
   连续失败、消失或没有安全候选时仍执行故障保护；看板必须显示剩余时间和安全开关。
 
+## 检测时效与故障保护（v0.4.3）
+
+- `service.state.code = local_network_offline`：本机直连检测失败。此时不累计失败、不切换、
+  不隔离；网络恢复后自动记录 `LOCAL_NETWORK_RECOVERED`。若长时间不恢复，先检查本机网络
+  与 Clash Verge 是否运行，不要手动切换节点。
+- `BUSINESS_TARGET_UNREACHABLE`：当前节点与热备访问同一 AI 业务地址都失败，判定为目标
+  站点问题；5 分钟内预检跳过该地址。节点本身不受惩罚。
+- `FAILOVER_STORM`：10 分钟内同组故障切换 ≥ 3 次，之后每次切换都做完整业务预检。持续
+  出现时优先检查订阅整体质量或本机网络。
+- 看板"检测延迟"：超过 `stale_at`（完成时间 + 50 秒）仍未完成新周期。检查 LaunchAgent
+  是否运行、`service.cycle_duration_p95_ms` 是否异常。
+
 ## discovery group 上线检查
 
 应用部署和 Clash Verge group enhancement 是两个独立事务。`manage-clash-groups.py` 从

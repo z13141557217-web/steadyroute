@@ -130,6 +130,7 @@ class DeploymentIntegrationTests(unittest.TestCase):
         (package_root / "src/state_contract.py").write_text("STATE_SCHEMA_VERSION = 2\n", encoding="utf-8")
         (package_root / "src/route_policy.py").write_text("SCHEMA_VERSION = 1\n", encoding="utf-8")
         (package_root / "src/candidate_registry.py").write_text("EVENT_LIMIT = 200\n", encoding="utf-8")
+        (package_root / "src/health_model.py").write_text("HEALTH = 1\n", encoding="utf-8")
         (package_root / "src/clash_group_deploy.py").write_text("SCHEMA_VERSION = 1\n", encoding="utf-8")
         (package_root / "src/dashboard.html").write_text(dashboard, encoding="utf-8")
         (package_root / "src/acceptance_dashboard.html").write_text("acceptance", encoding="utf-8")

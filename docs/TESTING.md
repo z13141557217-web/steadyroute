@@ -66,6 +66,18 @@
   current `option.groups` 解析、越界/宽泛/符号链接拒绝、单一来源与 staged 校验、备份 SHA、
   原子 apply、故障自动恢复、rollback 和 `/proxies` discovery 完整性。
 
+## 故障快速切换与检测时效（v0.4.3）
+
+- `tests/cycle_harness.py` 提供进程内可编排网络（节点断开、单次抖动、站点故障、本机断网），
+  不使用 socket 与真实时间；`tests/test_fast_failover.py` 覆盖同周期三次失败确认、瞬时失败
+  不切换、复测不增加样本、本机断网冻结决策与恢复事件、每周期只做一次本机检测、永不选择
+  `DIRECT`、唤醒首轮只记成功、业务节点侧/站点侧差分、预检并行与只重试失败 URL、新鲜跳过、
+  热备选择与轮询、故障风暴。
+- `tests/test_runtime_metrics.py` 覆盖周期耗时上限与分位数、24 小时切换计数、完成时间语义、
+  50 秒过期阈值、固定速率主循环（周期耗时不累加到间隔）和看板时效源码约束。
+- `tests/test_health_model.py` 覆盖纯函数：百分位、固定速率排期、休眠识别。
+- 全量测试同时在 Python 3.9（生产 `/usr/bin/python3`）与 3.11 下通过。
+
 ## 独立验收看板
 
 候选进程只读提供 `/acceptance`，数据来自随包固定的
