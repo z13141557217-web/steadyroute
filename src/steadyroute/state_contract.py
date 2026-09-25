@@ -13,16 +13,19 @@ STATE_SCHEMA_VERSION = 2
 API_SCHEMA_VERSION = 2
 EVENT_LIMIT = 200
 
+# handover_pending is also reachable from the post-switch states: after a failover the group
+# runs in recovery mode, where a confirmed better node may be handed over before the
+# performance cooldown or the observation window ends ("lossless return", v0.4.4 fix).
 GROUP_TRANSITIONS = {
     "stable": {"candidate_confirming", "degraded"},
     "candidate_confirming": {"stable", "handover_pending", "degraded"},
     "handover_pending": {"stable", "handover_grace", "degraded"},
-    "handover_grace": {"recovery_observing", "degraded"},
-    "recovery_observing": {"stable", "degraded", "cooldown"},
-    "cooldown": {"stable", "degraded"},
+    "handover_grace": {"recovery_observing", "degraded", "handover_pending"},
+    "recovery_observing": {"stable", "degraded", "cooldown", "handover_pending"},
+    "cooldown": {"stable", "degraded", "handover_pending"},
     "manual_hold": {"stable", "degraded"},
-    "degraded": {"stable", "failover_now"},
-    "failover_now": {"recovery_observing", "no_candidate"},
+    "degraded": {"stable", "failover_now", "handover_pending"},
+    "failover_now": {"recovery_observing", "no_candidate", "handover_pending"},
     "no_candidate": {"recovery_observing", "stable"},
     "controller_offline": {"recovery_observing", "stable"},
 }
@@ -430,6 +433,27 @@ def record_transition(state, scope, subject_id, old_state, new_state, reason_cod
         "from_state": old_state,
         "to_state": new_state,
         "reason_code": reason_code,
+        "occurred_at": int(occurred_at),
+        "occurred_at_iso": utc_iso(occurred_at),
+    }
+    events = list(state.get("events", []))
+    events.append(event)
+    state["events"] = events[-EVENT_LIMIT:]
+    return True
+
+
+def record_unmodelled_transition(state, scope, subject_id, old_state, new_state, occurred_at, group_id=None):
+    """Fallback for a real change the transition table does not model; never raises."""
+    event = {
+        "code": "%s_state_changed" % scope,
+        "severity": "warning",
+        "scope": scope,
+        "subject_id": subject_id,
+        "group_id": subject_id if scope == "group" else group_id,
+        "node_id": subject_id if scope == "node" else None,
+        "from_state": old_state,
+        "to_state": new_state,
+        "reason_code": "unmodelled_transition",
         "occurred_at": int(occurred_at),
         "occurred_at_iso": utc_iso(occurred_at),
     }

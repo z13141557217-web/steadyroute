@@ -14,4 +14,5 @@ git worktree add ../steadyroute-v0.4.2 v0.4.2
 python3 sim/run_scenarios.py --old ../steadyroute-v0.4.2 --new . --out /tmp/sim.json
 ```
 
-全部场景约 6 分钟（真实时间）。本目录只用于验收，不进入发布包。
+全部场景约 6 分钟（真实时间）。加 `--soak` 再并行跑一个 10 分钟的平稳运行场景，
+记录两个版本进程的常驻内存（RSS）和累计 CPU 时间。本目录只用于验收，不进入发布包。

@@ -98,7 +98,28 @@ SCENARIOS = [
             {"t": 210, "action": "wake", "blackout": 8, "label": "唤醒（前 8 秒所有连接重建中）"},
         ],
     },
+    {
+        "id": "soak",
+        "title": "长时间平稳运行（内存与 CPU）",
+        "question": "常驻内存和 CPU 占用是多少？快速通道有没有额外开销？",
+        "duration": 600,
+        "timeline": [],
+        "optional": True,
+    },
 ]
+
+
+def process_usage(pid):
+    """(rss_mb, cpu_seconds) of a child process from /proc; (None, None) elsewhere."""
+    try:
+        with open("/proc/%d/status" % pid, "r", encoding="ascii") as handle:
+            rss = next(float(line.split()[1]) / 1024.0 for line in handle if line.startswith("VmRSS:"))
+        with open("/proc/%d/stat" % pid, "r", encoding="ascii") as handle:
+            fields = handle.read().rsplit(")", 1)[1].split()
+        ticks = os.sysconf("SC_CLK_TCK")
+        return round(rss, 1), round((int(fields[11]) + int(fields[12])) / float(ticks), 2)
+    except (OSError, StopIteration, ValueError, IndexError):
+        return None, None
 
 
 def seed_state(now):
@@ -195,7 +216,8 @@ class Run(object):
         self.server = fake_mihomo.serve(self.world, self.socket)
         self.world.open_stream(TW_GROUP)
         self.world.open_stream(HK_GROUP)
-        log = open(str(self.dir / "router.log"), "w")
+        # v0.4.4+ writes its own bounded router.log into this directory; stdout is only a fallback.
+        log = open(str(self.dir / "bootstrap.log"), "w")
         self.process = subprocess.Popen(
             [sys.executable, str(PROJECT / "sim" / "run_router.py"), self.source, str(self.dir), self.socket, str(self.port)],
             stdout=log, stderr=subprocess.STDOUT)
@@ -221,6 +243,8 @@ class Run(object):
             t = self.rel()
             legacy = fetch(self.port, "/api/status")
             row = {"t": t, "tw": self.world.groups[TW_GROUP]["now"], "hk": self.world.groups[HK_GROUP]["now"]}
+            if self.process is not None:
+                row["rss_mb"], row["cpu_s"] = process_usage(self.process.pid)
             if legacy:
                 service = legacy["service"]
                 row.update({
@@ -264,6 +288,14 @@ class Run(object):
             self.process.send_signal(signal.SIGCONT)
         self.markers.append({"t": self.rel(), "label": event["label"], "action": action})
 
+    def read_logs(self):
+        lines = []
+        for name in ("bootstrap.log", "router.log"):
+            path = self.dir / name
+            if path.exists():
+                lines.extend(path.read_text(encoding="utf-8", errors="replace").splitlines())
+        return lines
+
     def finish(self):
         self.stop_flag.set()
         if self.process and self.process.poll() is None:
@@ -291,7 +323,11 @@ class Run(object):
                 }
                 for name, item in state.get("nodes", {}).items()
             },
-            "router_log": (self.dir / "router.log").read_text(encoding="utf-8", errors="replace").splitlines()[-400:],
+            "router_log": self.read_logs()[-400:],
+            "log_files": {
+                item.name: item.stat().st_size for item in sorted(self.dir.iterdir())
+                if item.name.startswith(("router", "events", "bootstrap"))
+            },
         }
 
 
@@ -321,6 +357,7 @@ def main():
     parser.add_argument("--new", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--only")
+    parser.add_argument("--soak", action="store_true", help="also run the 10-minute memory/CPU soak")
     args = parser.parse_args()
     workdir = tempfile.mkdtemp(prefix="steadyroute-sim-")
     results = {}
@@ -328,6 +365,8 @@ def main():
     port = 18700
     for scenario in SCENARIOS:
         if args.only and scenario["id"] != args.only:
+            continue
+        if not args.only and scenario.get("optional") and not args.soak:
             continue
         ports = {"old": port, "new": port + 1}
         port += 2

@@ -2,11 +2,12 @@
 """Weighted, connection-aware selector for Clash Verge residential routes."""
 
 import argparse
+import collections
 import concurrent.futures
-import copy
 import fcntl
 import http.server
 import json
+import logging
 import os
 import resource
 import socket
@@ -22,12 +23,16 @@ try:
     import candidate_registry
     import route_policy
     import health_model
+    import logging_setup
+    import runtime_metrics
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import state_contract
     import candidate_registry
     import route_policy
     import health_model
+    import logging_setup
+    import runtime_metrics
 
 
 CONTROLLER_SOCKET_PATHS = (
@@ -67,6 +72,10 @@ FAST_PROBE_URL = "http://cp.cloudflare.com/generate_204"
 FAST_PROBE_TIMEOUT_MS = 2000
 TIMELINE_WINDOW_SECONDS = 300
 TIMELINE_LIMIT = 90
+LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR", "/Users/nurture/Library/Logs/Clash-Verge-Stability-Router")
+MEMORY_SAMPLE_SECONDS = 600
+MEMORY_SAMPLE_LIMIT = 144
+EVENT_KEY_LIMIT = 1000
 LOCAL_CHECK_TIMEOUT_MS = 3000
 LOCAL_CHECK_URLS = (
     "http://captive.apple.com/hotspot-detect.html",
@@ -124,9 +133,31 @@ GROUPS = {item["group_name"]: list(item["static_candidates"]) for item in POLICI
 BUSINESS_TEST_URLS = {item["group_name"]: list(item["business_test_urls"]) for item in POLICIES}
 
 
+LOGGER = logging.getLogger("steadyroute")
+ROUTINE = logging_setup.RoutineLimiter()
+
+
 def log(message):
-    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print("[%s] %s" % (stamp, message), flush=True)
+    LOGGER.info(message)
+
+
+def log_warning(message, exc_info=False):
+    LOGGER.warning(message, exc_info=exc_info)
+
+
+def log_error(message, exc_info=False):
+    LOGGER.error(message, exc_info=exc_info)
+
+
+def log_routine(key, meaning, message, now=None):
+    """Routine lines are written when their meaning changes or every 10 minutes."""
+    emit, suppressed = ROUTINE.should_emit(key, meaning, time.time() if now is None else now)
+    if emit:
+        LOGGER.info(message + ("（此前同类说明省略 %d 次）" % suppressed if suppressed else ""))
+
+
+def recent_points(group_name, count=6):
+    return [[item["t"], item.get("ms")] for item in TIMELINE.get(group_name, []) if item.get("kind") == "probe"][-count:]
 
 
 def record_manual_preference_event(state, group_name, code, reason, now):
@@ -168,6 +199,31 @@ def record_runtime_event(state, code, reason, now, group_name=None, severity="wa
     events = list(state.get("events", []))
     events.append(event)
     state["events"] = events[-state_contract.EVENT_LIMIT:]
+
+
+def _event_key(event):
+    return json.dumps(event, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def sync_state_events(state, write=True):
+    """Mirror new dashboard events (state["events"]) into events.jsonl exactly once.
+
+    The first call only seeds the seen-set, so a restart never re-writes old events.
+    """
+    seen = RUNTIME.get("event_keys")
+    first = seen is None
+    if first:
+        seen = RUNTIME["event_keys"] = collections.OrderedDict()
+    for event in state.get("events", []):
+        key = _event_key(event)
+        if key in seen:
+            continue
+        seen[key] = True
+        if write and not first:
+            fields = {name: value for name, value in event.items() if name != "occurred_at_iso"}
+            logging_setup.write_event("state_event", **fields)
+    while len(seen) > EVENT_KEY_LIMIT:
+        seen.popitem(last=False)
 
 
 def resolve_controller_socket():
@@ -264,10 +320,32 @@ def save_state(state):
 
 
 def memory_megabytes():
-    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    if sys.platform == "darwin":
-        return round(float(usage) / 1024.0 / 1024.0, 1)
-    return round(float(usage) / 1024.0, 1)
+    """Peak resident memory of this process (kept as memory_mb for compatibility)."""
+    return runtime_metrics.peak_rss_mb()
+
+
+def record_memory_sample(state, now):
+    """Keep one current-footprint sample every MEMORY_SAMPLE_SECONDS for this process only."""
+    current = runtime_metrics.current_footprint_mb()
+    RUNTIME["memory_current_mb"] = current
+    if current is None:
+        return
+    if state.get("memory_samples_started_at") != SERVICE_STARTED_AT:
+        state["memory_samples_started_at"] = SERVICE_STARTED_AT
+        state["memory_samples"] = []
+    samples = state.get("memory_samples") or []
+    if samples and now - int(samples[-1][0]) < MEMORY_SAMPLE_SECONDS:
+        return
+    state["memory_samples"] = health_model.bounded_append(samples, [int(now), current], MEMORY_SAMPLE_LIMIT)
+
+
+def merge_legacy_cycle_count(state):
+    """One-time: continue the count the pre-0.4.3 dashboard showed (max node samples)."""
+    if state.get("cycle_count_merged"):
+        return
+    legacy = max([int(item.get("samples", 0)) for item in state.get("nodes", {}).values()] or [0])
+    state["cycle_count"] = max(int(state.get("cycle_count", 0)), legacy)
+    state["cycle_count_merged"] = True
 
 
 def quality_score(node_state):
@@ -460,13 +538,21 @@ def record_projected_transition(
         if code != old_state and (not steps or steps[-1][0] != code):
             steps.append((code, reason_code))
     cursor = steps[-1][0] if steps else old_state
-    for code in state_contract.transition_path(scope, cursor, new_state):
-        if not steps or steps[-1][0] != code:
-            steps.append((code, transition_reason(scope, code, final_decision=final_decision)))
-    return state_contract.record_transition_path(
-        state, scope, subject_id, old_state, new_state, steps, occurred_at,
-        group_id=group_id,
-    )
+    try:
+        for code in state_contract.transition_path(scope, cursor, new_state):
+            if not steps or steps[-1][0] != code:
+                steps.append((code, transition_reason(scope, code, final_decision=final_decision)))
+        return state_contract.record_transition_path(
+            state, scope, subject_id, old_state, new_state, steps, occurred_at,
+            group_id=group_id,
+        )
+    except state_contract.InvalidTransitionError as error:
+        # Event bookkeeping must never abort a cycle after a node was already selected:
+        # that would drop the cycle's state (switch time, cooldown, handover) on the floor.
+        log_warning("unmodelled %s transition %s -> %s recorded directly (%s)" % (
+            scope, old_state, new_state, error))
+        return state_contract.record_unmodelled_transition(
+            state, scope, subject_id, old_state, new_state, occurred_at, group_id=group_id)
 
 
 def public_timeline(group_name, now):
@@ -659,6 +745,12 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "state_stale": state_stale,
             "stale_after_seconds": stale_after,
             "memory_mb": memory_mb,
+            "memory_peak_mb": memory_mb,
+            "memory_current_mb": RUNTIME.get("memory_current_mb"),
+            "memory_trend_mb_per_hour": (
+                runtime_metrics.trend_mb_per_hour(state.get("memory_samples"))
+                if state.get("memory_samples_started_at") == SERVICE_STARTED_AT else None
+            ),
             "version": read_service_version(),
         },
         "subscription": {
@@ -758,6 +850,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "started_at": SERVICE_STARTED_AT,
             "updated_at": int(last_cycle) if last_cycle is not None else None,
             "memory_mb": memory_mb,
+            "memory_peak_mb": memory_mb,
+            "memory_current_mb": RUNTIME.get("memory_current_mb"),
             "probe_interval_seconds": PROBE_INTERVAL_SECONDS,
             "last_cycle_gap_seconds": int(state.get("last_cycle_gap_seconds", 0)),
             "last_resume_at": int(state.get("last_resume_at", 0)),
@@ -854,7 +948,29 @@ def static_acceptance_response(path):
     except OSError:
         return 404, "text/plain; charset=utf-8", b"not found"
 
+EXPECTED_DISCONNECTS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, socket.timeout)
+
+
+class QuietHTTPServer(http.server.ThreadingHTTPServer):
+    """A browser closing a tab mid-response is normal; don't print a traceback for it."""
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        error = sys.exc_info()[1]
+        if isinstance(error, EXPECTED_DISCONNECTS):
+            return
+        log_warning("dashboard request failed: %s" % error, exc_info=True)
+
+
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
+    timeout = 15
+
+    def _send(self, content):
+        try:
+            self.wfile.write(content)
+        except EXPECTED_DISCONNECTS:
+            self.close_connection = True
+
     def do_GET(self):
         route = urlsplit(self.path).path
         if route in ("/", "/index.html"):
@@ -869,7 +985,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
-            self.wfile.write(content)
+            self._send(content)
             return
         if route.startswith("/acceptance") or route.startswith("/candidate-acceptance"):
             status, content_type, content = static_acceptance_response(route)
@@ -881,7 +997,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
-            self.wfile.write(content)
+            self._send(content)
             return
         if route in ("/api/status", "/api/v1/status"):
             status, content_type, content = cached_api_response(route)
@@ -891,7 +1007,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
-            self.wfile.write(content)
+            self._send(content)
             return
         self.send_error(404)
 
@@ -904,7 +1020,7 @@ def start_dashboard():
         state = load_state()
         state["controller_connected"] = False
         update_dashboard_cache(build_status_snapshots(state, {}, []))
-    server = http.server.HTTPServer((DASHBOARD_HOST, DASHBOARD_PORT), DashboardHandler)
+    server = QuietHTTPServer((DASHBOARD_HOST, DASHBOARD_PORT), DashboardHandler)
     thread = threading.Thread(target=server.serve_forever, name="steadyroute-dashboard", daemon=True)
     thread.start()
     log("%s dashboard: http://%s:%d" % (SERVICE_NAME, DASHBOARD_HOST, DASHBOARD_PORT))
@@ -931,21 +1047,35 @@ def probe_node(name):
     return name, probe_url(name, TEST_URL, PROBE_TIMEOUT_MS)
 
 
+PROBE_POOL = None
+PROBE_POOL_LOCK = threading.Lock()
+
+
+def probe_pool():
+    """One long-lived pool: the fast lane runs every 5 s and must not spawn threads each time."""
+    global PROBE_POOL
+    with PROBE_POOL_LOCK:
+        if PROBE_POOL is None:
+            PROBE_POOL = concurrent.futures.ThreadPoolExecutor(
+                max_workers=PROBE_WORKERS, thread_name_prefix="steadyroute-probe")
+        return PROBE_POOL
+
+
 def run_probe_jobs(jobs):
     """jobs: list of (key, node_name, url, timeout_ms). Returns {key: delay_or_None}.
 
-    All jobs run concurrently, so a batch takes as long as its slowest probe.
+    All jobs run concurrently (up to PROBE_WORKERS), so a batch takes as long as its slowest probe.
     """
     if not jobs:
         return {}
     results = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(PROBE_WORKERS, len(jobs))) as executor:
-        futures = {
-            executor.submit(probe_url, name, url, timeout_ms): key
-            for key, name, url, timeout_ms in jobs
-        }
-        for future in concurrent.futures.as_completed(futures):
-            results[futures[future]] = future.result()
+    executor = probe_pool()
+    futures = {
+        executor.submit(probe_url, name, url, timeout_ms): key
+        for key, name, url, timeout_ms in jobs
+    }
+    for future in concurrent.futures.as_completed(futures):
+        results[futures[future]] = future.result()
     return results
 
 
@@ -1244,7 +1374,7 @@ def close_old_connections(group_name, old_node, connections=None):
                 api_request("DELETE", "/connections/%s" % quote(connection_id, safe=""), timeout=3)
                 closed += 1
             except Exception as error:
-                log("could not close connection %s: %s" % (connection_id, error))
+                log_warning("could not close connection %s: %s" % (connection_id, error))
     return closed
 
 
@@ -1269,7 +1399,8 @@ def selection_allowed(group_name, node_name):
 
 def select_node(group_name, node_name, dry_run):
     if not selection_allowed(group_name, node_name):
-        log("%s: BLOCKED selection of %r; outside this region's residential nodes" % (group_name, node_name))
+        log_warning("%s: BLOCKED selection of %r; outside this region's residential nodes" % (group_name, node_name))
+        logging_setup.write_event("region_guard_blocked", group=group_name, node=node_name)
         raise RegionGuardError("refusing cross-region or non-residential selection: %s -> %s" % (group_name, node_name))
     if dry_run:
         log("DRY RUN select %s -> %s" % (group_name, node_name))
@@ -1368,6 +1499,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             log("%s: current removed; selected mature backup %s without closing old connections" % (
                 group_name, target,
             ))
+            logging_setup.write_event("current_removed_switch", group=group_name, **{"from": current}, to=target)
             return
         group_state["dynamic_no_candidate"] = True
         log("%s: current removed but no mature backup passed preflight" % group_name)
@@ -1426,6 +1558,12 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": target, "kind": "switch"})
             closed = 0 if dry_run else close_old_connections(group_name, current, connections)
             log("%s: closed %d stale connections" % (group_name, closed))
+            logging_setup.write_event(
+                "failover", group=group_name, **{"from": current}, to=target,
+                failures=current_failures, closed_connections=closed, storm=storm,
+                lane=(group_state.get("last_confirm") or {}).get("lane", "cycle"),
+                detect_seconds=max(0, int(now) - int(current_stats.get("first_failure_at", now))),
+                recent_probes=recent_points(group_name))
             group_state["failover_times"] = health_model.bounded_append(
                 group_state.get("failover_times"), int(now), SWITCH_HISTORY_LIMIT)
             group_state["last_failover_detect_seconds"] = max(
@@ -1452,21 +1590,23 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
 
     if now < float(group_state.get("manual_hold_until", 0)):
         group_state["last_seen"] = current
-        log("%s: keep %s; manual preference pauses performance optimization; safety failover remains active" % (
-            group_name, current,
-        ))
+        log_routine((group_name, "keep"), "manual:%s" % current,
+                    "%s: keep %s; manual preference pauses performance optimization; safety failover remains active" % (
+                        group_name, current))
         return
 
     last_switch = float(group_state.get("last_switch_at", 0))
     if not group_state.get("recovery_mode") and now - last_switch < PERFORMANCE_COOLDOWN_SECONDS:
         group_state["last_seen"] = current
-        log("%s: keep %s; performance cooldown is active" % (group_name, current))
+        log_routine((group_name, "keep"), "cooldown:%s" % current,
+                    "%s: keep %s; performance cooldown is active" % (group_name, current))
         return
 
     eligible = [name for name in candidates if eligible_for_optimization(state["nodes"].get(name, {}))]
     if current not in eligible or len(eligible) < 2:
         group_state["last_seen"] = current
-        log("%s: keep %s; collecting weighted history" % (group_name, current))
+        log_routine((group_name, "keep"), "collecting:%s" % current,
+                    "%s: keep %s; collecting weighted history" % (group_name, current))
         return
 
     leader = min(eligible, key=lambda name: float(state["nodes"][name]["score"]))
@@ -1484,9 +1624,9 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         group_state["better_candidate"] = None
         group_state["better_streak"] = 0
         group_state["last_seen"] = current
-        log("%s: keep %s; weighted score %.0f (best %.0f)" % (
-            group_name, current, current_score, leader_score
-        ))
+        # The leader flips on jitter without changing the decision, so only the current node counts.
+        log_routine((group_name, "keep"), "steady:%s" % current,
+                    "%s: keep %s; weighted score %.0f (best %.0f)" % (group_name, current, current_score, leader_score))
         return
 
     if group_state.get("better_candidate") == leader:
@@ -1530,6 +1670,10 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
     group_state["recovery_observe_until"] = int(now + 360)
     group_state["better_candidate"] = None
     group_state["better_streak"] = 0
+    logging_setup.write_event(
+        "optimize", group=group_name, **{"from": current}, to=leader,
+        score_from=round(current_score, 1), score_to=round(leader_score, 1),
+        preserved_connections=len(active))
     if active:
         log("%s: lossless recovery preserved %d existing connections on %s" % (
             group_name, len(active), current
@@ -1556,6 +1700,7 @@ def detect_cycle_resume(state, cycle_started_at):
         state["last_resume_at"] = cycle_started_at
         state["last_sleep_gap_seconds"] = gap
         log("resume detected after %d seconds without probes" % gap)
+        logging_setup.write_event("resume", gap_seconds=gap)
     return slept
 
 
@@ -1603,6 +1748,7 @@ def finish_cycle(state, proxy_data, connections, cycle_clock, cycle_started_at):
     state["updated_at"] = completed_at
     state["last_cycle_duration_ms"] = int(round(duration * 1000))
     state["cycle_count"] = int(state.get("cycle_count", 0)) + 1
+    record_memory_sample(state, completed_at)
     state["cycle_durations_ms"] = health_model.bounded_append(
         state.get("cycle_durations_ms"), state["last_cycle_duration_ms"], CYCLE_DURATION_SAMPLES)
     RUNTIME["last_duration_s"] = duration
@@ -1613,17 +1759,43 @@ def publish_state(state, proxy_data, connections, now):
     snapshots = build_status_snapshots(state, proxy_data, connections, now=int(now))
     save_state(state)
     update_dashboard_cache(snapshots)
-    RUNTIME.update({"last_state": state, "last_proxy_data": proxy_data, "last_connections": connections})
+    sync_state_events(state)
+    RUNTIME.update({
+        "last_state": state, "last_proxy_data": proxy_data, "last_connections": connections,
+        "last_snapshots": snapshots,
+    })
 
 
-def refresh_cached_snapshot(proxy_data=None):
-    """Re-encode the last cycle's view with fresh live-strip data; never mutates state."""
-    state = RUNTIME.get("last_state")
-    if state is None:
+def refresh_cached_snapshot(proxy_data=None, now=None):
+    """Patch the last full snapshot with the fast lane's live fields and re-encode it.
+
+    Everything else (decisions, node table, events) stays as the last full cycle left it;
+    the next full cycle rebuilds the whole snapshot within PROBE_INTERVAL_SECONDS.
+    """
+    snapshots = RUNTIME.get("last_snapshots")
+    if snapshots is None:
         return
-    snapshots = build_status_snapshots(
-        copy.deepcopy(state), proxy_data if proxy_data is not None else RUNTIME.get("last_proxy_data") or {},
-        RUNTIME.get("last_connections") or [], now=int(time.time()))
+    now = int(time.time()) if now is None else int(now)
+    last_cycle = (RUNTIME.get("last_state") or {}).get("updated_at")
+    snapshot_id = "snapshot-%d-%d" % (now, int(last_cycle or 0))
+    last_probe_at = RUNTIME.get("last_probe_at")
+    current_mb = runtime_metrics.current_footprint_mb()
+    RUNTIME["memory_current_mb"] = current_mb
+    peak_mb = memory_megabytes()
+    v1, legacy = snapshots["v1"], snapshots["legacy"]
+    snapshots["snapshot_id"] = snapshot_id
+    v1["generated_at"], v1["generated_at_iso"] = now, iso_timestamp(now)
+    v1["diagnostics"]["snapshot_id"] = snapshot_id
+    legacy["snapshot_id"] = snapshot_id
+    v1["service"]["uptime_seconds"] = max(0, now - SERVICE_STARTED_AT)
+    for service in (v1["service"], legacy["service"]):
+        service["last_probe_at"] = last_probe_at or service.get("last_probe_at")
+        service["memory_mb"] = service["memory_peak_mb"] = peak_mb
+        service["memory_current_mb"] = current_mb
+    for group in v1["groups"]:
+        group["recent_probes"] = public_timeline(group["name"], now)
+    for group in legacy["groups"]:
+        group["timeline"] = public_timeline(group["name"], now)
     update_dashboard_cache(snapshots)
 
 
@@ -1702,6 +1874,7 @@ def run_cycle(dry_run=False):
     cycle_clock = time.perf_counter()
     cycle_started_at = int(time.time())
     state = load_state()
+    merge_legacy_cycle_count(state)
     resume_cycle = detect_cycle_resume(state, cycle_started_at)
     try:
         proxy_response = api_request("GET", "/proxies") or {}
@@ -1869,7 +2042,11 @@ def run_cycle(dry_run=False):
         )
         for (_kind, group_name, _name), result in business.items()
     ]
-    log("probe: " + " | ".join(summary) + (" | business " + " | ".join(business_summary) if business_summary else ""))
+    probe_line = "probe: " + " | ".join(summary) + (" | business " + " | ".join(business_summary) if business_summary else "")
+    if "FAIL" in probe_line:
+        log(probe_line)
+    else:
+        log_routine(("probe",), "ok", probe_line)
 
     for policy in POLICIES:
         group_name = policy["group_name"]
@@ -1881,7 +2058,7 @@ def run_cycle(dry_run=False):
         if not record_failures:
             reason = ("local network offline" if local_offline
                       else "resumed from sleep" if resume_cycle else "all probes failed at once")
-            log("%s: decisions paused this cycle (%s)" % (group_name, reason))
+            log_routine((group_name, "paused"), reason, "%s: decisions paused this cycle (%s)" % (group_name, reason))
             continue
         evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run)
     candidate_registry.refresh_lifecycles(POLICY_CONFIG, state, cycle_started_at)
@@ -1922,22 +2099,37 @@ def main():
     try:
         fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        log("another router instance is already running")
+        print("another router instance is already running", file=sys.stderr)
         return 0
+
+    # Only the lock holder touches the log files (rotation and migration are not multi-process safe).
+    if args.daemon:
+        try:
+            logging_setup.configure(LOG_DIR)
+        except OSError as error:
+            logging_setup.configure(LOG_DIR, to_stdout=True)
+            log_error("file logging unavailable, using stdout: %s" % error)
+    else:
+        logging_setup.configure(LOG_DIR, to_stdout=True)
+    log("%s %s starting (pid %d)" % (SERVICE_NAME, read_service_version(), os.getpid()))
+    try:
+        sync_state_events(state_contract.migrate_state(load_state()), write=False)
+    except Exception as error:
+        log_warning("could not seed event log from state: %s" % error)
 
     dashboard_server = None
     if args.daemon:
         try:
             dashboard_server = start_dashboard()
         except Exception as error:
-            log("dashboard failed to start: %s" % error)
+            log_error("dashboard failed to start: %s" % error, exc_info=True)
 
     deadline = time.monotonic()
     while True:
         try:
             run_cycle(dry_run=args.dry_run)
         except Exception as error:
-            log("cycle failed: %s" % error)
+            log_error("cycle failed: %s" % error, exc_info=not isinstance(error, (OSError, RuntimeError)))
         if not args.daemon:
             break
         # Fixed-rate full cycles every PROBE_INTERVAL_SECONDS; between them a fast
@@ -1953,7 +2145,7 @@ def main():
                 try:
                     outcome = run_fast_tick(dry_run=args.dry_run)
                 except Exception as error:
-                    log("fast probe failed: %s" % error)
+                    log_error("fast probe failed: %s" % error, exc_info=True)
                     outcome = None
                 if outcome == "resume":
                     deadline = time.monotonic()

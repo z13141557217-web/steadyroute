@@ -39,6 +39,8 @@ MANAGED_FILES = {
     "src/route_policy.py": "route_policy.py",
     "src/candidate_registry.py": "candidate_registry.py",
     "src/health_model.py": "health_model.py",
+    "src/runtime_metrics.py": "runtime_metrics.py",
+    "src/logging_setup.py": "logging_setup.py",
     "src/dashboard.html": "dashboard.html",
     "src/acceptance_dashboard.html": "acceptance_dashboard.html",
     "src/candidate_dashboard.html": "candidate_dashboard.html",
@@ -177,6 +179,8 @@ def validate_release_tree(root):
     py_compile.compile(str(root / "src/route_policy.py"), doraise=True)
     py_compile.compile(str(root / "src/candidate_registry.py"), doraise=True)
     py_compile.compile(str(root / "src/health_model.py"), doraise=True)
+    py_compile.compile(str(root / "src/runtime_metrics.py"), doraise=True)
+    py_compile.compile(str(root / "src/logging_setup.py"), doraise=True)
     py_compile.compile(str(root / "src/clash_group_deploy.py"), doraise=True)
     py_compile.compile(str(root / "tools/manage-clash-groups.py"), doraise=True)
     py_compile.compile(str(root / "tools/verify-clash-discovery.py"), doraise=True)
@@ -532,6 +536,8 @@ def deploy(args):
         py_compile.compile(str(staged_target / "weighted_router.py"), doraise=True)
         py_compile.compile(str(staged_target / "state_contract.py"), doraise=True)
         py_compile.compile(str(staged_target / "health_model.py"), doraise=True)
+        py_compile.compile(str(staged_target / "runtime_metrics.py"), doraise=True)
+        py_compile.compile(str(staged_target / "logging_setup.py"), doraise=True)
         with (release_root / "deploy/com.nurture.clash-stability-router.plist").open("rb") as handle:
             plistlib.load(handle)
         print("DRY-RUN validated version=%s commit=%s sha256=%s" % (release["version"], release["commit"], sha256(archive)))

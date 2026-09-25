@@ -22,8 +22,8 @@
     <string>1</string>
   </dict>
   <key>StandardOutPath</key>
-  <string>/Users/nurture/Library/Logs/Clash-Verge-Stability-Router/router.log</string>
+  <string>/Users/nurture/Library/Logs/Clash-Verge-Stability-Router/bootstrap.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/nurture/Library/Logs/Clash-Verge-Stability-Router/router-error.log</string>
+  <string>/Users/nurture/Library/Logs/Clash-Verge-Stability-Router/bootstrap-error.log</string>
 </dict>
 </plist>

@@ -46,6 +46,34 @@
 - 看板"检测延迟"：超过 `stale_at`（完成时间 + 50 秒）仍未完成新周期。检查 LaunchAgent
   是否运行、`service.cycle_duration_p95_ms` 是否异常。
 
+## 日志（v0.4.4）
+
+目录：`~/Library/Logs/Clash-Verge-Stability-Router/`。应用自己轮换，不需要 newsyslog 或手工清理。
+
+| 文件 | 看什么 | 保留 / 上限 |
+|---|---|---|
+| `router.log` | 日常运行：测速汇总、keep、切换过程。平稳时每 10 分钟约 3 行 | 14 天 / 20 MiB |
+| `events.jsonl` | 每次故障切换、性能回优、休眠恢复、同地区拦截、状态事件，一行一条 JSON | 90 天 / 10 MiB |
+| `router-error.log` | 警告、错误、traceback；相同错误 10 分钟只记一次并注明重复次数 | 30 天 / 3 MiB |
+| `*-YYYY-MM-DD[.N].*.gz` | 历史文件（按天或满单文件上限切出，gzip） | 随上表 |
+| `router-legacy-<日期>.log.gz` | 升级到 v0.4.4 时压缩的旧无界日志 | 90 天 |
+| `bootstrap.log` / `bootstrap-error.log` | 仅进程启动前或日志系统失效时的输出，正常应为空或极小 | — |
+
+常用查询：
+
+```bash
+LOG=~/Library/Logs/Clash-Verge-Stability-Router
+tail -n 20 "$LOG/events.jsonl"                        # 最近决策
+grep '"kind": "failover"' "$LOG/events.jsonl" | tail   # 故障切换（含 from/to/检测耗时/切换前 6 个探测点）
+gzcat "$LOG"/events-*.jsonl.gz | grep failover | wc -l # 历史切换次数
+tail -n 50 "$LOG/router-error.log"                     # 最近错误
+du -sh "$LOG"                                          # 总量，正常 < 5 MiB
+```
+
+告警：`bootstrap-error.log` 持续增长、`router-error.log` 每天都有同一错误、或目录总量超过
+35 MiB，按 SEV-3 处理。回滚到 v0.4.3 时，旧 plist 重新把标准输出指向 `router.log`，应用
+不再轮换，但已压缩的历史文件不受影响。
+
 ## discovery group 上线检查
 
 应用部署和 Clash Verge group enhancement 是两个独立事务。`manage-clash-groups.py` 从
