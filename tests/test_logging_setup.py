@@ -208,7 +208,7 @@ class ConfigureTests(unittest.TestCase):
         self.hooks = (sys.excepthook, threading.excepthook, logging.raiseExceptions)
 
     def tearDown(self):
-        for name in (logging_setup.LOGGER_NAME, logging_setup.EVENTS_LOGGER_NAME):
+        for name in (logging_setup.LOGGER_NAME, logging_setup.EVENTS_LOGGER_NAME, logging_setup.NODES_LOGGER_NAME):
             logger = logging.getLogger(name)
             for handler in list(logger.handlers):
                 logger.removeHandler(handler)
@@ -233,6 +233,25 @@ class ConfigureTests(unittest.TestCase):
         self.assertIn("unix", event)
         self.assertNotIn("failover", self.read("router.log"))
         self.assertTrue(os.path.exists(os.path.join(self.dir, logging_setup.MARKER)))
+
+    def test_node_events_are_kept_apart_from_decisions(self):
+        logging_setup.configure(self.dir)
+        logging_setup.write_node_event("state_event", code="NODE_DEGRADED", scope="node")
+        logging_setup.write_event("failover", group="TW")
+        self.assertIn("NODE_DEGRADED", self.read("node-events.jsonl"))
+        self.assertNotIn("NODE_DEGRADED", self.read("events.jsonl"))
+        self.assertNotIn("failover", self.read("node-events.jsonl"))
+
+    def test_decision_log_keeps_90_days_and_node_log_30(self):
+        self.assertEqual(logging_setup.STREAMS["events"]["retention_days"], 90)
+        self.assertEqual(logging_setup.STREAMS["nodes"]["retention_days"], 30)
+        self.assertEqual(sum(spec["total_bytes"] for spec in logging_setup.STREAMS.values()), 38 * logging_setup.MIB)
+
+    def test_node_archives_are_not_decision_archives(self):
+        pathlib.Path(self.dir, "node-events-2026-01-01.jsonl.gz").write_bytes(b"x")
+        handler = logging_setup.DailySizeRotatingFileHandler(self.dir, "events.jsonl", 1000, 90, 10000)
+        self.addCleanup(handler.close)
+        self.assertEqual(handler.archives(), [])
 
     def test_tracebacks_go_to_error_log(self):
         logger = logging_setup.configure(self.dir)

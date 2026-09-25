@@ -100,8 +100,8 @@ HTTP GET 只读取已编码字节，不连接 Mihomo、不扫描连接，也不�
 ## 日志（v0.4.4）
 
 `logging_setup.py` 在进程拿到单实例锁之后安装三个处理器：`router.log`（INFO，突发限频）、
-`router-error.log`（WARNING 以上，10 分钟去重）和 `events.jsonl`（独立 logger，只收决策
-记录）。每个处理器按本地日期和单文件上限轮换、gzip 历史、按天数与总量清理。选路代码只
+`router-error.log`（WARNING 以上，10 分钟去重）、`events.jsonl`（独立 logger，只收决策
+记录）和 `node-events.jsonl`（节点状态变化，30 天）。每个处理器按本地日期和单文件上限轮换、gzip 历史、按天数与总量清理。选路代码只
 调用 `log`/`log_warning`/`log_error`/`log_routine` 与 `logging_setup.write_event`，不直接
 接触文件。`--once` 与交互运行输出到标准输出，不写文件。
 

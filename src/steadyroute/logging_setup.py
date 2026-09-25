@@ -4,11 +4,13 @@ Three files, each rotated daily and whenever it reaches its size limit, compress
 after rotation, and pruned by age and by total size:
 
   router.log        routine operation (rate-limited)            14 days, 5 MiB/file, 20 MiB total
-  events.jsonl      decisions and state changes, one JSON/line  90 days, 1 MiB/file, 10 MiB total
+  events.jsonl      decisions: failover, optimize, resume, group
+                    and service state changes, one JSON/line    90 days, 1 MiB/file, 10 MiB total
+  node-events.jsonl per-node lifecycle changes (noisy)         30 days, 1 MiB/file,  5 MiB total
   router-error.log  warnings, errors, tracebacks (deduplicated) 30 days, 1 MiB/file,  3 MiB total
 
 Sizes are of the uncompressed live file; archives are gzip-compressed (typically 8-15x
-smaller), so the on-disk ceiling is at most 33 MiB and in practice a few MiB.
+smaller), so the on-disk ceiling is at most 38 MiB and in practice a few MiB.
 
 The pre-v0.4.4 unbounded router.log is compressed once into router-legacy-<date>.log.gz.
 """
@@ -26,10 +28,12 @@ import time
 
 LOGGER_NAME = "steadyroute"
 EVENTS_LOGGER_NAME = "steadyroute.events"
+NODES_LOGGER_NAME = "steadyroute.nodes"
 MIB = 1024 * 1024
 STREAMS = {
     "router": {"file": "router.log", "max_bytes": 5 * MIB, "retention_days": 14, "total_bytes": 20 * MIB},
     "events": {"file": "events.jsonl", "max_bytes": 1 * MIB, "retention_days": 90, "total_bytes": 10 * MIB},
+    "nodes": {"file": "node-events.jsonl", "max_bytes": 1 * MIB, "retention_days": 30, "total_bytes": 5 * MIB},
     "error": {"file": "router-error.log", "max_bytes": 1 * MIB, "retention_days": 30, "total_bytes": 3 * MIB},
 }
 LEGACY_RETENTION_DAYS = 90
@@ -295,13 +299,15 @@ def configure(log_dir, to_stdout=False, clock=time.time):
     """Install the handlers. to_stdout=True is for --once/--status and interactive use."""
     logger = logging.getLogger(LOGGER_NAME)
     events = logging.getLogger(EVENTS_LOGGER_NAME)
-    for item in (logger, events):
+    nodes = logging.getLogger(NODES_LOGGER_NAME)
+    for item in (logger, events, nodes):
         for handler in list(item.handlers):
             item.removeHandler(handler)
             handler.close()
         item.propagate = False
     logger.setLevel(logging.INFO)
     events.setLevel(logging.INFO)
+    nodes.setLevel(logging.INFO)
     if to_stdout:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(_Formatter(with_level=True))
@@ -321,19 +327,30 @@ def configure(log_dir, to_stdout=False, clock=time.time):
     handlers["error"].setFormatter(_Formatter(with_level=True))
     handlers["error"].addFilter(DedupeFilter(clock=clock))
     handlers["events"].setFormatter(logging.Formatter("%(message)s"))
+    handlers["nodes"].setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(handlers["router"])
     logger.addHandler(handlers["error"])
     events.addHandler(handlers["events"])
+    nodes.addHandler(handlers["nodes"])
     install_exception_hooks(logger)
     return logger
 
 
-def write_event(kind, **fields):
-    """Append one decision record to events.jsonl (no-op when logging is not configured)."""
+def _write(logger_name, kind, fields):
     now = time.time()
     record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(now)), "unix": int(now), "kind": kind}
     record.update(fields)
-    logging.getLogger(EVENTS_LOGGER_NAME).info(json.dumps(record, ensure_ascii=False, sort_keys=True))
+    logging.getLogger(logger_name).info(json.dumps(record, ensure_ascii=False, sort_keys=True))
+
+
+def write_event(kind, **fields):
+    """Append one decision record to events.jsonl (no-op when logging is not configured)."""
+    _write(EVENTS_LOGGER_NAME, kind, fields)
+
+
+def write_node_event(kind, **fields):
+    """Append one node lifecycle record to node-events.jsonl (kept 30 days, apart from decisions)."""
+    _write(NODES_LOGGER_NAME, kind, fields)
 
 
 def install_exception_hooks(logger):

@@ -11,12 +11,13 @@
 
 ## 验收条件
 
-v0.4.4 采用三路日志（按天 + 按大小轮换、gzip、天数与总量双上限），取代最初的
+v0.4.4 采用四路日志（按天 + 按大小轮换、gzip、天数与总量双上限），取代最初的
 "5 MiB × 5 份"方案：按天切分便于按日期排查，压缩让同样空间保存 14～90 天。
 
 - [x] `router.log` 单文件 5 MiB、保留 14 天、总量 ≤ 20 MiB。
 - [x] `router-error.log` 单文件 1 MiB、保留 30 天、总量 ≤ 3 MiB；相同错误 10 分钟一条。
 - [x] `events.jsonl` 决策事件单独保存 90 天、总量 ≤ 10 MiB。
+- [x] `node-events.jsonl` 节点状态变化单独保存 30 天、总量 ≤ 5 MiB，不会挤掉决策记录。
 - [x] 轮换后写入当前路径（用内容标记验证，不比较 inode）。
 - [x] 平稳运行的测速汇总与 keep 行最多每 10 分钟一次；失败立即记录。
 - [x] BrokenPipe、ConnectionReset、ConnectionAborted 不写 traceback。

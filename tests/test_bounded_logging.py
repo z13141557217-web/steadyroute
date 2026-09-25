@@ -40,6 +40,9 @@ class Base(unittest.TestCase):
         patcher = mock.patch.object(router.logging_setup, "write_event")
         self.events = patcher.start()
         self.addCleanup(patcher.stop)
+        node_patcher = mock.patch.object(router.logging_setup, "write_node_event")
+        self.node_events = node_patcher.start()
+        self.addCleanup(node_patcher.stop)
 
     def kinds(self):
         return [call.args[0] for call in self.events.call_args_list]
@@ -65,6 +68,17 @@ class EventStreamTests(Base):
         router.sync_state_events(state)
         self.assertEqual(self.events.call_count, 1)
         self.assertEqual(self.events.call_args.kwargs["code"], "B")
+
+    def test_node_lifecycle_events_go_to_the_node_log(self):
+        state = {"events": []}
+        router.sync_state_events(state)
+        state["events"] = [
+            {"code": "NODE_DEGRADED", "scope": "node", "occurred_at": 1},
+            {"code": "group_state_changed", "scope": "group", "occurred_at": 1},
+        ]
+        router.sync_state_events(state)
+        self.assertEqual([c.kwargs["code"] for c in self.node_events.call_args_list], ["NODE_DEGRADED"])
+        self.assertEqual([c.kwargs["code"] for c in self.events.call_args_list], ["group_state_changed"])
 
     def test_restart_does_not_rewrite_old_events(self):
         state = {"events": [{"code": "A", "occurred_at": 1}, {"code": "B", "occurred_at": 2}]}

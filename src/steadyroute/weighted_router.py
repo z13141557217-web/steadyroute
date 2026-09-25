@@ -221,7 +221,12 @@ def sync_state_events(state, write=True):
         seen[key] = True
         if write and not first:
             fields = {name: value for name, value in event.items() if name != "occurred_at_iso"}
-            logging_setup.write_event("state_event", **fields)
+            # Node lifecycle flips are frequent on flaky nodes; keep them out of the
+            # 90-day decision log so they can never push failover records out.
+            if event.get("scope") == "node":
+                logging_setup.write_node_event("state_event", **fields)
+            else:
+                logging_setup.write_event("state_event", **fields)
     while len(seen) > EVENT_KEY_LIMIT:
         seen.popitem(last=False)
 

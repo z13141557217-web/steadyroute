@@ -53,7 +53,8 @@
 | 文件 | 看什么 | 保留 / 上限 |
 |---|---|---|
 | `router.log` | 日常运行：测速汇总、keep、切换过程。平稳时每 10 分钟约 3 行 | 14 天 / 20 MiB |
-| `events.jsonl` | 每次故障切换、性能回优、休眠恢复、同地区拦截、状态事件，一行一条 JSON | 90 天 / 10 MiB |
+| `events.jsonl` | 决策：每次故障切换、性能回优、休眠恢复、同地区拦截、线路与服务状态变化，一行一条 JSON | 90 天 / 10 MiB |
+| `node-events.jsonl` | 节点状态变化（降级、恢复、隔离、新节点加入）；抖动节点会很多，单独存放 | 30 天 / 5 MiB |
 | `router-error.log` | 警告、错误、traceback；相同错误 10 分钟只记一次并注明重复次数 | 30 天 / 3 MiB |
 | `*-YYYY-MM-DD[.N].*.gz` | 历史文件（按天或满单文件上限切出，gzip） | 随上表 |
 | `router-legacy-<日期>.log.gz` | 升级到 v0.4.4 时压缩的旧无界日志 | 90 天 |
@@ -71,7 +72,7 @@ du -sh "$LOG"                                          # 总量，正常 < 5 MiB
 ```
 
 告警：`bootstrap-error.log` 持续增长、`router-error.log` 每天都有同一错误、或目录总量超过
-35 MiB，按 SEV-3 处理。回滚到 v0.4.3 时，旧 plist 重新把标准输出指向 `router.log`，应用
+40 MiB，按 SEV-3 处理。回滚到 v0.4.3 时，旧 plist 重新把标准输出指向 `router.log`，应用
 不再轮换，但已压缩的历史文件不受影响。
 
 ## discovery group 上线检查
