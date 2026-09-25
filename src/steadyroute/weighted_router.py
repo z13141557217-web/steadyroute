@@ -2,6 +2,7 @@
 """Weighted, connection-aware selector for Clash Verge residential routes."""
 
 import argparse
+import datetime
 import collections
 import concurrent.futures
 import fcntl
@@ -70,8 +71,10 @@ CONFIRM_STAGGER_SECONDS = 0.7
 FAST_PROBE_INTERVAL_SECONDS = 5
 FAST_PROBE_URL = "http://cp.cloudflare.com/generate_204"
 FAST_PROBE_TIMEOUT_MS = 2000
-TIMELINE_WINDOW_SECONDS = 300
-TIMELINE_LIMIT = 90
+TIMELINE_WINDOW_SECONDS = 30 * 60     # legacy API: dashboard chart offers 5 / 15 / 30 minutes
+V1_TIMELINE_WINDOW_SECONDS = 300      # v1 recent_probes keeps its original 5-minute contract
+TIMELINE_LIMIT = 480                  # 360 fast-lane points + 90 standby points + switches
+CONNECTION_SITE_LIMIT = 30
 LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR", "/Users/nurture/Library/Logs/Clash-Verge-Stability-Router")
 MEMORY_SAMPLE_SECONDS = 600
 MEMORY_SAMPLE_LIMIT = 144
@@ -329,10 +332,19 @@ def memory_megabytes():
     return runtime_metrics.peak_rss_mb()
 
 
-def record_memory_sample(state, now):
-    """Keep one current-footprint sample every MEMORY_SAMPLE_SECONDS for this process only."""
+def footprint_now():
+    """Current footprint plus a same-scale peak (OS peak, else the highest value seen)."""
     current = runtime_metrics.current_footprint_mb()
     RUNTIME["memory_current_mb"] = current
+    peaks = [value for value in (runtime_metrics.peak_footprint_mb(), RUNTIME.get("memory_footprint_peak_mb"), current)
+             if value is not None]
+    RUNTIME["memory_footprint_peak_mb"] = max(peaks) if peaks else None
+    return current
+
+
+def record_memory_sample(state, now):
+    """Keep one current-footprint sample every MEMORY_SAMPLE_SECONDS for this process only."""
+    current = footprint_now()
     if current is None:
         return
     if state.get("memory_samples_started_at") != SERVICE_STARTED_AT:
@@ -560,13 +572,81 @@ def record_projected_transition(
             state, scope, subject_id, old_state, new_state, occurred_at, group_id=group_id)
 
 
-def public_timeline(group_name, now):
-    """Compact live-strip points: [unix_seconds, ms_or_null, kind, node]."""
-    cutoff = float(now) - TIMELINE_WINDOW_SECONDS - 30
+def public_timeline(group_name, now, window=None):
+    """Compact live-strip points: [unix_seconds, ms_or_null, kind, node].
+
+    kind: "probe" (current node, every 5 s), "standby" (hot standby, every 20 s), "switch".
+    """
+    cutoff = float(now) - (TIMELINE_WINDOW_SECONDS if window is None else window) - 30
     return [
         [item["t"], item.get("ms"), item.get("kind", "probe"), item.get("node")]
         for item in TIMELINE.get(group_name, []) if float(item["t"]) >= cutoff
     ]
+
+
+def _connection_started_at(value):
+    """Mihomo reports RFC 3339 with nanoseconds ("2026-09-26T08:01:02.123456789+08:00")."""
+    if not isinstance(value, str) or len(value) < 19:
+        return None
+    try:
+        base = datetime.datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+    rest = value[19:]
+    while rest[:1] == "." or rest[:1].isdigit():
+        rest = rest[1:]
+    if rest in ("", "Z", "z"):
+        offset = 0
+    else:
+        try:
+            sign = -1 if rest[0] == "-" else 1
+            hours, minutes = rest[1:].split(":")
+            offset = sign * (int(hours) * 3600 + int(minutes) * 60)
+        except (ValueError, IndexError):
+            return None
+    return int((base - datetime.datetime(1970, 1, 1)).total_seconds()) - offset
+
+
+def connection_summary(group_name, connections, now):
+    """Per-site view of the connections routed through a group, for the dashboard only.
+
+    Shows host names (never IP addresses or full URLs); nothing is persisted or logged.
+    """
+    sites = {}
+    by_node = {}
+    total = 0
+    for connection in connections or []:
+        chains = connection.get("chains") or []
+        if group_name not in chains:
+            continue
+        total += 1
+        node = chains[0] if chains else None
+        by_node[node] = by_node.get(node, 0) + 1
+        metadata = connection.get("metadata") or {}
+        host = metadata.get("host") or metadata.get("sniffHost") or ""
+        host = host if host and not host.replace(".", "").replace(":", "").isdigit() else "IP 直连（地址已隐藏）"
+        process = os.path.basename(str(metadata.get("process") or metadata.get("processPath") or "")) or None
+        site = sites.setdefault(host, {
+            "host": host, "count": 0, "nodes": {}, "upload": 0, "download": 0,
+            "since": None, "process": process,
+        })
+        site["count"] += 1
+        site["nodes"][node] = site["nodes"].get(node, 0) + 1
+        site["upload"] += int(connection.get("upload") or 0)
+        site["download"] += int(connection.get("download") or 0)
+        started = _connection_started_at(connection.get("start"))
+        if started is not None and started <= now:
+            site["since"] = started if site["since"] is None else min(site["since"], started)
+        if not site["process"] and process:
+            site["process"] = process
+    ordered = sorted(sites.values(), key=lambda item: (-item["count"], -(item["upload"] + item["download"])))
+    return {
+        "total": total,
+        "by_node": by_node,
+        "sites": ordered[:CONNECTION_SITE_LIMIT],
+        "more_sites": max(0, len(ordered) - CONNECTION_SITE_LIMIT),
+        "observed_at": int(now),
+    }
 
 
 def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=None):
@@ -694,7 +774,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
                 state_contract.node_ui_id(group_name, group_state["hot_standby"])
                 if group_state.get("hot_standby") else None
             ),
-            "recent_probes": public_timeline(group_name, now),
+            "recent_probes": public_timeline(group_name, now, V1_TIMELINE_WINDOW_SECONDS),
             "business_targets_down": sum(
                 1 for until in (group_state.get("business_target_down") or {}).values()
                 if int(until) > now
@@ -750,7 +830,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "state_stale": state_stale,
             "stale_after_seconds": stale_after,
             "memory_mb": memory_mb,
-            "memory_peak_mb": memory_mb,
+            "memory_peak_mb": RUNTIME.get("memory_footprint_peak_mb") or memory_mb,
             "memory_current_mb": RUNTIME.get("memory_current_mb"),
             "memory_trend_mb_per_hour": (
                 runtime_metrics.trend_mb_per_hour(state.get("memory_samples"))
@@ -845,6 +925,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "manual_hold_until": int(group_state.get("manual_hold_until", 0)),
             "last_switch_at": int(group_state.get("last_switch_at", 0)),
             "candidates": list(GROUPS[group["name"]]),
+            "hot_standby": group_state.get("hot_standby"),
+            "connections": connection_summary(group["name"], connections, now),
             "timeline": public_timeline(group["name"], now),
         })
     legacy = {
@@ -855,7 +937,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "started_at": SERVICE_STARTED_AT,
             "updated_at": int(last_cycle) if last_cycle is not None else None,
             "memory_mb": memory_mb,
-            "memory_peak_mb": memory_mb,
+            "memory_peak_mb": RUNTIME.get("memory_footprint_peak_mb") or memory_mb,
             "memory_current_mb": RUNTIME.get("memory_current_mb"),
             "probe_interval_seconds": PROBE_INTERVAL_SECONDS,
             "last_cycle_gap_seconds": int(state.get("last_cycle_gap_seconds", 0)),
@@ -865,6 +947,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "last_probe_at": RUNTIME.get("last_probe_at") or (int(last_cycle) if last_cycle is not None else None),
             "fast_probe_interval_seconds": FAST_PROBE_INTERVAL_SECONDS,
             "timeline_window_seconds": TIMELINE_WINDOW_SECONDS,
+            "version": versioned["service"]["version"],
             "stale_at": stale_at,
             "stale_title": stale_title,
             "stale_detail": stale_detail,
@@ -1791,9 +1874,9 @@ def refresh_cached_snapshot(proxy_data=None, now=None):
     last_cycle = (RUNTIME.get("last_state") or {}).get("updated_at")
     snapshot_id = "snapshot-%d-%d" % (now, int(last_cycle or 0))
     last_probe_at = RUNTIME.get("last_probe_at")
-    current_mb = runtime_metrics.current_footprint_mb()
-    RUNTIME["memory_current_mb"] = current_mb
-    peak_mb = memory_megabytes()
+    current_mb = footprint_now()
+    rss_peak_mb = memory_megabytes()
+    peak_mb = RUNTIME.get("memory_footprint_peak_mb") or rss_peak_mb
     v1, legacy = snapshots["v1"], snapshots["legacy"]
     snapshots["snapshot_id"] = snapshot_id
     v1["generated_at"], v1["generated_at_iso"] = now, iso_timestamp(now)
@@ -1802,10 +1885,11 @@ def refresh_cached_snapshot(proxy_data=None, now=None):
     v1["service"]["uptime_seconds"] = max(0, now - SERVICE_STARTED_AT)
     for service in (v1["service"], legacy["service"]):
         service["last_probe_at"] = last_probe_at or service.get("last_probe_at")
-        service["memory_mb"] = service["memory_peak_mb"] = peak_mb
+        service["memory_mb"] = rss_peak_mb
+        service["memory_peak_mb"] = peak_mb
         service["memory_current_mb"] = current_mb
     for group in v1["groups"]:
-        group["recent_probes"] = public_timeline(group["name"], now)
+        group["recent_probes"] = public_timeline(group["name"], now, V1_TIMELINE_WINDOW_SECONDS)
     for group in legacy["groups"]:
         group["timeline"] = public_timeline(group["name"], now)
     update_dashboard_cache(snapshots)
@@ -1914,6 +1998,11 @@ def run_cycle(dry_run=False):
         # Same lightweight probe the fast lane uses, so the live strip stays continuous.
         jobs.append((("fast", group_name), current_for_group(proxy_data, group_name, candidates),
                      FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS))
+        # The hot standby gets the same lightweight probe so the dashboard can compare
+        # both lines on one scale. Display only: never recorded into node statistics.
+        standby = state["groups"].get(group_name, {}).get("hot_standby")
+        if standby and standby != current_for_group(proxy_data, group_name, candidates):
+            jobs.append((("fast_standby", group_name), standby, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS))
     business_plan = {}
     scheduled = set()
     for group_name, candidates in GROUPS.items():
@@ -1963,6 +2052,12 @@ def run_cycle(dry_run=False):
             "t": round(probed_at, 1), "ms": results.get(("fast", group_name)),
             "node": current_for_group(proxy_data, group_name, candidates), "kind": "probe",
         })
+        standby = state["groups"].get(group_name, {}).get("hot_standby")
+        if ("fast_standby", group_name) in results:
+            timeline_add(group_name, {
+                "t": round(probed_at, 1), "ms": results.get(("fast_standby", group_name)),
+                "node": standby, "kind": "standby",
+            })
 
     # 3) Classify business failures: node-side vs site-side.
     verdicts = {}

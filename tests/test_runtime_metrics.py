@@ -119,7 +119,7 @@ class DashboardFreshnessTests(unittest.TestCase):
         self.assertIn("cycle_count", self.source)
 
     def test_dashboard_shows_seconds_up_to_two_minutes(self):
-        self.assertIn("s<120?`${s}秒前`", self.source)
+        self.assertRegex(self.source, r"s\s*<\s*120\s*\?\s*`\$\{s\}秒前`")
 
 
 if __name__ == "__main__":

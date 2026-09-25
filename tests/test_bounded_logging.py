@@ -339,8 +339,8 @@ class DashboardTests(unittest.TestCase):
         self.source = (MODULE_DIR / "dashboard.html").read_text(encoding="utf-8")
 
     def test_polls_every_two_seconds(self):
-        self.assertIn("setInterval(refresh,2000)", self.source)
-        self.assertNotIn("setInterval(refresh,5000)", self.source)
+        self.assertRegex(self.source, r"setInterval\(refresh,\s*2000\)")
+        self.assertNotRegex(self.source, r"setInterval\(refresh,\s*5000\)")
 
     def test_focus_filter_is_named_needs_attention(self):
         self.assertIn(">需关注<", self.source)

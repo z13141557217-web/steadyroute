@@ -43,12 +43,16 @@ class World(object):
         entry.update(fields)
         self.log.append(entry)
 
-    def open_stream(self, group):
-        """Model one long-lived AI streaming connection on the group's current node."""
+    def open_stream(self, group, host="claude.ai", process="Claude", rate=900):
+        """Model one long-lived connection on the group's current node.
+
+        rate: bytes per second downloaded, so the dashboard sees traffic grow.
+        """
         with self.lock:
             self.connection_seq += 1
             cid = "conn-%d" % self.connection_seq
-            self.connections[cid] = {"group": group, "node": self.groups[group]["now"]}
+            self.connections[cid] = {"group": group, "node": self.groups[group]["now"], "host": host,
+                                     "process": process, "rate": rate, "start": time.time()}
         return cid
 
     def delay(self, name, url, timeout_ms):
@@ -84,8 +88,15 @@ class World(object):
 
     def connections_payload(self):
         with self.lock:
+            now = time.time()
             return {"connections": [
-                {"id": cid, "chains": [item["node"], item["group"]], "upload": 1, "download": 1}
+                {"id": cid, "chains": [item["node"], item["group"]],
+                 "upload": int((now - item.get("start", now)) * item.get("rate", 900) * 0.08) + 1,
+                 "download": int((now - item.get("start", now)) * item.get("rate", 900)) + 1,
+                 "start": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(item.get("start", now)))
+                          + ".123456789Z",
+                 "metadata": {"host": item.get("host", ""), "process": item.get("process", ""),
+                              "destinationIP": "203.0.113.7", "network": "tcp"}}
                 for cid, item in self.connections.items()
             ]}
 
