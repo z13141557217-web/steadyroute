@@ -210,14 +210,14 @@ class PreflightTests(unittest.TestCase):
 
     def test_preflight_probes_urls_in_parallel(self):
         def slow(name, url, timeout_ms):
-            time.sleep(0.3)
+            time.sleep(0.5)
             return 100
         with mock.patch.object(router, "probe_url", side_effect=slow):
             started = time.perf_counter()
             self.assertTrue(router.business_preflight(TW_GROUP, "n", self.state, now=self.now))
             elapsed = time.perf_counter() - started
         self.assertGreater(len(self.urls), 1)
-        self.assertLess(elapsed, 0.5)
+        self.assertLess(elapsed, 0.85, "serial probing would take at least 1.0 s")
 
     def test_preflight_retries_only_failed_urls_once(self):
         calls = []

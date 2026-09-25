@@ -77,12 +77,12 @@ class FreshnessTests(unittest.TestCase):
 
         def fake_cycle(dry_run=False):
             starts.append(time.monotonic())
-            time.sleep(0.15)
+            time.sleep(0.3)
             if len(starts) == 3:
                 raise KeyboardInterrupt
 
         with mock.patch.object(router, "run_cycle", side_effect=fake_cycle), \
-                mock.patch.object(router, "PROBE_INTERVAL_SECONDS", 0.3), \
+                mock.patch.object(router, "PROBE_INTERVAL_SECONDS", 0.6), \
                 mock.patch.object(router, "start_dashboard", return_value=None), \
                 mock.patch.object(router, "log"), \
                 mock.patch.object(router.fcntl, "flock"), \
@@ -92,8 +92,10 @@ class FreshnessTests(unittest.TestCase):
             with self.assertRaises(KeyboardInterrupt):
                 router.main()
         gaps = [later - earlier for earlier, later in zip(starts, starts[1:])]
+        # Fixed rate: ~0.6 s between starts. The old sleep-after-cycle loop gave ~0.9 s.
         for gap in gaps:
-            self.assertAlmostEqual(gap, 0.3, delta=0.08)
+            self.assertGreater(gap, 0.5)
+            self.assertLess(gap, 0.8)
 
 
 class DashboardFreshnessTests(unittest.TestCase):
