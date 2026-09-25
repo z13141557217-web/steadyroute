@@ -122,6 +122,36 @@ class StandbyLineTests(unittest.TestCase):
         self.assertIn("version", snapshots["legacy"]["service"])
 
 
+class SwitchReasonTests(StandbyLineTests):
+    def test_failover_is_marked_as_failover(self):
+        self.net.run_cycle(self.state)
+        self.net.down_nodes.add(TW_NODES[0])
+        self.net.run_fast_tick(self.state)
+        points = router.public_timeline(TW_GROUP, time.time())
+        switches = [point for point in points if point[2] == "switch"]
+        self.assertEqual(len(switches), 1)
+        self.assertEqual(switches[0][4], "failover")
+        self.assertIn(switches[0][3], TW_NODES)
+
+    def test_optimize_is_marked_as_optimize(self):
+        # Make the current node much slower than a mature candidate, then let it confirm.
+        current = TW_NODES[0]
+        self.state["nodes"][current]["latency_ewma"] = 600.0
+        self.state["nodes"][current]["score"] = 603.0
+        self.net.latency[current] = 600
+        for _ in range(router.PERFORMANCE_CONFIRMATIONS + 1):
+            self.net.run_cycle(self.state)
+        switches = [point for point in router.public_timeline(TW_GROUP, time.time()) if point[2] == "switch"]
+        self.assertTrue(switches)
+        self.assertEqual(switches[-1][4], "optimize")
+
+    def test_probe_points_have_no_reason(self):
+        self.net.run_cycle(self.state)
+        probes = [point for point in router.public_timeline(TW_GROUP, time.time()) if point[2] == "probe"]
+        self.assertTrue(probes)
+        self.assertIsNone(probes[0][4])
+
+
 class MemoryPeakTests(unittest.TestCase):
     def setUp(self):
         router.RUNTIME.clear()

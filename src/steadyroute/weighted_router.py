@@ -573,13 +573,14 @@ def record_projected_transition(
 
 
 def public_timeline(group_name, now, window=None):
-    """Compact live-strip points: [unix_seconds, ms_or_null, kind, node].
+    """Compact live-strip points: [unix_seconds, ms_or_null, kind, node, reason].
 
     kind: "probe" (current node, every 5 s), "standby" (hot standby, every 20 s), "switch".
+    reason (switch only): "failover" | "optimize" | "removed"; null otherwise.
     """
     cutoff = float(now) - (TIMELINE_WINDOW_SECONDS if window is None else window) - 30
     return [
-        [item["t"], item.get("ms"), item.get("kind", "probe"), item.get("node")]
+        [item["t"], item.get("ms"), item.get("kind", "probe"), item.get("node"), item.get("reason")]
         for item in TIMELINE.get(group_name, []) if float(item["t"]) >= cutoff
     ]
 
@@ -1573,7 +1574,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         ) if mature else None
         if target and business_preflight(group_name, target, state, dry_run):
             select_node(group_name, target, dry_run)
-            timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": target, "kind": "switch"})
+            timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": target, "kind": "switch", "reason": "removed"})
             group_state.update({
                 "last_router_selection": target,
                 "last_seen": target,
@@ -1649,7 +1650,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                     len(current_stats.get("recent_failures", [])), QUARANTINE_WINDOW_SECONDS // 60),
             ))
             select_node(group_name, target, dry_run)
-            timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": target, "kind": "switch"})
+            timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": target, "kind": "switch", "reason": "failover"})
             closed = 0 if dry_run else close_old_connections(group_name, current, connections)
             log("%s: closed %d stale connections" % (group_name, closed))
             logging_setup.write_event(
@@ -1751,7 +1752,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         "occurred_at": int(now),
     }]
     select_node(group_name, leader, dry_run)
-    timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": leader, "kind": "switch"})
+    timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": leader, "kind": "switch", "reason": "optimize"})
     group_state["last_router_selection"] = leader
     group_state["last_seen"] = leader
     group_state["last_switch_at"] = int(now)

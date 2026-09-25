@@ -139,10 +139,21 @@ main.wrap { padding-block: 22px 56px; display: grid; gap: 18px; }
 .section-head h2 { font-size: 15px; font-weight: 650; }
 .section-head p { color: var(--muted); font-size: 12.5px; }
 .segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--inset); border-radius: 9px; border: 1px solid var(--line); }
-.segmented button {
-  border: 0; background: transparent; padding: 4px 11px; border-radius: 7px; color: var(--muted); font-size: 12.5px; cursor: pointer;
+/* One selected style for every toggle group: tinted accent, visible in both themes, never glaring. */
+.segmented button, .filter {
+  border: 0; background: transparent; min-height: 30px; padding: 5px 12px; border-radius: 7px; color: var(--muted);
+  font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
 }
-.segmented button[aria-pressed="true"] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.segmented button:hover, .filter:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.segmented button[aria-pressed="true"], .filter[aria-pressed="true"] {
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.filter .count {
+  font-size: 11px; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center;
+  background: color-mix(in srgb, var(--text) 8%, transparent); color: inherit; font-weight: 600;
+}
+.filter[aria-pressed="true"] .count { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 /* ---------- cards ---------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -188,7 +199,8 @@ main.wrap { padding-block: 22px 56px; display: grid; gap: 18px; }
 .legend .sw { width: 14px; height: 0; border-top: 2px solid var(--accent); }
 .legend .sw.standby { border-top: 2px dashed var(--standby); }
 .legend .sw.fail { width: 8px; height: 8px; border: 0; border-radius: 2px; background: var(--bad); }
-.legend .sw.switch { width: 0; height: 11px; border-top: 0; border-left: 2px solid var(--warn); }
+.legend .sw.switch-fail { width: 0; height: 11px; border-top: 0; border-left: 2px solid var(--bad); }
+.legend .sw.switch-opt { width: 0; height: 11px; border-top: 0; border-left: 2px dashed var(--good); }
 .chart-now { font-size: 12px; color: var(--muted); }
 .chart-now b { font-size: 16px; color: var(--text); font-weight: 650; font-family: var(--mono); }
 .plot { position: relative; height: 158px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line); touch-action: pan-y; }
@@ -197,7 +209,7 @@ main.wrap { padding-block: 22px 56px; display: grid; gap: 18px; }
 .plot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12.5px; }
 .axis { fill: var(--muted); font-size: 10.5px; font-family: var(--mono); }
 .grid { stroke: var(--line); stroke-width: 1; }
-.flag { fill: var(--warn); font-size: 10.5px; font-weight: 600; }
+.flag { font-size: 10.5px; font-weight: 600; paint-order: stroke; stroke: var(--raised); stroke-width: 3px; }
 .plot-tip {
   position: absolute; pointer-events: none; z-index: 3; min-width: 150px; padding: 8px 10px; border-radius: 9px;
   background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow); font-size: 12px; line-height: 1.5;
@@ -248,8 +260,6 @@ main.wrap { padding-block: 22px 56px; display: grid; gap: 18px; }
 .nodes-head h2 { font-size: 15px; font-weight: 650; }
 .nodes-head p { font-size: 12.5px; color: var(--muted); }
 .filters { display: inline-flex; gap: 2px; padding: 3px; background: var(--inset); border-radius: 9px; border: 1px solid var(--line); }
-.filter { border: 0; background: transparent; padding: 4px 11px; border-radius: 7px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
-.filter.active { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; min-width: 860px; }
 th, td { padding: 10px 14px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -430,10 +440,10 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
         <p id="node-summary">按当前线路和综合评分排序</p>
       </div>
       <div class="filters" role="group" aria-label="节点筛选">
-        <button class="filter active" data-filter="focus" type="button" title="当前线路、热备和异常节点">需关注</button>
-        <button class="filter" data-filter="all" type="button">全部</button>
-        <button class="filter" data-filter="tw" type="button">台湾</button>
-        <button class="filter" data-filter="hk" type="button">香港</button>
+        <button class="filter active" data-filter="focus" type="button" aria-pressed="true" title="当前线路、热备和异常节点">需关注<span class="count" data-count="focus"></span></button>
+        <button class="filter" data-filter="all" type="button" aria-pressed="false">全部<span class="count" data-count="all"></span></button>
+        <button class="filter" data-filter="tw" type="button" aria-pressed="false">台湾<span class="count" data-count="tw"></span></button>
+        <button class="filter" data-filter="hk" type="button" aria-pressed="false">香港<span class="count" data-count="hk"></span></button>
       </div>
     </div>
     <div class="table-wrap">
@@ -539,7 +549,7 @@ const TIPS = {
   }),
   chart: () => ({
     title: '实时延迟曲线',
-    text: '实线是当前节点，每 5 秒测一次；虚线是热备，每 20 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比上方“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败，黄色竖线是切换。鼠标移上去（手机上点一下）看具体数值。',
+    text: '实线是当前节点，每 5 秒测一次；虚线是热备，每 20 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比上方“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
     value: null,
     anchor: 'chart',
   }),
@@ -626,7 +636,8 @@ function routeSkeleton(g) {
           <span><i class="sw"></i>当前节点</span>
           <span><i class="sw standby"></i>热备</span>
           <span><i class="sw fail"></i>探测失败</span>
-          <span><i class="sw switch"></i>切换</span>
+          <span><i class="sw switch-fail"></i>故障切换</span>
+          <span><i class="sw switch-opt"></i>回优</span>
         </div>
         <span class="chart-now"><span data-f="last"></span> <button class="tip" type="button" data-tip="chart" aria-label="说明：实时延迟曲线">?</button></span>
       </div>
@@ -724,6 +735,13 @@ function connectionsHtml(g, c) {
 /* ====================================================================
    Latency chart
    ==================================================================== */
+/* Switch markers: colour, line style and words all differ, so no one relies on colour alone. */
+const SWITCH_KINDS = {
+  failover: { label: '故障切换', color: 'var(--bad)', dash: false },
+  optimize: { label: '回优', color: 'var(--good)', dash: true },
+  removed: { label: '节点被移除', color: 'var(--warn)', dash: true },
+};
+
 function niceMax(v) {
   const steps = [50, 80, 100, 150, 200, 300, 400, 500, 800, 1000, 1500, 2000, 3000];
   return steps.find(s => s >= v) || Math.ceil(v / 1000) * 1000;
@@ -802,10 +820,11 @@ function drawPlot(card, g, d) {
     .map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${(T + ih - 4).toFixed(1)}" r="3" fill="none" style="stroke:var(--standby)" stroke-width="1.5"><title>热备探测失败</title></circle>`).join('');
   const switches = data.switches.map(p => {
     const x = X(p[0]), name = String(p[3] || '');
-    const short = name.length > 14 ? name.slice(0, 13) + '…' : name;
-    const anchor = x > w - 120 ? 'end' : 'start', dx = anchor === 'end' ? -4 : 4;
-    return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${T + ih}" style="stroke:var(--warn)" stroke-width="1.5" stroke-dasharray="3 3"></line>
-            <text class="flag" x="${(x + dx).toFixed(1)}" y="${T + 9}" text-anchor="${anchor}">→ ${esc(short)}</text>`;
+    const kind = SWITCH_KINDS[p[4]] || SWITCH_KINDS.optimize;
+    const short = name.length > 12 ? name.slice(0, 11) + '…' : name;
+    const anchor = x > w - 150 ? 'end' : 'start', dx = anchor === 'end' ? -5 : 5;
+    return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${T + ih}" style="stroke:${kind.color}" stroke-width="${kind.dash ? 1.6 : 2}"${kind.dash ? ' stroke-dasharray="4 3"' : ''}></line>
+            <text class="flag" x="${(x + dx).toFixed(1)}" y="${T + 9}" text-anchor="${anchor}" style="fill:${kind.color}">${kind.label} → ${esc(short)}</text>`;
   }).join('');
 
   const hv = hover[g.name];
@@ -817,7 +836,7 @@ function drawPlot(card, g, d) {
       const x = X(near[0]);
       cross = `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${T + ih}" style="stroke:var(--line-strong)"></line>` +
         (near[1] != null ? `<circle cx="${x.toFixed(1)}" cy="${Y(near[1]).toFixed(1)}" r="4" stroke-width="2" style="fill:var(--surface);stroke:var(--accent)"></circle>` : '');
-      showPlotTip(plot, x, w, near, nearest(data.standby, near[0], 25));
+      showPlotTip(plot, x, w, near, nearest(data.standby, near[0], 25), nearest(data.switches, near[0], 6));
     } else hidePlotTip(plot);
   } else hidePlotTip(plot);
 
@@ -848,14 +867,15 @@ function nearest(points, t, within) {
   return best;
 }
 
-function showPlotTip(plot, x, w, probe, standby) {
+function showPlotTip(plot, x, w, probe, standby, sw) {
   const tip = plot.querySelector('.plot-tip');
   if (!tip) return;
   tip.hidden = false;
   tip.innerHTML = `<div class="t">${clock(probe[0], true)}</div>
     <div class="row"><span>当前</span><b>${probe[1] == null ? '<span style="color:var(--bad)">失败</span>' : probe[1] + ' ms'}</b></div>
     ${standby ? `<div class="row"><span>热备</span><b>${standby[1] == null ? '失败' : standby[1] + ' ms'}</b></div>` : ''}
-    <div class="t" style="margin-top:3px">${esc(probe[3] || '')}</div>`;
+    <div class="t" style="margin-top:3px">${esc(probe[3] || '')}</div>
+    ${sw ? `<div class="row" style="margin-top:4px;color:${(SWITCH_KINDS[sw[4]] || SWITCH_KINDS.optimize).color}"><span>${(SWITCH_KINDS[sw[4]] || SWITCH_KINDS.optimize).label}</span><b>${clock(sw[0], true)}</b></div><div class="t">→ ${esc(sw[3] || '')}</div>` : ''}`;
   const tw = tip.offsetWidth || 170;
   tip.style.left = `${Math.min(Math.max(4, x + 12), w - tw - 4)}px`;
   if (x + 12 + tw > w - 4) tip.style.left = `${Math.max(4, x - tw - 12)}px`;
@@ -957,6 +977,12 @@ function rowHtml(r, d) {
 
 function renderNodes(d) {
   const all = allRows(d), rows = all.filter(matches);
+  const saved = activeFilter;
+  ['focus', 'all', 'tw', 'hk'].forEach(key => {
+    activeFilter = key;
+    setText($(`[data-count="${key}"]`), String(all.filter(matches).length));
+  });
+  activeFilter = saved;
   const body = $('#node-rows');
   if (!rows.length) {
     patch(body, '<tr><td class="empty-row" colspan="7">没有符合筛选条件的节点</td></tr>');
@@ -1084,7 +1110,7 @@ window.addEventListener('scroll', () => { if (!tipPinned) closeTip(); }, { passi
    ==================================================================== */
 $$('.filter').forEach(b => b.addEventListener('click', () => {
   activeFilter = b.dataset.filter;
-  $$('.filter').forEach(i => i.classList.toggle('active', i === b));
+  $$('.filter').forEach(i => { i.classList.toggle('active', i === b); i.setAttribute('aria-pressed', String(i === b)); });
   if (snapshot) renderNodes(snapshot);
 }));
 $$('.segmented button').forEach(b => b.addEventListener('click', () => {
