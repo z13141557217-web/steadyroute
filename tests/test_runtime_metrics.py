@@ -85,6 +85,8 @@ class FreshnessTests(unittest.TestCase):
                 mock.patch.object(router, "PROBE_INTERVAL_SECONDS", 0.6), \
                 mock.patch.object(router, "start_dashboard", return_value=None), \
                 mock.patch.object(router, "log"), \
+                mock.patch.object(router.logging_setup, "configure"), \
+                mock.patch.object(router, "sync_state_events"), \
                 mock.patch.object(router.fcntl, "flock"), \
                 mock.patch.object(router.os, "makedirs"), \
                 mock.patch("builtins.open", mock.mock_open()), \

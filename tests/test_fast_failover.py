@@ -89,6 +89,52 @@ class FastFailoverCycleTests(unittest.TestCase):
         self.assertEqual(self.state["nodes"][self.current]["failure_streak"], 1)
         self.assertEqual(self.state["groups"][TW_GROUP]["last_confirm"]["verdict"], "transient")
 
+    def test_repeated_transient_blips_never_quarantine_or_switch(self):
+        original = self.net.probe
+        blips = {"cycle": 0}
+
+        def probe(name, url, timeout_ms):
+            # Every cycle: the base probe of the current node fails, the confirmations succeed.
+            if name == self.current and url == router.TEST_URL:
+                return None
+            if name == self.current and url == router.FAST_PROBE_URL and blips["cycle"] > 0:
+                blips["cycle"] -= 1
+                return None
+            return original(name, url, timeout_ms)
+
+        self.net.probe = probe
+        for _ in range(5):
+            blips["cycle"] = 1       # the live-strip probe fails too; confirmations succeed
+            self.net.run_cycle(self.state)
+        node = self.state["nodes"][self.current]
+        self.assertEqual(self.net.puts, [])
+        self.assertEqual(self.net.deletes, [])
+        self.assertEqual(int(node.get("quarantine_until", 0)), 0)
+        self.assertEqual(node.get("recent_failures", []), [])
+        self.assertEqual(node["effective_failure_streak"], 0)
+        self.assertEqual(node["short_results"][-5:], [0] * 5, "availability still records the blips")
+
+    def test_base_blip_with_live_probe_success_is_not_a_quarantine_failure(self):
+        original = self.net.probe
+
+        def probe(name, url, timeout_ms):
+            if name == self.current and url == router.TEST_URL:
+                return None          # only the HTTPS base probe fails; the live-strip probe succeeds
+            return original(name, url, timeout_ms)
+
+        self.net.probe = probe
+        for _ in range(4):
+            self.net.run_cycle(self.state)
+        node = self.state["nodes"][self.current]
+        self.assertEqual(self.net.puts, [])
+        self.assertEqual(node.get("recent_failures", []), [])
+        self.assertEqual(node["effective_failure_streak"], 0)
+
+    def test_confirmed_failures_still_quarantine(self):
+        self.net.down_nodes.add(self.current)
+        self.net.run_cycle(self.state)
+        self.assertTrue(self.state["nodes"][self.current].get("recent_failures"))
+
     def test_confirm_probes_do_not_inflate_samples(self):
         before = self.state["nodes"][self.current]["samples"]
         self.net.down_nodes.add(self.current)

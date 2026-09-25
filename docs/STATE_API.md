@@ -84,6 +84,16 @@ legacy `service` 追加 `cycle_count`、`stale_at`、`stale_title`、`stale_deta
 `[unix 秒, 毫秒或 null, "probe"|"switch", 节点名]`，只保存在内存，最近 5 分钟、每组最多 90 点。看板只用
 `stale_at` 与后端文案切换显示，不自行计算阈值。
 
+v0.4.4 在 v1 与 legacy `service` 追加 `memory_current_mb`（当前实际占用；macOS 为
+phys_footprint，与活动监视器"内存"列同口径；取不到时为 `null`）和 `memory_peak_mb`
+（本进程生命周期峰值，与原 `memory_mb` 相同，`memory_mb` 保留兼容）。v1 另追加
+`memory_trend_mb_per_hour`：每 10 分钟采样一次当前占用（持久状态 `memory_samples`，最多
+144 个，进程重启即清空），满 2 小时后给出首尾各 6 个样本均值的每小时斜率，否则为 `null`。
+持久状态新增 `cycle_count_merged`：首次运行时把 `cycle_count` 提升到节点最大采样数，
+承接 v0.4.3 之前看板显示的累计轮数，只执行一次。两次完整周期之间，快速通道只更新
+`generated_at`、`snapshot_id`、`uptime_seconds`、`last_probe_at`、内存字段与
+`timeline`/`recent_probes`，其余字段以最近一次完整周期为准（最长 20 秒）。
+
 ## 结构化事件
 
 代理组决策码或节点生命周期真实变化时追加一条事件，相同状态重复投影不会追加。
