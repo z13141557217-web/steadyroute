@@ -114,6 +114,22 @@ class FastFailoverCycleTests(unittest.TestCase):
         self.assertEqual(node["effective_failure_streak"], 0)
         self.assertEqual(node["short_results"][-5:], [0] * 5, "availability still records the blips")
 
+    def test_base_blip_with_live_probe_success_is_not_a_quarantine_failure(self):
+        original = self.net.probe
+
+        def probe(name, url, timeout_ms):
+            if name == self.current and url == router.TEST_URL:
+                return None          # only the HTTPS base probe fails; the live-strip probe succeeds
+            return original(name, url, timeout_ms)
+
+        self.net.probe = probe
+        for _ in range(4):
+            self.net.run_cycle(self.state)
+        node = self.state["nodes"][self.current]
+        self.assertEqual(self.net.puts, [])
+        self.assertEqual(node.get("recent_failures", []), [])
+        self.assertEqual(node["effective_failure_streak"], 0)
+
     def test_confirmed_failures_still_quarantine(self):
         self.net.down_nodes.add(self.current)
         self.net.run_cycle(self.state)

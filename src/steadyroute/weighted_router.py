@@ -1976,6 +1976,7 @@ def run_cycle(dry_run=False):
     #    those samples are never charged to nodes.
     cycle_cache = {}
     confirmations = {}
+    alive_elsewhere = set()   # base probe failed, but another probe through the node succeeded
     blackout = len(targets) >= MASS_FAILURE_MIN_TARGETS and all(
         base_results.get(name) is None for name in targets)
     if blackout:
@@ -1983,8 +1984,10 @@ def run_cycle(dry_run=False):
         log("all %d probes failed at once; treating the cycle as a local outage" % len(targets))
     for group_name, candidates in GROUPS.items():
         current = current_for_group(proxy_data, group_name, candidates)
-        if (base_results.get(current) is not None or verdicts.get(group_name) == "ok"
-                or results.get(("fast", group_name)) is not None):
+        if base_results.get(current) is not None:
+            continue
+        if verdicts.get(group_name) == "ok" or results.get(("fast", group_name)) is not None:
+            alive_elsewhere.add(group_name)
             continue
         if resume_cycle or blackout:
             ensure_local_check(cycle_cache)
@@ -2004,7 +2007,8 @@ def run_cycle(dry_run=False):
     # 5) Record samples.
     transient = {
         current_for_group(proxy_data, group_name, candidates)
-        for group_name, candidates in GROUPS.items() if confirmations.get(group_name) == "transient"
+        for group_name, candidates in GROUPS.items()
+        if confirmations.get(group_name) == "transient" or group_name in alive_elsewhere
     }
     record_probe_results(state, targets, base_results, cycle_started_at, record_failures, transient)
     for (kind, group_name, name), result in business.items():
