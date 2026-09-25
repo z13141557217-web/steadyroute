@@ -106,6 +106,11 @@ class DashboardFreshnessTests(unittest.TestCase):
         self.assertIn("visibilitychange", self.source)
         self.assertNotIn("a>d.service.probe_interval_seconds", self.source)
 
+    def test_policy_shows_in_cycle_confirmation(self):
+        self.assertIn("confirm_probes", self.source)
+        legacy = router.build_status_snapshots(router.state_contract.new_state(), {}, [], now=1000)["legacy"]
+        self.assertEqual(legacy["policy"]["confirm_probes"], 1 + router.CONFIRM_PROBES)
+
     def test_dashboard_counts_cycles_not_samples(self):
         self.assertIn("cycle_count", self.source)
 

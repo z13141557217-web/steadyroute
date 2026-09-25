@@ -760,6 +760,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "relative_gain": MIN_RELATIVE_GAIN,
             "cooldown_seconds": PERFORMANCE_COOLDOWN_SECONDS,
             "failures_before_switch": FAILURES_BEFORE_SWITCH,
+            "confirm_probes": 1 + CONFIRM_PROBES,
             "short_window_size": SHORT_WINDOW_SIZE,
             "long_window_hours": LONG_WINDOW_HOURS,
             "short_min_availability": SHORT_MIN_AVAILABILITY,
