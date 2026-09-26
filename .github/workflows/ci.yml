@@ -6,35 +6,26 @@ on:
 jobs:
   test:
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.9'
-      - name: probe
+      - name: tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' > out.txt 2>&1 || true
+      - name: report
+        if: always()
         run: |
-          python3 - <<'PY' > probe.txt 2>&1 || true
-          import ctypes, ctypes.util, platform, sys
-          sys.path.insert(0, "src/steadyroute")
-          import runtime_metrics as rm
-          libc = ctypes.CDLL(ctypes.util.find_library("c"))
-          task = ctypes.c_uint.in_dll(libc, "mach_task_self_")
-          print(platform.platform(), platform.machine())
-          print("sizes", ctypes.sizeof(rm._TaskVMInfo), ctypes.sizeof(rm._TaskVMInfoRev3))
-          for want in (38, 40, 42, 44, 46, 48, 60, 80, 100):
-              buf = (ctypes.c_uint32 * 128)()
-              count = ctypes.c_uint(want)
-              r = libc.task_info(task, 22, ctypes.byref(buf), ctypes.byref(count))
-              q = ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint64 * 64)).contents
-              words = [buf[i] for i in range(0, 60)]
-              print("want", want, "ret", r, "count", count.value)
-              if want == 100:
-                  # u64 view starting at byte offset 16 (after virtual_size, region_count, page_size)
-                  u = [(buf[4 + 2*i] | (buf[5 + 2*i] << 32)) for i in range(24)]
-                  print("u64 from offset 16:", u)
-          print("current", rm.current_footprint_mb(), "peak", rm.peak_footprint_mb())
-          PY
           python3 - <<'PY'
-          t = open("probe.txt").read()
-          print("::error::" + t.replace("%", "%25").replace("\n", "%0A"))
+          import re
+          text = open("out.txt", encoding="utf-8", errors="replace").read()
+          blocks = re.findall(r"={50,}\n((?:FAIL|ERROR): .*?)(?=\n={50,}|\n-{50,}\nRan )", text, re.S)
+          for b in blocks[:6]:
+              print("::error::" + b[-2500:].replace("%", "%25").replace("\n", "%0A"))
+          tail = text[-300:]
+          print("::warning::" + tail.replace("%", "%25").replace("\n", "%0A"))
           PY
