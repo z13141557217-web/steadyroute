@@ -238,21 +238,20 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
   font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: color .15s, background .15s;
 }
 .seg button:hover, .filter:hover { color: var(--ink); }
-.seg button[aria-pressed="true"], .filter[aria-pressed="true"] {
+.seg button[aria-pressed="true"], .seg button[aria-selected="true"], .filter[aria-pressed="true"] {
   background: var(--surface); color: var(--accent); font-weight: 600;
   box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-1);
 }
-.filter .count { font-size: 11px; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center; background: var(--hair); color: inherit; font-weight: 600; }
-.filter[aria-pressed="true"] .count { background: var(--accent-soft); }
+.filter .count, .dr-tabs .count { font-size: 11px; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center; background: var(--hair); color: inherit; font-weight: 600; }
+.filter[aria-pressed="true"] .count, .dr-tabs [aria-selected="true"] .count { background: var(--accent-soft); }
 
 /* ------------------------------------------------------------------ cards */
 .card { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
 
 /* ------------------------------------------------------------------ route cards (aligned row by row) */
-.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(6, auto); gap: 0 20px; }
+.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); gap: 0 20px; }
 .route {
-  container-type: inline-size; container-name: route;
-  grid-row: span 6; display: grid; grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
+  grid-row: span 5; display: grid; grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
 }
 .r-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 22px 24px 0; }
 .r-title { display: grid; gap: 4px; min-width: 0; }
@@ -335,19 +334,68 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 .ho-bar i:last-child { background: var(--accent); }
 .split { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--sunken); }
 .split i { display: block; height: 100%; transition: width .6s ease; }
-.conns { grid-column: 1 / -1; border-top: 1px solid var(--hair); background: var(--surface-2); padding: 16px 24px 18px; display: grid; gap: 10px; }
-.conns-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); }
 .split-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-2); }
-.split-legend span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.split-legend em { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
-.site-list { display: grid; }
-.site { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 34px; gap: 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--hair); font-size: 12.5px; }
+
+/* ------------------------------------------------------------------ connections drawer */
+/* Opens from the right (a sheet from the bottom on phones), so the cards never change height. */
+.scrim {
+  position: fixed; inset: 0; z-index: 60; background: rgba(8, 15, 25, .28); opacity: 0; visibility: hidden;
+  transition: opacity .28s ease, visibility 0s linear .28s;
+}
+.drawer {
+  position: fixed; z-index: 61; top: 12px; right: 12px; bottom: 12px; width: min(460px, calc(100vw - 24px));
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr); background: var(--surface); border: 1px solid var(--hair);
+  border-radius: 20px; box-shadow: 0 30px 80px -20px rgba(8, 15, 25, .45), 0 2px 8px rgba(8, 15, 25, .08);
+  transform: translateX(calc(100% + 24px)); visibility: hidden;
+  transition: transform .34s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .34s;
+}
+body.drawer-open .scrim { opacity: 1; visibility: visible; transition: opacity .28s ease; }
+body.drawer-open .drawer { transform: none; visibility: visible; transition: transform .34s cubic-bezier(.2, .8, .2, 1); }
+.dr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 20px 22px 14px; }
+.dr-head h2 { font-family: var(--display); font-size: 18px; font-weight: 650; margin-top: 2px; }
+.dr-close {
+  width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink-2);
+  display: grid; place-items: center; cursor: pointer; flex: 0 0 auto;
+}
+.dr-close:hover { background: var(--sunken); color: var(--ink); }
+.dr-close svg { width: 14px; height: 14px; }
+.dr-tabs { margin: 0 22px 4px; display: flex; }
+.dr-tabs button { flex: 1 1 0; justify-content: center; }
+.dr-tabs b { font-family: var(--display); font-size: 10.5px; letter-spacing: .04em; margin-right: 2px; }
+.dr-body { overflow-y: auto; overscroll-behavior: contain; padding: 14px 22px 22px; display: grid; gap: 20px; align-content: start; }
+.dr-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--hair); border-radius: 14px; background: var(--surface-2); }
+.dr-sum div { padding: 12px 14px; display: grid; gap: 2px; border-left: 1px solid var(--hair); min-width: 0; }
+.dr-sum div:first-child { border-left: 0; }
+.dr-sum b { font-family: var(--display); font-size: 20px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dr-sum span { font-size: 11.5px; color: var(--ink-3); }
+.dr-sec { display: grid; gap: 10px; }
+.dr-sec h3 { font-size: 12px; font-weight: 600; color: var(--ink-3); display: flex; justify-content: space-between; gap: 8px; }
+.dr-sec h3 span { font-weight: 500; color: var(--ink-4); }
+.dr-handover { font-size: 12.5px; color: var(--ink-2); background: var(--accent-soft); border-radius: 10px; padding: 9px 12px; line-height: 1.55; }
+.nd { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
+.nd > i { width: 8px; height: 8px; border-radius: 50%; }
+.nd-name { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nd-name em { font-style: normal; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px; margin-left: 6px; vertical-align: 1px; }
+.nd-name em.cur { background: var(--accent); color: var(--surface); }
+.nd-name em.old { background: var(--sunken); color: var(--ink-3); }
+.nd-count { font-family: var(--display); font-weight: 650; font-size: 14px; }
+.nd-count small { font-family: var(--sans); font-weight: 500; color: var(--ink-3); font-size: 11.5px; margin-left: 2px; }
+.nd .track { grid-column: 2 / -1; height: 4px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+.nd .track i { display: block; height: 100%; border-radius: 999px; transition: width .6s ease; }
+.site-list { display: grid; border: 1px solid var(--hair); border-radius: 14px; overflow: hidden; }
+.site { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--hair); }
 .site:first-child { border-top: 0; }
-.site-host { min-width: 0; display: grid; }
-.site-host b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site-host small { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site .count { font-family: var(--display); font-weight: 650; text-align: right; }
-.site .since, .site .bytes { color: var(--ink-3); white-space: nowrap; font-size: 12px; }
+.site .av {
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 13px;
+  color: var(--ink-2); background: var(--sunken); text-transform: uppercase;
+}
+.site-host { min-width: 0; display: grid; gap: 1px; }
+.site-host b { font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-host small { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-host small em { font-style: normal; color: var(--ink-2); background: var(--sunken); padding: 0 5px; border-radius: 4px; margin-right: 4px; }
+.site .count { font-family: var(--display); font-weight: 650; font-size: 14px; min-width: 28px; text-align: right; }
+.site .count small { display: block; font-family: var(--sans); font-weight: 500; font-size: 10.5px; color: var(--ink-4); }
+.dr-empty { padding: 26px 14px; text-align: center; color: var(--ink-3); font-size: 13px; }
 .note-sm { font-size: 11.5px; color: var(--ink-4); }
 
 /* ------------------------------------------------------------------ nodes */
@@ -441,19 +489,23 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 /* ------------------------------------------------------------------ responsive */
-/* A route card narrower than ~600px (half of a small window): metrics become 2 × 2. */
-@container route (max-width: 600px) {
-  .stats { grid-template-columns: 1fr 1fr; }
-  .stat { padding: 12px 20px; }
-  .stat:nth-child(3) { border-left: 0; }
-  .stat:nth-child(n+3) { border-top: 1px solid var(--hair); }
-  .readout .big { font-size: 40px; }
-  .r-head, .r-hero, .r-chart, .r-reason { padding-inline: 20px; }
-}
-@container route (max-width: 420px) {
-  .r-hero { grid-template-columns: 1fr; }
-  .readout { text-align: left; padding-top: 0; }
-}
+/* Card-width breakpoints. A size container would break the shared subgrid rows that keep the two
+   cards aligned, so a ResizeObserver tags each card instead: w600 / w420 / w380. A card narrower
+   than ~600px keeps its four metrics in one row, just tighter; only a phone-narrow card folds to 2 x 2. */
+.route.w600 .stats { grid-template-columns: 1.3fr 1fr 1fr 1fr; }
+.route.w600 .stat { padding: 12px 14px; }
+.route.w600 .stat .k { font-size: 11px; gap: 3px; }
+.route.w600 .stat:first-child { padding-left: 20px; }
+.route.w600 .stat .v { font-size: 16px; }
+.route.w600 .readout .big { font-size: 40px; }
+.route.w600 .r-head, .route.w600 .r-hero, .route.w600 .r-chart, .route.w600 .r-reason { padding-inline: 20px; }
+.route.w420 .r-hero { grid-template-columns: 1fr; }
+.route.w420 .readout { text-align: left; padding-top: 0; }
+.route.w380 .stats { grid-template-columns: 1fr 1fr; }
+.route.w380 .stat .k { font-size: 11.5px; }
+.route.w380 .stat, .route.w380 .stat:first-child { padding: 12px 18px; }
+.route.w380 .stat:nth-child(3) { border-left: 0; }
+.route.w380 .stat:nth-child(n+3) { border-top: 1px solid var(--hair); }
 @media (max-width: 1060px) {
   .head { grid-template-columns: 1fr; }
   .kpis { flex-wrap: wrap; row-gap: 14px; }
@@ -487,14 +539,11 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .r-hero { grid-template-columns: 1fr; }
   .readout { text-align: left; }
   .readout .big { font-size: 38px; }
-  .stats { grid-template-columns: 1fr 1fr; }
-  .stat { padding: 12px 18px; }
-  .stat:nth-child(3) { border-left: 0; }
-  .stat:nth-child(n+3) { border-top: 1px solid var(--hair); }
   .plot { height: 170px; }
-  .conns { padding-inline: 18px; }
-  .site { grid-template-columns: minmax(0, 1fr) 30px; }
-  .site .since, .site .bytes { display: none; }
+  .drawer { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 88vh; border-radius: 20px 20px 0 0; border-bottom: 0; transform: translateY(100%); }
+  .dr-head { padding: 16px 18px 12px; }
+  .dr-tabs { margin-inline: 18px; }
+  .dr-body { padding: 14px 18px 26px; }
   .rule-grid { grid-template-columns: 1fr; }
   .rule { border-left: 0 !important; border-top: 1px solid var(--hair); }
   .rule:first-child { border-top: 0; }
@@ -512,7 +561,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   tr.is-current td { background: transparent !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .beacon::after, .pulse, .skeleton, .hs-mark::before, .hs-mark .flow, .hs-mark .halo, .hs-mark .dest { animation: none !important; }
+  .scrim, .drawer, .beacon::after, .pulse, .skeleton, .hs-mark::before, .hs-mark .flow, .hs-mark .halo, .hs-mark .dest { animation: none !important; }
   .hs-mark .flow { stroke-dashoffset: 26; }
   * { transition: none !important; }
 }
@@ -642,6 +691,16 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 
 <footer class="wrap" id="footer"><span>仅监听本机 127.0.0.1 · 页面每 2 秒刷新 · Mac 睡眠时暂停</span><span id="footer-version"></span></footer>
 
+<div class="scrim" id="conn-scrim"></div>
+<aside class="drawer" id="conn-drawer" role="dialog" aria-modal="true" aria-labelledby="conn-title" aria-hidden="true" inert>
+  <div class="dr-head">
+    <div><p class="eyebrow" id="conn-meta">实时 · 每 20 秒随完整检测更新</p><h2 id="conn-title">活跃连接</h2></div>
+    <button class="dr-close" type="button" id="conn-close" aria-label="关闭"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg></button>
+  </div>
+  <div class="seg dr-tabs" id="conn-tabs" role="tablist" aria-label="选择线路"></div>
+  <div class="dr-body" id="conn-body"></div>
+</aside>
+
 <div id="tip-pop" role="tooltip" hidden></div>
 
 <script>
@@ -683,7 +742,7 @@ function setText(el, text) {
 let snapshot = null;
 let activeFilter = 'focus';
 let rangeSeconds = 300;
-const openConnections = new Set();
+const drawer = { group: null, trigger: null };
 const charts = new Map();      // group name -> chart
 const readouts = new Map();    // group name -> {el, shown, target}
 
@@ -866,7 +925,7 @@ function routeSkeleton(g) {
       <div class="stat"><span class="k">24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span><span class="v" data-f="availability">—</span></div>
       <div class="stat"><span class="k">抖动 <button class="tip" type="button" data-tip="jitter" aria-label="说明：抖动">?</button></span><span class="v" data-f="jitter">—</span></div>
       <div class="stat"><span class="k">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span><span class="v" data-f="quality">—</span></div>
-      <div class="stat"><span class="k">活跃连接 <button class="tip" type="button" data-tip="connections" aria-label="说明：活跃连接">?</button></span><button class="v" type="button" data-f="conn-toggle" aria-expanded="false"><span data-f="connections">—</span></button></div>
+      <div class="stat"><span class="k">活跃连接 <button class="tip" type="button" data-tip="connections" aria-label="说明：活跃连接">?</button></span><button class="v" type="button" data-f="conn-toggle" aria-haspopup="dialog"><span data-f="connections">—</span></button></div>
     </div>
     <div class="r-chart">
       <div class="chart-head">
@@ -882,9 +941,15 @@ function routeSkeleton(g) {
       <div class="plot" data-f="plot"></div>
     </div>
     <p class="r-reason" data-f="reason"></p>
-    <div class="conns" data-f="conns" hidden></div>
   </article>`;
 }
+
+const cardWidths = new ResizeObserver(entries => entries.forEach(entry => {
+  const w = entry.contentRect.width, c = entry.target.classList;
+  c.toggle('w600', w <= 600);
+  c.toggle('w420', w <= 420);
+  c.toggle('w380', w <= 380);
+}));
 
 function ensureRoutes(d) {
   const box = $('#routes');
@@ -896,10 +961,8 @@ function ensureRoutes(d) {
     readouts.clear();
     $$('.route', box).forEach(card => {
       const group = card.dataset.group;
-      $('[data-f="conn-toggle"]', card).addEventListener('click', () => {
-        if (openConnections.has(group)) openConnections.delete(group); else openConnections.add(group);
-        if (snapshot) renderRoutes(snapshot);
-      });
+      $('[data-f="conn-toggle"]', card).addEventListener('click', event => openDrawer(group, event.currentTarget));
+      cardWidths.observe(card);
       charts.set(group, makeChart(card.querySelector('[data-f="plot"]')));
       readouts.set(group, { el: card.querySelector('[data-f="readout"]'), shown: null, target: null });
     });
@@ -937,21 +1000,16 @@ function renderRoutes(d) {
     patch(f('availability'), esc(pct(node.long_availability ?? node.availability)));
     patch(f('jitter'), node.jitter == null ? '—' : `${Math.round(node.jitter)}<small>ms</small>`);
     patch(f('quality'), node.quality == null ? '—' : `${node.quality}<small>/100</small>`);
-    const open = openConnections.has(g.name);
-    patch(f('connections'), `${g.active_connections}<small>${open ? '收起' : '查看 ›'}</small>`);
-    f('conn-toggle').setAttribute('aria-expanded', String(open));
+    patch(f('connections'), `${g.active_connections}<small>查看 ›</small>`);
 
     const next = g.next_action && g.next_action !== g.decision_detail ? ` <span class="next">下一步：${esc(g.next_action)}</span>` : '';
     patch(f('reason'), esc(g.decision_detail || g.decision) + next);
     patch(f('handover'), handoverHtml(g, conns));
 
-    const panel = f('conns');
-    panel.hidden = !open;
-    if (open) patch(panel, connectionsHtml(g, conns));
-
     const chart = charts.get(g.name);
     if (chart) chart.setData(g, card);
   });
+  renderDrawer(d);
 }
 
 /* Latency readout eases between values like an instrument needle. */
@@ -990,28 +1048,89 @@ function handoverHtml(g, conns) {
 /* ====================================================================
    Active connections
    ==================================================================== */
-function connectionsHtml(g, c) {
+function siteInitial(host) {
+  const h = String(host || '').replace(/^www\./, '');
+  return /^[a-z0-9]/i.test(h) ? h[0] : '·';
+}
+
+function drawerHtml(g, c) {
   const now = nowSeconds();
-  const nodes = Object.entries(c.by_node || {}).sort((a, b) => b[1] - a[1]);
   const total = c.total || 0;
-  const colorFor = name => name === g.current ? 'var(--accent)' : 'var(--standby)';
-  const split = nodes.map(([name, count]) => `<i style="width:${(count / Math.max(1, total) * 100).toFixed(1)}%;background:${colorFor(name)}"></i>`).join('');
-  const legend = nodes.map(([name, count]) => `<span><em style="background:${colorFor(name)}"></em>${esc(name)} · ${count} 个${name === g.current ? '' : '（旧节点，保留到自然结束）'}</span>`).join('');
-  const sites = (c.sites || []).map(site => {
+  const sites = c.sites || [];
+  const nodes = Object.entries(c.by_node || {}).sort((a, b) => (b[0] === g.current) - (a[0] === g.current) || b[1] - a[1]);
+  const down = sites.reduce((sum, s) => sum + (s.download || 0), 0);
+  const up = sites.reduce((sum, s) => sum + (s.upload || 0), 0);
+  const olds = nodes.filter(([name]) => name !== g.current);
+  const summary = `<div class="dr-sum">
+      <div><b class="num">${total}</b><span>个连接</span></div>
+      <div><b class="num">${sites.length + (c.more_sites || 0)}</b><span>个网站</span></div>
+      <div><b class="num" title="↑ ${esc(bytes(up))}">${esc(bytes(down))}</b><span>已下载</span></div>
+    </div>`;
+  if (!total) return summary + '<div class="dr-empty">当前没有经过这条线路的连接。<br>打开要走这条线路的应用后，这里会实时出现。</div>';
+  const nodeRows = nodes.map(([name, count]) => {
+    const cur = name === g.current;
+    const color = cur ? 'var(--accent)' : 'var(--standby)';
+    return `<div class="nd"><i style="background:${color}"></i>
+      <span class="nd-name">${esc(name)}<em class="${cur ? 'cur' : 'old'}">${cur ? '当前' : '旧节点'}</em></span>
+      <span class="nd-count">${count}<small>个</small></span>
+      <span class="track"><i style="width:${(count / total * 100).toFixed(1)}%;background:${color}"></i></span></div>`;
+  }).join('');
+  const handover = olds.length
+    ? `<p class="dr-handover">正在交接：新请求已走当前节点；旧节点上的 ${olds.reduce((s, [, n]) => s + n, 0)} 个连接会留到自然结束，不会被主动断开。</p>` : '';
+  const siteRows = sites.map(site => {
     const onOld = Object.entries(site.nodes || {}).filter(([name]) => name !== g.current).reduce((sum, [, n]) => sum + n, 0);
+    const bits = [esc(site.process || '未知应用')];
+    if (site.since) bits.push(`已 ${esc(duration(Math.max(0, now - site.since)))}`);
+    bits.push(`↓ ${esc(bytes(site.download || 0))}`);
     return `<div class="site">
-      <span class="site-host"><b>${esc(site.host)}</b><small>${esc(site.process || '未知应用')}${onOld ? ` · ${onOld} 个在旧节点` : ''}</small></span>
-      <span class="since">${site.since ? '已 ' + duration(Math.max(0, now - site.since)) : ''}</span>
-      <span class="bytes">↓ ${bytes(site.download || 0)} · ↑ ${bytes(site.upload || 0)}</span>
-      <span class="count">${site.count}</span>
+      <span class="av" aria-hidden="true">${esc(siteInitial(site.host))}</span>
+      <span class="site-host"><b title="${esc(site.host)}">${esc(site.host)}</b><small>${onOld ? `<em>旧节点 ${onOld}</em>` : ''}${bits.join(' · ')}</small></span>
+      <span class="count">${site.count}<small>连接</small></span>
     </div>`;
   }).join('');
-  const observed = c.observed_at ? `约 ${Math.max(0, Math.round(now - c.observed_at))} 秒前更新` : '';
-  return `<div class="conns-head"><span>${total} 个连接 · ${(c.sites || []).length + (c.more_sites || 0)} 个网站</span><span>${observed}</span></div>
-    ${total ? `<div class="split">${split}</div><div class="split-legend">${legend}</div>` : ''}
-    ${sites ? `<div class="site-list">${sites}</div>` : '<p class="note-sm">当前没有经过这条线路的连接。</p>'}
-    ${c.more_sites ? `<p class="note-sm">另有 ${c.more_sites} 个网站未列出。</p>` : ''}
-    <p class="note-sm">只显示网站域名，不显示 IP 和完整网址；只在本机页面显示，不保存。每 20 秒随完整检测更新。</p>`;
+  return `${summary}
+    <section class="dr-sec"><h3>按节点</h3>${handover}${nodeRows}</section>
+    <section class="dr-sec"><h3>按网站<span>按连接数排序</span></h3>
+      <div class="site-list">${siteRows}</div>
+      ${c.more_sites ? `<p class="note-sm">另有 ${c.more_sites} 个网站未列出。</p>` : ''}
+    </section>
+    <p class="note-sm">只显示网站域名，不显示 IP 和完整网址；只在本机页面显示，不保存。</p>`;
+}
+
+function renderDrawer(d) {
+  if (!drawer.group) return;
+  const g = d.groups.find(item => item.name === drawer.group) || d.groups[0];
+  if (!g) return;
+  const c = g.connections || { total: g.active_connections, by_node: {}, sites: [] };
+  patch($('#conn-tabs'), d.groups.map(item => `<button type="button" role="tab" aria-selected="${item.name === g.name}" data-group="${esc(item.name)}"><b>${esc(item.region || '')}</b>${esc(regionName(item.region))}<span class="count">${item.active_connections}</span></button>`).join(''));
+  setText($('#conn-title'), `${regionName(g.region)}线路 · 活跃连接`);
+  const age = c.observed_at ? `约 ${Math.max(0, Math.round(nowSeconds() - c.observed_at))} 秒前更新` : '等待下一轮完整检测';
+  setText($('#conn-meta'), `实时 · ${age}`);
+  patch($('#conn-body'), drawerHtml(g, c));
+}
+
+function openDrawer(group, trigger) {
+  closeTip();
+  drawer.group = group;
+  drawer.trigger = trigger || null;
+  const el = $('#conn-drawer');
+  el.inert = false;
+  el.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('drawer-open');
+  $('#conn-body').scrollTop = 0;
+  if (snapshot) renderDrawer(snapshot);
+  $('#conn-close').focus({ preventScroll: true });
+}
+
+function closeDrawer() {
+  if (!drawer.group) return;
+  drawer.group = null;
+  const el = $('#conn-drawer');
+  el.inert = true;
+  el.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('drawer-open');
+  if (drawer.trigger) drawer.trigger.focus({ preventScroll: true });
+  drawer.trigger = null;
 }
 
 /* ====================================================================
@@ -1390,7 +1509,16 @@ document.addEventListener('click', event => {
 }, true);
 document.addEventListener('focusin', event => { const b = event.target.closest && event.target.closest('.tip'); if (b && !tipPinned) openTip(b, false); });
 document.addEventListener('focusout', event => { if (event.target.closest && event.target.closest('.tip') && !tipPinned) closeTip(); });
-document.addEventListener('keydown', event => { if (event.key === 'Escape') closeTip(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') { if (!pop.hidden) closeTip(); else closeDrawer(); } });
+$('#conn-close').addEventListener('click', closeDrawer);
+$('#conn-scrim').addEventListener('click', closeDrawer);
+$('#conn-tabs').addEventListener('click', event => {
+  const b = event.target.closest('button[data-group]');
+  if (!b || b.dataset.group === drawer.group) return;
+  drawer.group = b.dataset.group;
+  $('#conn-body').scrollTop = 0;
+  if (snapshot) renderDrawer(snapshot);
+});
 window.addEventListener('scroll', () => { if (!tipPinned) closeTip(); }, { passive: true });
 
 /* ====================================================================
