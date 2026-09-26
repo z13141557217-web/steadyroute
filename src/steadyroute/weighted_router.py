@@ -43,7 +43,10 @@ CONTROLLER_SOCKET_PATHS = (
     os.path.join(tempfile.gettempdir(), "verge-mihomo.sock"),
     "/tmp/verge/verge-mihomo.sock",
 )
-BASE_DIR = "/Users/nurture/Library/Application Support/Clash-Verge-Stability-Router"
+# Default to the current user's Library; STEADYROUTE_BASE_DIR / STEADYROUTE_LOG_DIR override
+# (the LaunchAgent runs as the user, so ~ resolves to the same folder deploy.py writes).
+BASE_DIR = os.environ.get("STEADYROUTE_BASE_DIR") or os.path.expanduser(
+    "~/Library/Application Support/Clash-Verge-Stability-Router")
 STATE_PATH = os.path.join(BASE_DIR, "state.json")
 LOCK_PATH = os.path.join(BASE_DIR, "router.lock")
 DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard.html")
@@ -92,7 +95,7 @@ TIMELINE_WINDOW_SECONDS = 30 * 60     # legacy API: dashboard chart offers 5 / 1
 V1_TIMELINE_WINDOW_SECONDS = 300      # v1 recent_probes keeps its original 5-minute contract
 TIMELINE_LIMIT = 480                  # 360 fast-lane points + 90 standby points + switches
 CONNECTION_SITE_LIMIT = 30
-LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR", "/Users/nurture/Library/Logs/Clash-Verge-Stability-Router")
+LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR") or os.path.expanduser("~/Library/Logs/Clash-Verge-Stability-Router")
 MEMORY_SAMPLE_SECONDS = 600
 MEMORY_SAMPLE_LIMIT = 144
 EVENT_KEY_LIMIT = 1000
@@ -406,7 +409,18 @@ def iso_timestamp(value):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(value)))
 
 
+SERVICE_VERSION = None
+
+
 def read_service_version():
+    """VERSION of the running code; read once, since a deploy always restarts the process."""
+    global SERVICE_VERSION
+    if SERVICE_VERSION is None:
+        SERVICE_VERSION = _read_version_file()
+    return SERVICE_VERSION
+
+
+def _read_version_file():
     candidates = [
         os.path.join(APP_DIR, "VERSION"),
         os.path.join(os.path.dirname(APP_DIR), "VERSION"),

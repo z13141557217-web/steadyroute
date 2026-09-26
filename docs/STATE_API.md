@@ -1,7 +1,7 @@
 # 状态、状态机与只读 API 契约
 
 本文是 Issue #4 的实现级契约；完整范围与验收清单保存在
-`.github/ISSUE_DRAFTS/004-versioned-state-api.md`。
+`docs/archive/issue-drafts/004-versioned-state-api.md`。
 
 ## 版本边界
 
