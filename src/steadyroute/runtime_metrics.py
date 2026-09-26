@@ -26,6 +26,21 @@ class _TaskVMInfo(ctypes.Structure):
     ]
 
 
+class _TaskVMInfoRev3(ctypes.Structure):
+    # Same prefix, extended to rev3's ledger_phys_footprint_peak (macOS 10.15+), plus room for
+    # every later revision: recent kernels (seen on macOS 26) stop at rev2 unless the caller's
+    # buffer covers the whole current structure, so ask for more than any kernel returns.
+    _pack_ = 4
+    _fields_ = _TaskVMInfo._fields_ + [
+        ("min_address", ctypes.c_uint64), ("max_address", ctypes.c_uint64),
+        ("ledger_phys_footprint_peak", ctypes.c_int64),
+        ("_later_revisions", ctypes.c_uint32 * 212),
+    ]
+
+
+_REV3_WORDS = (ctypes.sizeof(_TaskVMInfoRev3) - ctypes.sizeof(ctypes.c_uint32 * 212)) // 4
+
+
 _LIBC = None
 
 
@@ -36,31 +51,63 @@ def peak_rss_mb():
     return round(float(usage) / divisor, 1)
 
 
+def _task_vm_info(structure, needed=None):
+    """Fill a task_vm_info structure; None unless the kernel returned the fields we need.
+
+    `needed` is the number of 32-bit words that must be filled (default: the whole structure).
+    """
+    global _LIBC
+    if _LIBC is None:
+        _LIBC = ctypes.CDLL(ctypes.util.find_library("c"))
+    task = ctypes.c_uint.in_dll(_LIBC, "mach_task_self_")
+    info = structure()
+    wanted = ctypes.sizeof(info) // 4
+    count = ctypes.c_uint(wanted)
+    result = _LIBC.task_info(task, _TASK_VM_INFO, ctypes.byref(info), ctypes.byref(count))
+    if result != 0 or count.value < (wanted if needed is None else needed):
+        return None
+    return info
+
+
+def _linux_status_mb(field):
+    try:
+        with open("/proc/self/status", "r", encoding="ascii") as handle:
+            for line in handle:
+                if line.startswith(field + ":"):
+                    return round(float(line.split()[1]) / 1024.0, 1)
+    except OSError:
+        return None
+    return None
+
+
 def current_footprint_mb():
     """Current memory as Activity Monitor shows it (phys_footprint); None if unavailable."""
-    global _LIBC
     if sys.platform == "darwin":
         try:
-            if _LIBC is None:
-                _LIBC = ctypes.CDLL(ctypes.util.find_library("c"))
-            task = ctypes.c_uint.in_dll(_LIBC, "mach_task_self_")
-            info = _TaskVMInfo()
-            wanted = ctypes.sizeof(info) // 4
-            count = ctypes.c_uint(wanted)
-            result = _LIBC.task_info(task, _TASK_VM_INFO, ctypes.byref(info), ctypes.byref(count))
-            if result != 0 or count.value < wanted:
-                return None
-            return round(float(info.phys_footprint) / 1024.0 / 1024.0, 1)
+            info = _task_vm_info(_TaskVMInfo)
+            return None if info is None else round(float(info.phys_footprint) / 1024.0 / 1024.0, 1)
         except Exception:
             return None
     if sys.platform.startswith("linux"):
+        return _linux_status_mb("VmRSS")
+    return None
+
+
+def peak_footprint_mb():
+    """Lifetime peak on the same scale as current_footprint_mb(); None if the OS does not say.
+
+    macOS: ledger_phys_footprint_peak. Linux: VmHWM (peak of VmRSS).
+    """
+    if sys.platform == "darwin":
         try:
-            with open("/proc/self/status", "r", encoding="ascii") as handle:
-                for line in handle:
-                    if line.startswith("VmRSS:"):
-                        return round(float(line.split()[1]) / 1024.0, 1)
-        except OSError:
+            info = _task_vm_info(_TaskVMInfoRev3, needed=_REV3_WORDS)
+            if info is None or info.ledger_phys_footprint_peak <= 0:
+                return None
+            return round(float(info.ledger_phys_footprint_peak) / 1024.0 / 1024.0, 1)
+        except Exception:
             return None
+    if sys.platform.startswith("linux"):
+        return _linux_status_mb("VmHWM")
     return None
 
 

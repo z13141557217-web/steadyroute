@@ -1,60 +1,1521 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>稳航 SteadyRoute</title>
-  <style>
-    :root { color-scheme: light dark; --bg: light-dark(#f4f6f9,#0e1117); --surface: light-dark(#fff,#171b23); --soft: light-dark(#f2f4f7,#20252f); --text: light-dark(#16191f,#f3f5f8); --muted: light-dark(#687180,#9fa8b7); --line: light-dark(#dfe3e9,#303744); --green: light-dark(#16834d,#50d78d); --green-soft: light-dark(#e9f7ef,#123526); --amber: light-dark(#9b6200,#efb44d); --amber-soft: light-dark(#fff5df,#382b13); --red: light-dark(#c03b3b,#ff7777); --red-soft: light-dark(#fdecec,#3d1b20); --blue: light-dark(#356ad8,#79a3ff); --blue-soft: light-dark(#edf3ff,#182743); --shadow:0 8px 28px light-dark(rgba(29,40,60,.07),rgba(0,0,0,.22)); }
-    * { box-sizing:border-box; }
-    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    main { width:min(1160px,calc(100% - 32px)); margin:26px auto 54px; }
-    h1,h2,p { margin:0; } h1 { font-size:clamp(25px,3.5vw,36px); font-weight:650; letter-spacing:-.035em; } h2 { font-size:17px; font-weight:650; } button { font:inherit; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; margin-bottom:18px; }
-    .subtitle,.live-meta,.route-kicker,.route-reason,.health-label,.health-note,.node-copy small,.policy-item,footer { color:var(--muted); }
-    .subtitle { margin-top:3px; } .live { text-align:right; } .live-state { display:inline-flex; align-items:center; gap:8px; color:var(--green); font-weight:650; } .live-dot { width:9px; height:9px; border-radius:50%; background:currentColor; box-shadow:0 0 0 4px color-mix(in srgb,currentColor 15%,transparent); } .live-meta { font-size:12px; margin-top:5px; }
-    .card { background:var(--surface); border:1px solid var(--line); border-radius:15px; box-shadow:var(--shadow); }
-    .routes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; } .route { padding:18px; min-width:0; } .route-head { display:flex; justify-content:space-between; align-items:center; gap:12px; } .route-kicker { font-size:12px; }
-    .pill { padding:3px 9px; border-radius:999px; color:var(--blue); background:var(--blue-soft); font-size:12px; white-space:nowrap; } .pill.good { color:var(--green); background:var(--green-soft); } .pill.warn { color:var(--amber); background:var(--amber-soft); } .pill.bad { color:var(--red); background:var(--red-soft); }
-    .route-node { margin-top:13px; font-size:17px; font-weight:650; overflow-wrap:anywhere; } .route-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:16px; } .route-metric { padding:9px 10px; border-radius:10px; background:var(--soft); min-width:0; } .route-metric span { display:block; color:var(--muted); font-size:11px; } .route-metric strong { display:block; margin-top:2px; font-size:15px; font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .route-reason { font-size:12px; margin-top:12px; } .route-strip { margin-top:12px; } .strip-head { display:flex; justify-content:space-between; gap:8px; font-size:11px; color:var(--muted); margin-bottom:4px; font-variant-numeric:tabular-nums; } .route-strip svg { display:block; width:100%; height:44px; background:var(--soft); border-radius:8px; }
-    .health { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:0; margin:14px 0; overflow:hidden; } .health-item { min-height:112px; padding:15px 16px; border-left:1px solid var(--line); display:flex; flex-direction:column; justify-content:center; } .health-item:first-child { border-left:0; } .health-label { min-height:18px; font-size:11px; } .health-value { min-height:30px; margin-top:2px; font-size:18px; font-weight:650; font-variant-numeric:tabular-nums; display:flex; align-items:center; } .health-note { min-height:18px; font-size:11px; margin-top:2px; }
-    .nodes-card { overflow:hidden; } .nodes-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 18px 13px; border-bottom:1px solid var(--line); } .filters { display:flex; flex-wrap:wrap; gap:6px; } .filter { border:0; border-radius:999px; padding:6px 11px; background:transparent; color:var(--muted); } .filter:hover { background:var(--soft); color:var(--text); } .filter.active { background:var(--text); color:var(--bg); }
-    .table-wrap { overflow-x:auto; } table { width:100%; min-width:1000px; table-layout:fixed; border-collapse:collapse; } col.node-col { width:auto; } col.availability-col { width:140px; } col.latency-col { width:110px; } col.jitter-col { width:90px; } col.quality-col { width:110px; } col.state-col { width:100px; } col.streak-col { width:90px; } th,td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:center; font-variant-numeric:tabular-nums; } th { color:var(--muted); font-size:11px; font-weight:550; } th:first-child,td:first-child { text-align:left; } tbody tr:last-child td { border-bottom:0; } tr.current { background:color-mix(in srgb,var(--blue) 7%,transparent); }
-    .node-name { display:flex; align-items:center; gap:9px; min-width:330px; } .state-dot { width:8px; height:8px; flex:0 0 auto; border-radius:50%; background:var(--green); } .state-dot.collecting,.state-dot.warn { background:var(--amber); } .state-dot.bad { background:var(--red); } .node-copy { min-width:0; } .node-copy strong { display:block; font-weight:550; overflow-wrap:anywhere; }
-    .availability { display:grid; grid-template-columns:44px 76px; justify-content:center; align-items:center; column-gap:8px; } .availability > span:first-child { text-align:right; } .availability-track { width:76px; height:6px; overflow:hidden; border-radius:999px; background:var(--soft); } .availability-track i { display:block; height:100%; background:var(--green); } .score { font-weight:650; } .score.bad { color:var(--red); } .result { display:inline-flex; min-width:46px; justify-content:center; padding:2px 8px; border-radius:999px; color:var(--green); background:var(--green-soft); font-size:11px; } .result.bad { color:var(--red); background:var(--red-soft); } .empty { display:none; padding:34px 18px; color:var(--muted); text-align:center; }
-    details { margin-top:14px; padding:14px 16px; } summary { color:var(--muted); } .policy-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:12px; } .policy-item { font-size:12px; } .policy-item strong { display:block; color:var(--text); font-size:14px; font-weight:550; } footer { margin-top:16px; text-align:center; font-size:11px; }
-    @media (max-width:820px) { main { width:min(100% - 20px,1160px); margin-top:18px; } .header { flex-direction:column; } .live { text-align:left; } .routes { grid-template-columns:1fr; } .health { grid-template-columns:repeat(2,minmax(0,1fr)); } .health-item { border-left:0; border-top:1px solid var(--line); } .health-item:first-child { grid-column:1/-1; border-top:0; } .nodes-head { align-items:flex-start; flex-direction:column; } .policy-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-    @media (max-width:520px) { .route-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .health { grid-template-columns:1fr 1fr; } }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>稳航 SteadyRoute</title>
+<style>
+/* ==================================================================
+   稳航 · design tokens
+   Instrument-calm: ink on paper by day, a lit chart table by night.
+   One accent (sea-chart blue). Status colours are only for status.
+   ================================================================== */
+:root {
+  color-scheme: light;
+  --page: #f4f6f9;
+  --page-glow: rgba(14, 116, 163, .07);
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --sunken: #eef2f6;
+  --hair: rgba(15, 30, 50, .08);
+  --hair-2: rgba(15, 30, 50, .14);
+  --ink: #0b1522;
+  --ink-2: #334155;
+  --ink-3: #64748b;
+  --ink-4: #94a3b8;
+  --accent: #0e74a3;
+  --accent-2: #0b5f86;
+  --accent-soft: rgba(14, 116, 163, .09);
+  --accent-line: rgba(14, 116, 163, .35);
+  --standby: #94a3b8;
+  --good: #15803d;
+  --good-soft: rgba(21, 128, 61, .09);
+  --warn: #b45309;
+  --warn-soft: rgba(180, 83, 9, .10);
+  --bad: #c2303a;
+  --bad-soft: rgba(194, 48, 58, .09);
+  --shadow-1: 0 1px 2px rgba(15, 30, 50, .05);
+  --shadow-2: 0 1px 2px rgba(15, 30, 50, .04), 0 12px 32px -12px rgba(15, 30, 50, .14);
+  --pop: 0 18px 48px -12px rgba(15, 30, 50, .28);
+  --r-lg: 20px;
+  --r-md: 12px;
+  --r-sm: 8px;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #080c12;
+    --page-glow: rgba(56, 189, 248, .07);
+    --surface: #0f151d;
+    --surface-2: #121a23;
+    --sunken: #0b1118;
+    --hair: rgba(226, 236, 248, .07);
+    --hair-2: rgba(226, 236, 248, .13);
+    --ink: #e9eef5;
+    --ink-2: #c3ccd8;
+    --ink-3: #8593a6;
+    --ink-4: #5d6b7e;
+    --accent: #5cc8ea;
+    --accent-2: #8ad8f1;
+    --accent-soft: rgba(92, 200, 234, .10);
+    --accent-line: rgba(92, 200, 234, .40);
+    --standby: #6b7a8f;
+    --good: #4ccf8f;
+    --good-soft: rgba(76, 207, 143, .11);
+    --warn: #eab04d;
+    --warn-soft: rgba(234, 176, 77, .12);
+    --bad: #f2737d;
+    --bad-soft: rgba(242, 115, 125, .12);
+    --shadow-1: 0 1px 0 rgba(255, 255, 255, .03);
+    --shadow-2: 0 1px 0 rgba(255, 255, 255, .03), 0 18px 40px -18px rgba(0, 0, 0, .7);
+    --pop: 0 18px 48px -12px rgba(0, 0, 0, .7);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #080c12;
+  --page-glow: rgba(56, 189, 248, .07);
+  --surface: #0f151d;
+  --surface-2: #121a23;
+  --sunken: #0b1118;
+  --hair: rgba(226, 236, 248, .07);
+  --hair-2: rgba(226, 236, 248, .13);
+  --ink: #e9eef5;
+  --ink-2: #c3ccd8;
+  --ink-3: #8593a6;
+  --ink-4: #5d6b7e;
+  --accent: #5cc8ea;
+  --accent-2: #8ad8f1;
+  --accent-soft: rgba(92, 200, 234, .10);
+  --accent-line: rgba(92, 200, 234, .40);
+  --standby: #6b7a8f;
+  --good: #4ccf8f;
+  --good-soft: rgba(76, 207, 143, .11);
+  --warn: #eab04d;
+  --warn-soft: rgba(234, 176, 77, .12);
+  --bad: #f2737d;
+  --bad-soft: rgba(242, 115, 125, .12);
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, .03);
+  --shadow-2: 0 1px 0 rgba(255, 255, 255, .03), 0 18px 40px -18px rgba(0, 0, 0, .7);
+  --pop: 0 18px 48px -12px rgba(0, 0, 0, .7);
+}
+
+/* ------------------------------------------------------------------ base */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { background: var(--page); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 420px at 50% -120px, var(--page-glow), transparent 70%),
+    var(--page);
+  color: var(--ink);
+  font: 14px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .005em;
+}
+h1, h2, h3, p { margin: 0; }
+button { font: inherit; color: inherit; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-2); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.wrap { width: min(1200px, 100%); margin: 0 auto; padding-inline: 24px; }
+.eyebrow { font-size: 12px; color: var(--ink-3); letter-spacing: .02em; }
+.num { font-family: var(--display); font-feature-settings: "tnum"; }
+
+/* ------------------------------------------------------------------ top bar */
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30;
+  background: color-mix(in srgb, var(--page) 78%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--hair);
+}
+.topbar .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.brand svg { width: 28px; height: 28px; display: block; }
+.brand-name { display: grid; line-height: 1.1; }
+.brand-name b { font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: .06em; }
+.brand-name span { font-size: 10.5px; color: var(--ink-3); letter-spacing: .14em; text-transform: uppercase; }
+.nav { display: flex; gap: 4px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.nav a {
+  position: relative; padding: 8px 12px; border-radius: 9px; color: var(--ink-3); white-space: nowrap; font-size: 13.5px;
+  transition: color .15s, background .15s;
+}
+.nav a:hover { color: var(--ink); background: var(--sunken); }
+.nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.nav a[aria-current="page"]::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -11px; height: 2px; border-radius: 2px; background: var(--accent);
+}
+.status-pill {
+  display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 10px; flex: 0 0 auto;
+  border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--good-soft); color: var(--good);
+}
+.status-pill[data-sev="warn"] { background: var(--warn-soft); color: var(--warn); }
+.status-pill[data-sev="bad"] { background: var(--bad-soft); color: var(--bad); }
+.beacon { position: relative; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.beacon::after {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%; background: currentColor; opacity: 0;
+  animation: beacon 2.4s cubic-bezier(.2, .6, .3, 1) infinite;
+}
+@keyframes beacon { 0% { transform: scale(.4); opacity: .45; } 100% { transform: scale(1.5); opacity: 0; } }
+
+/* ------------------------------------------------------------------ header */
+main.wrap { padding-block: 18px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.head > * { min-width: 0; }
+/* the header is one quiet panel: a status mark and a plain sentence on the left, four facts on the right */
+.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 40px; align-items: center; padding: 12px 24px 12px 14px; }
+.hs { display: flex; align-items: center; gap: 14px; min-width: 0; }
+/* the SteadyRoute mark, alive: light travels along the route and the destination breathes */
+.hs-mark {
+  --m1: #1c93c7; --m2: #0a4f70;   /* fixed deep tones so white stays crisp in both themes */
+  position: relative; flex: 0 0 auto; width: 46px; height: 46px; border-radius: 13px; overflow: hidden;
+  background: linear-gradient(135deg, var(--m1), var(--m2));
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--m1) 70%, transparent), inset 0 1px 0 rgba(255, 255, 255, .22);
+  transition: box-shadow .4s;
+}
+.hs-mark[data-sev="warn"] { --m1: #e0962a; --m2: #9a5506; }
+.hs-mark[data-sev="bad"] { --m1: #e0524a; --m2: #961c17; }
+.hs-mark::before {    /* a slow sheen, like light on water */
+  content: ""; position: absolute; inset: -40%; background: radial-gradient(closest-side, rgba(255, 255, 255, .28), transparent 70%);
+  transform: translate(-30%, 25%); animation: mk-sheen 7s ease-in-out infinite alternate;
+}
+.hs-mark svg { position: relative; width: 100%; height: 100%; display: block; }
+.hs-mark .track { fill: none; stroke: rgba(255, 255, 255, .38); stroke-width: 2.4; stroke-linecap: round; }
+.hs-mark .flow {
+  fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 26 130;
+  animation: mk-flow 2.6s cubic-bezier(.45, .05, .35, 1) infinite;
+}
+.hs-mark .dest { fill: #fff; }
+.hs-mark .halo { fill: #fff; transform-box: fill-box; transform-origin: center; animation: mk-halo 2.6s ease-out infinite; }
+.hs-mark .origin { fill: #fff; opacity: .75; }
+.hs-mark[data-sev="warn"] .flow { animation-duration: 4.2s; }
+.hs-mark[data-sev="warn"] .halo { animation-duration: 4.2s; }
+.hs-mark[data-sev="bad"] .flow { animation: none; stroke-dashoffset: 26; }
+.hs-mark[data-sev="bad"] .dest { animation: mk-blink 1.1s steps(2, jump-none) infinite; }
+.hs-mark[data-sev="bad"] .halo { animation: none; opacity: 0; }
+@keyframes mk-flow { 0% { stroke-dashoffset: 26; } 100% { stroke-dashoffset: -104; } }
+@keyframes mk-halo { 0%, 55% { transform: scale(1); opacity: 0; } 62% { opacity: .55; } 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes mk-sheen { to { transform: translate(25%, -25%); } }
+@keyframes mk-blink { 50% { opacity: .35; } }
+.hs-copy { display: grid; gap: 5px; min-width: 0; }
+.head h1 { font-family: var(--display); font-size: 18px; font-weight: 620; letter-spacing: .01em; line-height: 1.3; color: var(--ink); text-wrap: balance; }
+.head h1[data-sev="warn"] { color: var(--warn); }
+.head h1[data-sev="bad"] { color: var(--bad); }
+.head .sub { color: var(--ink-3); font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.head .sub > span:empty { display: none; }
+#head-sub { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.lane { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 9px 0 3px; border-radius: 7px; background: var(--sunken); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
+.lane b { font-family: var(--display); font-size: 10.5px; font-weight: 700; letter-spacing: .04em; padding: 2px 5px; border-radius: 5px; background: var(--surface); color: var(--ink-2); box-shadow: 0 0 0 1px var(--hair); }
+.lane em { font-style: normal; font-family: var(--display); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.head-meta { font-size: 12px; color: var(--ink-4); }
+.activity {
+  display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px; border-radius: 7px;
+  font-size: 12.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+}
+.activity::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.kpis { display: flex; gap: 0; }
+.kpi { display: grid; gap: 2px; padding: 2px 22px; border-left: 1px solid var(--hair); min-width: 0; }
+.kpi:first-child { border-left: 0; padding-left: 0; }
+.kpi .k { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.kpi .v { font-family: var(--display); font-size: 22px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; line-height: 1.1; }
+.kpi .v small { font-family: var(--sans); font-size: 12px; font-weight: 500; color: var(--ink-3); margin-left: 3px; }
+.kpi .note { font-size: 11.5px; color: var(--ink-4); white-space: nowrap; }
+.meter { display: flex; width: 100%; min-width: 96px; height: 4px; border-radius: 999px; overflow: hidden; background: var(--sunken); margin-top: 7px; margin-bottom: 5px; }
+.meter i { display: block; height: 100%; }
+
+/* ------------------------------------------------------------------ section heads & toggles */
+.range { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.range-label { font-size: 12px; color: var(--ink-3); }
+.range .seg button { height: 26px; padding: 0 10px; font-size: 12px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 2px 0 -4px; }
+.section-head > div { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.section-head .seg button { height: 26px; padding: 0 11px; }
+.section-head h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
+.section-head p { color: var(--ink-3); font-size: 12.5px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--sunken); border-radius: 11px; border: 1px solid var(--hair); }
+.seg button, .filter {
+  border: 0; background: transparent; height: 30px; padding: 0 13px; border-radius: 8px; color: var(--ink-3);
+  font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: color .15s, background .15s;
+}
+.seg button:hover, .filter:hover { color: var(--ink); }
+.seg button[aria-pressed="true"], .seg button[aria-selected="true"], .filter[aria-pressed="true"] {
+  background: var(--surface); color: var(--accent); font-weight: 600;
+  box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-1);
+}
+.filter .count, .dr-tabs .count { font-size: 11px; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center; background: var(--hair); color: inherit; font-weight: 600; }
+.filter[aria-pressed="true"] .count, .dr-tabs [aria-selected="true"] .count { background: var(--accent-soft); }
+
+/* ------------------------------------------------------------------ cards */
+.card { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
+
+/* ------------------------------------------------------------------ route cards (aligned row by row) */
+.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); gap: 0 20px; }
+.route {
+  grid-row: span 5; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
+}
+.r-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 16px 22px 0; }
+.r-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.r-title .r-sub { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.region-code {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; padding: 2px 6px; border-radius: 5px;
+  color: var(--accent); background: var(--accent-soft);
+}
+.r-title h2 { font-size: 14.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.decision {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; background: var(--good-soft); color: var(--good); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.decision::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.decision.warn { background: var(--warn-soft); color: var(--warn); }
+.decision.bad { background: var(--bad-soft); color: var(--bad); }
+.decision.info { background: var(--accent-soft); color: var(--accent); }
+
+.r-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; padding: 10px 22px 12px; }
+.r-node .label { font-size: 11px; color: var(--ink-3); letter-spacing: .04em; }
+.r-node .name { font-family: var(--display); font-size: 21px; font-weight: 650; line-height: 1.25; margin-top: 2px; overflow-wrap: anywhere; }
+.r-node .standby { margin-top: 5px; font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.r-node .standby b { color: var(--ink-2); font-weight: 550; }
+.dash { width: 16px; height: 0; border-top: 2px dashed var(--standby); display: inline-block; }
+.readout { text-align: right; }
+.readout .big { font-family: var(--display); font-size: 42px; font-weight: 600; letter-spacing: -.03em; line-height: 1; color: var(--ink); }
+.readout .big small { font-family: var(--sans); font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--ink-3); margin-left: 4px; }
+.readout .cap { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; display: inline-flex; gap: 4px; align-items: center; }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+.stat { padding: 10px 22px; display: grid; gap: 3px; border-left: 1px solid var(--hair); min-width: 0; }
+.stat:first-child { border-left: 0; }
+.stat .k { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; line-height: 1.4; }
+.stat .v { font-family: var(--display); font-size: 17px; font-weight: 600; white-space: nowrap; }
+.stat .v small { font-family: var(--sans); font-size: 12px; font-weight: 500; color: var(--ink-3); margin-left: 2px; }
+.stat button.v { border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; }
+.stat button.v small { color: var(--accent); }
+.stat button.v:hover small { text-decoration: underline; text-underline-offset: 3px; }
+
+.r-chart { padding: 12px 22px 2px; display: grid; gap: 6px; }
+.chart-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; }
+.lg-cur { width: 14px; height: 3px; border-radius: 2px; background: var(--accent); }
+.lg-sb { width: 14px; border-top: 2px dashed var(--standby); }
+.lg-fail { width: 7px; height: 7px; border-radius: 2px; background: var(--bad); }
+.lg-fo { width: 2px; height: 11px; background: var(--bad); }
+.lg-op { width: 0; height: 11px; border-left: 2px dashed var(--good); }
+.live { font-size: 12px; color: var(--ink-3); display: inline-flex; align-items: baseline; gap: 6px; }
+.live b { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--ink); }
+.plot { position: relative; height: 130px; touch-action: pan-y; overflow: hidden; border-radius: var(--r-md); }
+.plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.plot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); font-size: 12.5px; }
+.axis { fill: var(--ink-4); font-size: 10.5px; font-family: var(--mono); }
+.grid { stroke: var(--hair); stroke-width: 1; stroke-dasharray: 2 4; }
+.baseline { stroke: var(--hair-2); stroke-width: 1; }
+.flag-text { font-size: 10.5px; font-weight: 600; }
+.pulse { transform-box: fill-box; transform-origin: center; animation: pulse 2s cubic-bezier(.2, .6, .3, 1) infinite; }
+@keyframes pulse { 0% { transform: scale(1); opacity: .5; } 100% { transform: scale(3.2); opacity: 0; } }
+.plot-tip {
+  position: absolute; pointer-events: none; z-index: 3; min-width: 164px; padding: 9px 11px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--hair-2); box-shadow: var(--pop); font-size: 12px; line-height: 1.55;
+}
+.plot-tip .t { color: var(--ink-3); font-family: var(--mono); font-size: 11px; }
+.plot-tip .row { display: flex; justify-content: space-between; gap: 14px; }
+.plot-tip .row b { font-family: var(--mono); font-weight: 600; }
+
+.r-reason { padding: 2px 22px 12px; font-size: 12.5px; color: var(--ink-2); line-height: 1.6; }
+.r-reason .next { color: var(--ink-3); }
+.handover {
+  margin-top: 6px; display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; cursor: help;
+}
+.handover span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.handover b { color: var(--ink-2); font-weight: 600; }
+.ho-bar { display: flex; flex: 0 0 38px; height: 5px; border-radius: 999px; overflow: hidden; background: var(--sunken); }
+.ho-bar i { display: block; height: 100%; transition: width .6s ease; }
+.ho-bar i:first-child { background: var(--standby); }
+.ho-bar i:last-child { background: var(--accent); }
+.split { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--sunken); }
+.split i { display: block; height: 100%; transition: width .6s ease; }
+.split-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-2); }
+
+/* ------------------------------------------------------------------ connections drawer */
+/* Opens from the right (a sheet from the bottom on phones), so the cards never change height. */
+.scrim {
+  position: fixed; inset: 0; z-index: 60; background: rgba(8, 15, 25, .28); opacity: 0; visibility: hidden;
+  transition: opacity .28s ease, visibility 0s linear .28s;
+}
+.drawer {
+  position: fixed; z-index: 61; top: 12px; right: 12px; bottom: 12px; width: min(460px, calc(100vw - 24px));
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr); background: var(--surface); border: 1px solid var(--hair);
+  border-radius: 20px; box-shadow: 0 30px 80px -20px rgba(8, 15, 25, .45), 0 2px 8px rgba(8, 15, 25, .08);
+  transform: translateX(calc(100% + 24px)); visibility: hidden;
+  transition: transform .34s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .34s;
+}
+body.drawer-open .scrim { opacity: 1; visibility: visible; transition: opacity .28s ease; }
+body.drawer-open .drawer { transform: none; visibility: visible; transition: transform .34s cubic-bezier(.2, .8, .2, 1); }
+.dr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 20px 22px 14px; }
+.dr-head h2 { font-family: var(--display); font-size: 18px; font-weight: 650; margin-top: 2px; }
+.dr-close {
+  width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink-2);
+  display: grid; place-items: center; cursor: pointer; flex: 0 0 auto;
+}
+.dr-close:hover { background: var(--sunken); color: var(--ink); }
+.dr-close svg { width: 14px; height: 14px; }
+.dr-tabs { margin: 0 22px 4px; display: flex; }
+.dr-tabs button { flex: 1 1 0; justify-content: center; }
+.dr-tabs b { font-family: var(--display); font-size: 10.5px; letter-spacing: .04em; margin-right: 2px; }
+.dr-body { overflow-y: auto; overscroll-behavior: contain; padding: 14px 22px 22px; display: grid; gap: 20px; align-content: start; }
+.dr-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--hair); border-radius: 14px; background: var(--surface-2); }
+.dr-sum div { padding: 12px 14px; display: grid; gap: 2px; border-left: 1px solid var(--hair); min-width: 0; }
+.dr-sum div:first-child { border-left: 0; }
+.dr-sum b { font-family: var(--display); font-size: 20px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dr-sum span { font-size: 11.5px; color: var(--ink-3); }
+.dr-sec { display: grid; gap: 10px; }
+.dr-sec h3 { font-size: 12px; font-weight: 600; color: var(--ink-3); display: flex; justify-content: space-between; gap: 8px; }
+.dr-sec h3 span { font-weight: 500; color: var(--ink-4); }
+.dr-handover { font-size: 12.5px; color: var(--ink-2); background: var(--accent-soft); border-radius: 10px; padding: 9px 12px; line-height: 1.55; }
+.nd { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
+.nd > i { width: 8px; height: 8px; border-radius: 50%; }
+.nd-name { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nd-name em { font-style: normal; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px; margin-left: 6px; vertical-align: 1px; }
+.nd-name em.cur { background: var(--accent); color: var(--surface); }
+.nd-name em.old { background: var(--sunken); color: var(--ink-3); }
+.nd-count { font-family: var(--display); font-weight: 650; font-size: 14px; }
+.nd-count small { font-family: var(--sans); font-weight: 500; color: var(--ink-3); font-size: 11.5px; margin-left: 2px; }
+.nd .track { grid-column: 2 / -1; height: 4px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+.nd .track i { display: block; height: 100%; border-radius: 999px; transition: width .6s ease; }
+.site-list { display: grid; border: 1px solid var(--hair); border-radius: 14px; overflow: hidden; }
+.site { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--hair); }
+.site:first-child { border-top: 0; }
+.site .av {
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 13px;
+  color: var(--ink-2); background: var(--sunken); text-transform: uppercase;
+}
+.site-host { min-width: 0; display: grid; gap: 1px; }
+.site-host b { font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-host small { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-host small em { font-style: normal; color: var(--ink-2); background: var(--sunken); padding: 0 5px; border-radius: 4px; margin-right: 4px; }
+.site .count { font-family: var(--display); font-weight: 650; font-size: 14px; min-width: 28px; text-align: right; }
+.site .count small { display: block; font-family: var(--sans); font-weight: 500; font-size: 10.5px; color: var(--ink-4); }
+.dr-empty { padding: 26px 14px; text-align: center; color: var(--ink-3); font-size: 13px; }
+.note-sm { font-size: 11.5px; color: var(--ink-4); }
+
+/* ------------------------------------------------------------------ nodes */
+.nodes-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 24px; flex-wrap: wrap; }
+.nodes-head h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
+.nodes-head p { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 760px; }
+/* data columns shrink to their content and sit centred; the node name takes the rest */
+th, td { width: 1%; padding: 8px 20px; text-align: center; white-space: nowrap; vertical-align: middle; }
+th:first-child, td:first-child { width: auto; text-align: left; white-space: normal; padding-left: 24px; }
+th:last-child, td:last-child { padding-right: 24px; }
+th { font-size: 11.5px; font-weight: 500; color: var(--ink-3); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); background: var(--surface-2); }
+th .th { display: inline-flex; align-items: center; gap: 4px; }
+tbody td { border-bottom: 1px solid var(--hair); font-family: var(--display); font-size: 14px; color: var(--ink-2); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:not(.group-row):hover td { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+tr.group-row td {
+  padding: 12px 24px 6px; text-align: left; font-family: var(--sans); font-size: 12px; font-weight: 650; color: var(--ink); letter-spacing: .06em;
+  border-bottom: 1px solid var(--hair); background: transparent !important;
+}
+tr.group-row td span { color: var(--ink-3); font-weight: 500; margin-left: 10px; letter-spacing: 0; }
+/* the node in use: a slim accent rule on the left, a whisper of tint */
+tr.is-current td { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.nm { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: 0 0 auto; box-shadow: 0 0 0 3px var(--good-soft); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.dot.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+.dot.info { background: var(--standby); box-shadow: 0 0 0 3px var(--sunken); }
+.nm-copy { display: grid; min-width: 0; gap: 1px; }
+.nm-copy b { font-family: var(--sans); font-weight: 560; color: var(--ink); overflow-wrap: anywhere; }
+.nm-copy small { font-family: var(--sans); color: var(--ink-3); font-size: 12px; }
+.tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px; margin-left: 6px; vertical-align: 1px; letter-spacing: .02em; }
+.tag.cur { background: var(--accent); color: var(--surface); }
+.tag.hot { color: var(--ink-2); border: 1px dashed var(--hair-2); }
+.avail { display: inline-flex; align-items: center; gap: 10px; }
+.avail .pctv { min-width: 38px; text-align: right; }
+.bar { width: 64px; height: 4px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--good); border-radius: 999px; }
+.bar i.warn { background: var(--warn); }
+.bar i.bad { background: var(--bad); }
+.q { font-weight: 600; color: var(--ink); }
+.state { display: inline-flex; align-items: center; font-family: var(--sans); font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 600; }
+.state.warn { background: var(--warn-soft); color: var(--warn); }
+.state.bad { background: var(--bad-soft); color: var(--bad); }
+.state.info { background: var(--sunken); color: var(--ink-2); }
+.streak.fail { color: var(--bad); font-weight: 600; }
+.empty-row { padding: 30px; text-align: center; color: var(--ink-3); }
+
+
+footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------------ tooltip */
+.tip {
+  width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--hair-2); background: transparent; color: var(--ink-4);
+  font-size: 10px; font-weight: 600; line-height: 1; display: inline-grid; place-items: center; cursor: help; padding: 0; flex: 0 0 auto;
+  transition: color .15s, border-color .15s;
+}
+.tip:hover, .tip[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+#tip-pop {
+  position: fixed; z-index: 60; width: min(304px, calc(100vw - 24px)); padding: 13px 15px; border-radius: 13px;
+  background: var(--surface); border: 1px solid var(--hair-2); box-shadow: var(--pop); font-size: 12.5px; line-height: 1.65;
+}
+#tip-pop h4 { margin: 0 0 4px; font-size: 13.5px; }
+#tip-pop p { color: var(--ink-2); }
+#tip-pop .val { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hair); color: var(--ink); font-weight: 600; }
+#tip-pop a { display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 500; }
+
+/* ------------------------------------------------------------------ first-load shimmer */
+.skeleton { background: linear-gradient(90deg, var(--sunken) 0%, var(--surface-2) 50%, var(--sunken) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: 6px; color: transparent !important; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ------------------------------------------------------------------ responsive */
+/* Card-width breakpoints. A size container would break the shared subgrid rows that keep the two
+   cards aligned, so a ResizeObserver tags each card instead: w600 / w420 / w380. A card narrower
+   than ~600px keeps its four metrics in one row, just tighter; only a phone-narrow card folds to 2 x 2. */
+.route.w600 .stats { grid-template-columns: 1.3fr 1fr 1fr 1fr; }
+.route.w600 .stat { padding: 12px 14px; }
+.route.w600 .stat .k { font-size: 11px; gap: 3px; }
+.route.w600 .stat:first-child { padding-left: 20px; }
+.route.w600 .stat .v { font-size: 16px; }
+.route.w600 .readout .big { font-size: 38px; }
+.route.w600 .r-head, .route.w600 .r-hero, .route.w600 .r-chart, .route.w600 .r-reason { padding-inline: 18px; }
+.route.w600 .r-sub { display: none; }
+.route.w420 .r-hero { grid-template-columns: 1fr; }
+.route.w420 .readout { text-align: left; padding-top: 0; }
+.route.w380 .stats { grid-template-columns: 1fr 1fr; }
+.route.w380 .stat .k { font-size: 11.5px; }
+.route.w380 .stat, .route.w380 .stat:first-child { padding: 12px 18px; }
+.route.w380 .stat:nth-child(3) { border-left: 0; }
+.route.w380 .stat:nth-child(n+3) { border-top: 1px solid var(--hair); }
+@media (max-width: 1060px) {
+  .head { grid-template-columns: 1fr; gap: 14px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); padding-top: 14px; }
+}
+@media (max-width: 980px) {
+  .routes { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 14px; }
+  .route { grid-row: auto; grid-template-rows: none; }
+}
+@supports not (grid-template-rows: subgrid) {
+  .routes { grid-template-rows: none; row-gap: 20px; }
+  .route { grid-row: auto; grid-template-rows: none; }
+}
+@media (max-width: 720px) {
+  .wrap { padding-inline: 16px; }
+  .topbar .wrap { height: auto; flex-wrap: wrap; gap: 6px 14px; padding-block: 10px; }
+  .nav { order: 3; flex-basis: 100%; margin-inline: -8px; }
+  .nav a[aria-current="page"]::after { bottom: -1px; }
+  .status-pill { margin-left: auto; }
+  .range { order: 4; flex-basis: 100%; }
+  main.wrap { padding-block: 22px 36px; gap: 22px; }
+  .head { padding: 18px; }
+  .hs { align-items: flex-start; }
+  .hs-mark { width: 44px; height: 44px; border-radius: 13px; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 0; }
+  .kpi { padding: 0 16px; min-width: 0; }
+  .kpi .note, .kpi .k { white-space: normal; }
+  .kpi:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .r-head, .r-hero, .r-chart, .r-reason { padding-inline: 18px; }
+  .r-hero { grid-template-columns: 1fr; }
+  .readout { text-align: left; }
+  .readout .big { font-size: 38px; }
+  .plot { height: 170px; }
+  .drawer { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 88vh; border-radius: 20px 20px 0 0; border-bottom: 0; transform: translateY(100%); }
+  .dr-head { padding: 16px 18px 12px; }
+  .dr-tabs { margin-inline: 18px; }
+  .dr-body { padding: 14px 18px 26px; }
+  table { min-width: 0; }
+  thead { display: none; }
+  tbody tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 12px; padding: 14px 18px; border-bottom: 1px solid var(--hair); }
+  tbody tr.group-row { display: block; padding: 0; }
+  tbody tr.group-row td { display: block; padding: 14px 18px 8px; }
+  tbody td { width: auto; border: 0 !important; padding: 0 !important; text-align: left; white-space: normal; }
+  tbody td:first-child { grid-column: 1 / -1; }
+  tbody td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--ink-3); margin-bottom: 1px; }
+  .nm { min-width: 0; }
+  .avail .pctv { min-width: 0; text-align: left; }
+  tr.is-current { background: var(--accent-soft); }
+  tr.is-current td { background: transparent !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrim, .drawer, .beacon::after, .pulse, .skeleton, .hs-mark::before, .hs-mark .flow, .hs-mark .halo, .hs-mark .dest { animation: none !important; }
+  .hs-mark .flow { stroke-dashoffset: 26; }
+  * { transition: none !important; }
+}
+</style>
 </head>
 <body>
-  <main>
-    <header class="header"><div><h1>稳航 <span style="color:var(--muted)">SteadyRoute</span></h1><p class="subtitle">可用性优先 · 稳定性加权 · 空闲时择优</p></div><div class="live"><div class="live-state" id="live-state"><span class="live-dot"></span><span>连接中</span></div><div class="live-meta" id="live-meta">正在读取本机状态</div></div></header>
-    <section class="routes" id="routes" aria-live="polite"></section>
-    <section class="card health" aria-label="健康摘要"><div class="health-item"><div class="health-label">系统状态</div><div class="health-value" id="system-state">—</div><div class="health-note" id="system-note">等待首轮数据</div></div><div class="health-item"><div class="health-label">稳定节点</div><div class="health-value" id="healthy-count">—</div><div class="health-note">可参与性能择优</div></div><div class="health-item"><div class="health-label">观察中</div><div class="health-value" id="collecting-count">—</div><div class="health-note">继续积累可靠性</div></div><div class="health-item"><div class="health-label">不可用</div><div class="health-value" id="down-count">—</div><div class="health-note">不会被自动选中</div></div><div class="health-item"><div class="health-label">内存占用</div><div class="health-value" id="memory">—</div><div class="health-note" id="memory-note">当前进程生命周期</div></div></section>
-    <section class="card nodes-card"><div class="nodes-head"><div><h2>节点状态</h2><p class="subtitle" id="node-summary">按节点质量排序，分数越高越好</p></div><div class="filters" role="group" aria-label="节点筛选"><button class="filter active" data-filter="focus" type="button" title="当前线路、热备线路和异常节点">需关注</button><button class="filter" data-filter="all" type="button">全部</button><button class="filter" data-filter="tw" type="button">台湾</button><button class="filter" data-filter="hk" type="button">香港</button></div></div><div class="table-wrap"><table><colgroup><col class="node-col"><col class="availability-col"><col class="latency-col"><col class="jitter-col"><col class="quality-col"><col class="state-col"><col class="streak-col"></colgroup><thead><tr><th>节点</th><th>可用率</th><th>加权延迟</th><th>抖动</th><th>节点质量</th><th>当前状态</th><th>连续次数</th></tr></thead><tbody id="node-rows"></tbody></table></div><div class="empty" id="empty">当前筛选下没有节点</div></section>
-    <details class="card"><summary>选路规则与质量分</summary><p class="subtitle" style="margin-top:10px">先按短期故障、隔离状态和24小时可用率筛选候选，再比较延迟与抖动。质量分仅用于展示；性能回优采用无损切换，旧连接保持、新请求使用新节点，只有真实故障才清理旧连接。</p><div class="policy-grid" id="policy-grid"></div></details>
-    <footer>仅监听本机 127.0.0.1 · 当前线路5秒检测 · 业务60秒检测 · 备用线路轮询 · Mac睡眠时暂停</footer>
-  </main>
-  <script>
-    const $=s=>document.querySelector(s), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const age=s=>s<2?'刚刚':s<120?`${s}秒前`:`${Math.floor(s/60)}分钟前`, duration=s=>s<60?`${s}秒`:s<3600?`${Math.round(s/60)}分钟`:`${(s/3600).toFixed(1)}小时`;
-    let snapshot=null, activeFilter='focus';
-    function severityClass(severity){return severity==='critical'?'bad':severity==='warning'?'warn':severity==='info'?'collecting':'good'}
-    function status(n){const cls=n.lifecycle_severity==='critical'?'bad':n.lifecycle_severity==='warning'?'warn':n.lifecycle_severity==='info'?'collecting':'';return{label:n.lifecycle_title||'未知',cls}}
-    function strip(g,d){const w=d.service.timeline_window_seconds||300,now=Date.now()/1000,pts=(g.timeline||[]).filter(p=>p[0]>=now-w-5);if(!pts.length)return '';const probes=pts.filter(p=>p[2]==='probe'),vals=probes.map(p=>p[1]).filter(v=>v!=null),top=Math.max(60,...vals.map(v=>v*1.5)),X=t=>(t-(now-w))/w*600,Y=v=>40-Math.min(v,top)/top*34;let path='',pen=false;probes.forEach(p=>{if(p[1]==null){pen=false;return}path+=`${pen?'L':'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`;pen=true});const fails=probes.filter(p=>p[1]==null).map(p=>`<rect x="${(X(p[0])-2).toFixed(1)}" y="30" width="4" height="12" rx="1" fill="var(--red)"><title>探测失败</title></rect>`).join(''),switches=pts.filter(p=>p[2]==='switch').map(p=>`<line x1="${X(p[0]).toFixed(1)}" x2="${X(p[0]).toFixed(1)}" y1="2" y2="42" stroke="var(--amber)" stroke-width="2" vector-effect="non-scaling-stroke"><title>切换到 ${esc(p[3])}</title></line>`).join(''),last=probes[probes.length-1],lastText=!last?'—':last[1]==null?'失败':`${last[1]} ms`;return `<div class="route-strip"><div class="strip-head"><span>实时探测 · 最近 ${Math.round(w/60)} 分钟</span><span>${lastText}</span></div><svg viewBox="0 0 600 44" preserveAspectRatio="none" role="img" aria-label="当前节点实时延迟">${switches}<path d="${path}" fill="none" stroke="var(--green)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>${fails}</svg></div>`}
-    function renderRoutes(d){$('#routes').innerHTML=d.groups.map(g=>{const n=d.nodes[g.current]||{},a=n.availability==null?'—':`${Math.round(n.availability*100)}%`,l=n.latency==null?'—':`${Math.round(n.latency)} ms`,q=n.quality==null?'—':`${n.quality}/100`;const r=g.decision_detail||g.decision;return `<article class="card route"><div class="route-head"><div><div class="route-kicker">${g.region==='TW'?'台湾 AI 出口':g.region==='HK'?'香港出口':'其他出口'}</div><h2>${esc(g.name)}</h2></div><span class="pill ${severityClass(g.decision_severity)}">${esc(g.decision)}</span></div><div class="route-node">${esc(g.current||'等待 Clash')}</div><div class="route-metrics"><div class="route-metric"><span>加权可用率</span><strong>${a}</strong></div><div class="route-metric"><span>加权延迟</span><strong>${l}</strong></div><div class="route-metric"><span>节点质量</span><strong>${q}</strong></div><div class="route-metric"><span>活跃连接</span><strong>${g.active_connections}</strong></div></div>${strip(g,d)}<div class="route-reason">${esc(r)}</div></article>`}).join('')}
-    function allRows(d){const current=new Set(d.groups.map(g=>g.current)),regions=new Map;d.groups.forEach(g=>g.candidates.forEach(n=>regions.set(n,g.region==='TW'?'台湾':g.region==='HK'?'香港':'—')));return Object.entries(d.nodes).map(([name,node])=>({name,node,region:regions.get(name)||'—',current:current.has(name),status:status(node)})).sort((a,b)=>a.current!==b.current?(a.current?-1:1):(b.node.quality??-1)-(a.node.quality??-1))}
-    function matches(r){return activeFilter==='all'||activeFilter==='tw'&&r.region==='台湾'||activeFilter==='hk'&&r.region==='香港'||activeFilter==='focus'&&(r.current||r.status.cls!=='')}
-    function renderNodes(d){const all=allRows(d),rows=all.filter(matches),sampleMax=Math.max(0,...all.map(r=>r.node.samples));$('#node-rows').innerHTML=rows.map(r=>{const n=r.node,a=n.availability==null?null:Math.round(n.availability*100),q=n.quality,count=n.last_success?n.success_streak:n.failure_streak,sampling=n.lifecycle==='warming'?` · 采样 ${n.samples}/${d.policy.min_samples}`:'';return `<tr class="${r.current?'current':''}"><td><div class="node-name"><span class="state-dot ${r.status.cls}"></span><div class="node-copy"><strong>${esc(r.name)}</strong><small>${r.region} · ${r.status.label}${r.current?' · 当前':''}${sampling}</small></div></div></td><td><div class="availability"><span>${a==null?'—':`${a}%`}</span><span class="availability-track"><i style="width:${a??0}%"></i></span></div></td><td>${n.latency==null?'—':`${Math.round(n.latency)} ms`}</td><td>${n.jitter==null?'—':`${Math.round(n.jitter)} ms`}</td><td class="score ${q!=null&&q<40?'bad':''}">${q==null?'—':`${q}/100`}</td><td><span class="result ${r.status.cls==='bad'?'bad':''}">${esc(r.status.label)}</span></td><td>${count}</td></tr>`}).join('');$('#empty').style.display=rows.length?'none':'block';$('.table-wrap').style.display=rows.length?'block':'none';$('#node-summary').textContent=`累计检测 ${d.service.cycle_count||sampleMax} 轮 · 显示 ${rows.length}/${all.length} 条节点 · 质量分越高越好`}
-    function renderHealth(d){const nodes=Object.values(d.nodes),h=nodes.filter(n=>n.lifecycle==='healthy').length,c=nodes.filter(n=>['discovered','warming','half_open'].includes(n.lifecycle)).length,x=nodes.filter(n=>['degraded','quarantined','retired'].includes(n.lifecycle)).length;$('#healthy-count').textContent=h;$('#collecting-count').textContent=c;$('#down-count').textContent=x;const cur=d.service.memory_current_mb,peak=d.service.memory_peak_mb??d.service.memory_mb;$('#memory').textContent=`${(cur??peak).toFixed(1)} MB`;$('#memory-note').textContent=cur==null?'峰值 · 当前进程生命周期':`峰值 ${peak.toFixed(1)} MB · 当前进程生命周期`;$('#system-state').textContent=d.service.state_title;$('#system-note').textContent=d.service.state_detail+resumeNote(d.service)}
-    function memText(s){const cur=s.memory_current_mb,peak=s.memory_peak_mb??s.memory_mb;return cur==null?`峰值内存 ${peak.toFixed(1)} MB`:`内存 ${cur.toFixed(1)} MB（峰值 ${peak.toFixed(1)} MB）`}
-    function resumeNote(s){if(!s.last_resume_at)return '';const t=new Date(s.last_resume_at*1000),hm=`${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`,m=Math.max(1,Math.round((s.last_sleep_gap_seconds||0)/60));return ` · 上次休眠恢复 ${hm}（休眠约 ${m} 分钟）`}
-    function renderPolicy(d){const p=d.policy;$('#policy-grid').innerHTML=`<div class="policy-item"><strong>${d.service.fast_probe_interval_seconds||d.service.probe_interval_seconds} 秒</strong>当前线路检测</div><div class="policy-item"><strong>${p.business_probe_interval_seconds} 秒</strong>AI业务可达性检测</div><div class="policy-item"><strong>${p.short_window_size} 次</strong>短期健康窗口</div><div class="policy-item"><strong>${p.long_window_hours} 小时</strong>长期稳定窗口</div><div class="policy-item"><strong>${p.quarantine_failures} 次 / ${Math.round(p.quarantine_window_seconds/60)} 分钟</strong>触发节点隔离</div><div class="policy-item"><strong>${Math.round(p.quarantine_seconds/60)} 分钟</strong>隔离期</div><div class="policy-item"><strong>${p.quarantine_recovery_successes} 次</strong>连续成功后恢复</div><div class="policy-item"><strong>${p.confirmations} 轮</strong>明显更优确认</div><div class="policy-item"><strong>${p.absolute_gain_ms} ms</strong>最低绝对改善</div><div class="policy-item"><strong>${Math.round(p.relative_gain*100)}%</strong>最低相对改善</div><div class="policy-item"><strong>${Math.round(p.cooldown_seconds/60)} 分钟</strong>普通性能切换冷却</div><div class="policy-item"><strong>${p.confirm_probes?`${p.confirm_probes} 次连续失败`:`${p.failures_before_switch} 轮`}</strong>${p.confirm_probes?'故障切换确认（同一轮内复测）':'故障切换确认'}</div>`}
-    function render(d){snapshot=d;const now=Date.now()/1000,seen=d.service.last_probe_at??d.service.updated_at,a=seen==null?null:Math.max(0,Math.round(now-seen));const stale=d.service.stale_at!=null&&now>=d.service.stale_at,title=stale?d.service.stale_title:d.service.state_title,severity=stale?'warning':d.service.state_severity;$('#live-state span:last-child').textContent=title;$('#live-state').style.color=severity==='ok'?'var(--green)':severity==='critical'?'var(--red)':'var(--amber)';$('#live-meta').textContent=a==null?d.service.state_detail:`最近检测 ${age(a)} · ${memText(d.service)}`;renderRoutes(d);renderHealth(d);renderNodes(d);renderPolicy(d)}
-    document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{activeFilter=b.dataset.filter;document.querySelectorAll('.filter').forEach(i=>i.classList.toggle('active',i===b));if(snapshot)renderNodes(snapshot)}));document.querySelectorAll('.filter').forEach(b=>b.classList.toggle('active',b.dataset.filter===activeFilter));
-    async function refresh(){try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error(r.status);render(await r.json())}catch(e){$('#live-state span:last-child').textContent='暂时无法连接';$('#live-state').style.color='var(--red)';$('#live-meta').textContent='请稍后刷新，稳航会自动恢复'}}
-    refresh();setInterval(refresh,2000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});setInterval(()=>{if(snapshot)render(snapshot)},1000);
-  </script>
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" style="stop-color:var(--accent)"></stop>
+            <stop offset="1" style="stop-color:var(--accent-2)"></stop>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="32" height="32" rx="9" fill="url(#brand-g)"></rect>
+        <path d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".95"></path>
+        <circle cx="22.6" cy="12.3" r="2.6" fill="#fff"></circle>
+        <circle cx="7" cy="21.5" r="1.6" fill="#fff" opacity=".7"></circle>
+      </svg>
+      <span class="brand-name"><b>稳航</b><span>SteadyRoute</span></span>
+    </div>
+    <nav class="nav" aria-label="页面">
+      <a href="/" aria-current="page">看板</a>
+      <a href="/nodes">全部节点</a>
+      <a href="/guide">使用说明</a>
+      <a href="/changelog">更新日志</a>
+    </nav>
+    <div class="range" role="group" aria-label="曲线时间范围">
+      <span class="range-label">曲线</span>
+      <span class="seg">
+        <button type="button" data-range="300" aria-pressed="true">5 分钟</button>
+        <button type="button" data-range="900" aria-pressed="false">15 分钟</button>
+        <button type="button" data-range="1800" aria-pressed="false">30 分钟</button>
+      </span>
+    </div>
+    <span class="status-pill" id="status-pill" data-sev="warn"><span class="beacon"></span><span id="status-title">连接中</span></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="head card" aria-live="polite">
+    <div class="hs">
+      <span class="hs-mark" id="head-mark" data-sev="warn" aria-hidden="true">
+        <svg viewBox="0 0 32 32">
+          <path class="track" d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4"></path>
+          <path class="flow" pathLength="100" d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4"></path>
+          <circle class="origin" cx="7" cy="21.5" r="1.6"></circle>
+          <circle class="halo" cx="22.6" cy="12.3" r="2.6"></circle>
+          <circle class="dest" cx="22.6" cy="12.3" r="2.6"></circle>
+        </svg>
+      </span>
+      <div class="hs-copy">
+        <h1 id="head-title">正在连接稳航…</h1>
+        <p class="sub"><span id="head-sub"></span><span class="activity" id="head-activity" hidden></span><span class="head-meta" id="head-meta">正在读取本机状态</span></p>
+      </div>
+    </div>
+    <div class="kpis">
+      <div class="kpi">
+        <span class="k">节点 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span>
+        <span class="v" id="k-nodes">—</span>
+        <span class="meter" id="k-meter"></span>
+      </div>
+      <div class="kpi">
+        <span class="k">24 小时切换</span>
+        <span class="v" id="k-switch">—</span>
+        <span class="note" id="k-switch-note">故障 · 回优</span>
+      </div>
+      <div class="kpi">
+        <span class="k">内存占用 <button class="tip" type="button" data-tip="memory" aria-label="说明：内存占用">?</button></span>
+        <span class="v" id="k-memory">—</span>
+        <span class="note" id="k-memory-note">当前进程生命周期</span>
+      </div>
+      <div class="kpi">
+        <span class="k">累计检测</span>
+        <span class="v" id="k-cycles">—</span>
+        <span class="note" id="k-cycles-note">每 20 秒一轮</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="routes" id="routes"></section>
+
+  <section class="card" aria-label="节点状态">
+    <div class="nodes-head">
+      <div>
+        <h2>节点状态</h2>
+        <p id="node-summary">按地区分组，当前线路和热备排在最前</p>
+      </div>
+      <div class="seg filters" role="group" aria-label="节点筛选">
+        <button class="filter active" data-filter="focus" type="button" aria-pressed="true" title="当前线路、热备和异常节点">需关注<span class="count" data-count="focus"></span></button>
+        <button class="filter" data-filter="all" type="button" aria-pressed="false">全部<span class="count" data-count="all"></span></button>
+        <button class="filter" data-filter="tw" type="button" aria-pressed="false">台湾<span class="count" data-count="tw"></span></button>
+        <button class="filter" data-filter="hk" type="button" aria-pressed="false">香港<span class="count" data-count="hk"></span></button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>节点</th>
+            <th><span class="th">近 24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span></th>
+            <th><span class="th">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></span></th>
+            <th><span class="th">抖动 <button class="tip" type="button" data-tip="jitter" aria-label="说明：抖动">?</button></span></th>
+            <th><span class="th">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span></th>
+            <th><span class="th">状态 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span></th>
+            <th><span class="th">连续 <button class="tip" type="button" data-tip="streak" aria-label="说明：连续次数">?</button></span></th>
+          </tr>
+        </thead>
+        <tbody id="node-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap" id="footer"><span>仅监听本机 127.0.0.1 · 页面每 2 秒刷新 · Mac 睡眠时暂停</span><span id="footer-version"></span></footer>
+
+<div class="scrim" id="conn-scrim"></div>
+<aside class="drawer" id="conn-drawer" role="dialog" aria-modal="true" aria-labelledby="conn-title" aria-hidden="true" inert>
+  <div class="dr-head">
+    <div><p class="eyebrow" id="conn-meta">实时 · 每 20 秒随完整检测更新</p><h2 id="conn-title">活跃连接</h2></div>
+    <button class="dr-close" type="button" id="conn-close" aria-label="关闭"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg></button>
+  </div>
+  <div class="seg dr-tabs" id="conn-tabs" role="tablist" aria-label="选择线路"></div>
+  <div class="dr-body" id="conn-body"></div>
+</aside>
+
+<div id="tip-pop" role="tooltip" hidden></div>
+
+<script>
+'use strict';
+
+/* ====================================================================
+   Helpers
+   ==================================================================== */
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nowSeconds = () => Date.now() / 1000;
+const age = s => s < 2 ? '刚刚' : s < 120 ? `${s}秒前` : `${Math.floor(s / 60)}分钟前`;
+const duration = s => s < 60 ? `${Math.round(s)} 秒` : s < 3600 ? `${Math.round(s / 60)} 分钟` : `${(s / 3600).toFixed(1)} 小时`;
+const clock = (t, withSeconds) => {
+  const d = new Date(t * 1000), p = n => String(n).padStart(2, '0');
+  return withSeconds ? `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` : `${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const bytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`;
+const pct = v => v == null ? '—' : `${Math.round(v * 100)}%`;
+const ms = v => v == null ? '—' : `${Math.round(v)} ms`;
+const sevClass = severity => severity === 'critical' ? 'bad' : severity === 'warning' ? 'warn' : severity === 'info' ? 'info' : 'good';
+const regionName = code => code === 'TW' ? '台湾' : code === 'HK' ? '香港' : '其他';
+const shorten = (text, n) => { const s = [...String(text || '')]; return s.length > n ? s.slice(0, n - 1).join('') + '…' : s.join(''); };
+const textWidth = (text, size) => [...String(text)].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? size : size * .58), 0);
+const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* Only touch the DOM when the markup actually changed: no flicker, no lost selection. */
+function patch(el, html) {
+  if (el && el.__html !== html) { el.innerHTML = html; el.__html = html; }
+}
+function setText(el, text) {
+  if (el && el.textContent !== text) el.textContent = text;
+}
+
+/* ====================================================================
+   State
+   ==================================================================== */
+let snapshot = null;
+let activeFilter = 'focus';
+let rangeSeconds = 300;
+const drawer = { group: null, trigger: null };
+const charts = new Map();      // group name -> chart
+const readouts = new Map();    // group name -> {el, shown, target}
+
+/* Decisions that are part of normal, lossless operation: calm, never a warning. */
+const BENIGN = {
+  candidate_confirming: '正在确认更快的节点',
+  handover_pending: '正在无损回优',
+  handover_grace: '正在无损回优',
+  recovery_observing: '正在观察新节点',
+  cooldown: '刚完成回优',
+  manual_hold: '按你的手动选择运行',
+};
+
+/* ====================================================================
+   Explanations for the "?" buttons
+   ==================================================================== */
+const TIPS = {
+  availability: (ctx) => ({
+    title: '近 24 小时可用率',
+    text: '最近 24 小时里探测成功的比例。100% 表示这段时间每次探测都成功；低于 90% 的节点不会被主动换上。',
+    value: ctx && ctx.node ? `当前 ${pct(ctx.node.long_availability ?? ctx.node.availability)}` : null,
+    anchor: 'metrics',
+  }),
+  latency: (ctx) => ({
+    title: '平均延迟',
+    text: '最近几次探测的平均响应时间，越新的探测权重越大，所以变快、变慢都能很快反映出来。越低越好。',
+    value: ctx && ctx.node ? `当前 ${ms(ctx.node.latency)}` : null,
+    anchor: 'metrics',
+  }),
+  jitter: (ctx) => ({
+    title: '抖动',
+    text: '延迟忽高忽低的幅度。抖动大的节点即使平均延迟低，用起来也可能卡顿。越低越好。',
+    value: ctx && ctx.node ? `当前 ${ms(ctx.node.jitter)}` : null,
+    anchor: 'metrics',
+  }),
+  quality: (ctx) => ({
+    title: '综合评分',
+    text: '0～100 分，由可用率（占 65%）、延迟（25%）、抖动（10%）算出，样本少时会打折。只用于展示；选路时直接比较延迟、抖动和可用率，不看这个分。',
+    value: ctx && ctx.node && ctx.node.quality != null ? `当前 ${ctx.node.quality}/100` : null,
+    anchor: 'metrics',
+  }),
+  connections: (ctx) => ({
+    title: '活跃连接',
+    text: '当前经过这条线路的连接数，点击查看是哪些网站。主动换到更快的节点时旧连接不会断开，会留在原节点直到自然结束；故障切换时旧节点上的连接会被断开，应用会自动重连到新节点。',
+    value: ctx && ctx.group ? `当前 ${ctx.group.active_connections} 个` : null,
+    anchor: 'connections',
+  }),
+  standby: (ctx) => ({
+    title: '热备节点',
+    text: `当前节点${ctx && ctx.policy && ctx.policy.confirm_probes ? `连续 ${ctx.policy.confirm_probes} 次探测失败` : '确认故障'}后，会立刻切到它。它和当前节点在同一地区，图中虚线是它的实时延迟（每 20 秒测一次）。`,
+    value: null,
+    anchor: 'failover',
+  }),
+  chart: () => ({
+    title: '实时延迟曲线',
+    text: '实线是当前节点，每 5 秒测一次；虚线是热备，每 20 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
+    value: null,
+    anchor: 'chart',
+  }),
+  lifecycle: () => ({
+    title: '节点状态',
+    text: '稳定：可参与选路。观察中：新节点在积累样本，或隔离期满正在试探。下降：最近有失败。已隔离：10 分钟内失败 3 次，暂停 30 分钟。不会被选中的节点永远不影响当前线路。',
+    value: null,
+    anchor: 'lifecycle',
+  }),
+  streak: () => ({
+    title: '连续次数',
+    text: '最近一次探测成功时，显示连续成功了多少次；失败时显示连续失败多少次（红色）。',
+    value: null,
+    anchor: 'metrics',
+  }),
+  memory: (ctx) => ({
+    title: '内存占用',
+    text: '大字是此刻实际占用，与活动监视器“内存”列同口径，会上下浮动。峰值是本次启动以来的最高值，只升不降，重启后清零。判断是否泄漏看长期趋势，不看峰值。',
+    value: ctx && ctx.service && ctx.service.memory_current_mb != null
+      ? `当前 ${ctx.service.memory_current_mb.toFixed(1)} MB · 峰值 ${(ctx.service.memory_peak_mb ?? ctx.service.memory_mb).toFixed(1)} MB`
+      : null,
+    anchor: 'memory',
+  }),
+};
+
+/* ====================================================================
+   Header: one calm sentence plus four facts
+   ==================================================================== */
+function resumeNote(s) {
+  if (!s.last_resume_at) return '';
+  const m = Math.max(1, Math.round((s.last_sleep_gap_seconds || 0) / 60));
+  return `上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${m} 分钟）`;
+}
+
+function renderHead(d) {
+  const now = nowSeconds(), s = d.service;
+  const seen = s.last_probe_at ?? s.updated_at;
+  const a = seen == null ? null : Math.max(0, Math.round(now - seen));
+  const stale = s.stale_at != null && now >= s.stale_at;
+  const title = stale ? s.stale_title : s.state_title;
+  const severity = stale ? 'warning' : s.state_severity;
+  const pill = $('#status-pill');
+  pill.dataset.sev = severity === 'ok' ? 'ok' : severity === 'critical' ? 'bad' : 'warn';
+  pill.title = stale ? s.stale_detail : s.state_detail;
+  setText($('#status-title'), title);
+
+  const bits = [a == null ? '等待首轮检测' : `最近检测 ${age(a)}`];
+  const resume = resumeNote(s);
+  if (resume) bits.push(resume);
+  setText($('#head-meta'), bits.join(' · '));
+
+  const troubled = d.groups.filter(g => g.decision_severity && g.decision_severity !== 'ok' && !BENIGN[g.decision_code]);
+  const busy = d.groups.filter(g => BENIGN[g.decision_code]);
+  let head = '所有线路运行正常', note = '', sev = 'ok', sub, lanes = false;
+  if (stale) { head = s.stale_title; sev = 'warn'; sub = s.stale_detail; }
+  else if (s.state_code && s.state_code !== 'running') { head = s.state_title; sev = s.state_severity === 'critical' ? 'bad' : 'warn'; sub = s.state_detail; }
+  else if (troubled.length) {
+    const g = troubled[0];
+    head = `${regionName(g.region)}线路${g.decision_severity === 'critical' ? '故障' : '需要留意'}`;
+    sev = sevClass(g.decision_severity) === 'bad' ? 'bad' : 'warn';
+    sub = g.decision_detail || g.decision;
+  } else {
+    if (busy.length) note = `${regionName(busy[0].region)}${BENIGN[busy[0].decision_code]}`;
+    lanes = true;
+    sub = d.groups.map(g => { const n = d.nodes[g.current] || {}; return `<span class="lane" title="${esc(regionName(g.region))}线路当前延迟"><b>${esc(g.region || '··')}</b>${esc(regionName(g.region))}<em>${esc(ms(n.latency))}</em></span>`; }).join('');
+  }
+  const h1 = $('#head-title');
+  setText(h1, head);
+  h1.dataset.sev = sev;
+  const activity = $('#head-activity');
+  activity.hidden = !note;
+  setText(activity, note);
+  if (lanes) patch($('#head-sub'), sub); else setText($('#head-sub'), sub || '');
+  const mark = $('#head-mark');
+  if (mark.dataset.sev !== sev) mark.dataset.sev = sev;
+
+  const nodes = Object.values(d.nodes);
+  const count = codes => nodes.filter(n => codes.includes(n.lifecycle)).length;
+  const healthy = count(['healthy']), watching = count(['discovered', 'warming', 'half_open']);
+  const total = Math.max(1, nodes.length), down = nodes.length - healthy - watching;
+  patch($('#k-nodes'), `${healthy}<small>/ ${nodes.length} 稳定</small>`);
+  patch($('#k-meter'), `<i style="width:${healthy / total * 100}%;background:var(--good)"></i><i style="width:${watching / total * 100}%;background:var(--standby)"></i><i style="width:${down / total * 100}%;background:var(--bad)"></i>`);
+  $('#k-meter').title = `${healthy} 稳定 · ${watching} 观察中 · ${down} 不可用`;
+
+  const fo = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).failovers_24h || 0), 0);
+  const op = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).performance_switches_24h || 0), 0);
+  patch($('#k-switch'), `${fo + op}<small>次</small>`);
+  setText($('#k-switch-note'), `故障 ${fo} · 回优 ${op}`);
+
+  const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
+  patch($('#k-memory'), `${(cur ?? peak).toFixed(1)}<small>MB</small>`);
+  setText($('#k-memory-note'), cur == null ? '峰值 · 当前进程生命周期' : `峰值 ${peak.toFixed(1)} MB`);
+  patch($('#k-cycles'), `${(s.cycle_count || 0).toLocaleString('zh-CN')}<small>轮</small>`);
+  setText($('#k-cycles-note'), `每 ${s.probe_interval_seconds} 秒一轮`);
+  setText($('#footer-version'), s.version ? `稳航 v${s.version}` : '');
+}
+
+/* ====================================================================
+   Route cards
+   ==================================================================== */
+function routeSkeleton(g) {
+  const key = esc(g.name);
+  return `<article class="card route" data-group="${key}">
+    <div class="r-head">
+      <div class="r-title">
+        <span class="region-code">${g.region === 'TW' ? 'TW' : g.region === 'HK' ? 'HK' : '··'}</span>
+        <h2>${key}</h2>
+        <span class="r-sub" data-f="region"></span>
+      </div>
+      <span class="decision" data-f="decision"></span>
+    </div>
+    <div class="r-hero">
+      <div class="r-node">
+        <div class="label">当前节点</div>
+        <div class="name" data-f="current"></div>
+        <div class="standby" data-f="standby"></div>
+        <div data-f="handover"></div>
+      </div>
+      <div class="readout">
+        <div class="big num" data-f="readout">—</div>
+        <div class="cap">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="k">24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span><span class="v" data-f="availability">—</span></div>
+      <div class="stat"><span class="k">抖动 <button class="tip" type="button" data-tip="jitter" aria-label="说明：抖动">?</button></span><span class="v" data-f="jitter">—</span></div>
+      <div class="stat"><span class="k">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span><span class="v" data-f="quality">—</span></div>
+      <div class="stat"><span class="k">活跃连接 <button class="tip" type="button" data-tip="connections" aria-label="说明：活跃连接">?</button></span><button class="v" type="button" data-f="conn-toggle" aria-haspopup="dialog"><span data-f="connections">—</span></button></div>
+    </div>
+    <div class="r-chart">
+      <div class="chart-head">
+        <div class="legend">
+          <span><i class="lg-cur"></i>当前</span>
+          <span><i class="lg-sb"></i>热备</span>
+          <span><i class="lg-fail"></i>失败</span>
+          <span><i class="lg-fo"></i>故障切换</span>
+          <span><i class="lg-op"></i>回优</span>
+        </div>
+        <span class="live"><span data-f="last"></span><button class="tip" type="button" data-tip="chart" aria-label="说明：实时延迟曲线">?</button></span>
+      </div>
+      <div class="plot" data-f="plot"></div>
+    </div>
+    <p class="r-reason" data-f="reason"></p>
+  </article>`;
+}
+
+const cardWidths = new ResizeObserver(entries => entries.forEach(entry => {
+  const w = entry.contentRect.width, c = entry.target.classList;
+  c.toggle('w600', w <= 600);
+  c.toggle('w420', w <= 420);
+  c.toggle('w380', w <= 380);
+}));
+
+function ensureRoutes(d) {
+  const box = $('#routes');
+  const names = d.groups.map(g => g.name).join('|');
+  if (box.__names !== names) {
+    box.innerHTML = d.groups.map(routeSkeleton).join('');
+    box.__names = names;
+    charts.clear();
+    readouts.clear();
+    $$('.route', box).forEach(card => {
+      const group = card.dataset.group;
+      $('[data-f="conn-toggle"]', card).addEventListener('click', event => openDrawer(group, event.currentTarget));
+      cardWidths.observe(card);
+      charts.set(group, makeChart(card.querySelector('[data-f="plot"]')));
+      readouts.set(group, { el: card.querySelector('[data-f="readout"]'), shown: null, target: null });
+    });
+  }
+  return box;
+}
+
+function renderRoutes(d) {
+  const box = ensureRoutes(d);
+  d.groups.forEach(g => {
+    const card = box.querySelector(`.route[data-group="${CSS.escape(g.name)}"]`);
+    if (!card) return;
+    const f = name => card.querySelector(`[data-f="${name}"]`);
+    const node = d.nodes[g.current] || {};
+    const standby = g.hot_standby ? d.nodes[g.hot_standby] : null;
+    const conns = g.connections || { total: g.active_connections, by_node: {}, sites: [] };
+    const tone = BENIGN[g.decision_code] ? 'info' : sevClass(g.decision_severity);
+
+    if (card.dataset.tone !== tone) card.dataset.tone = tone;
+    setText(f('region'), `只切${regionName(g.region)}家宽`);
+    const pill = f('decision');
+    const pillClass = `decision ${tone}`;
+    if (pill.className !== pillClass) pill.className = pillClass;
+    setText(pill, g.decision);
+    pill.title = g.decision;
+    setText(f('current'), g.current || '等待 Clash');
+    patch(f('standby'), g.hot_standby
+      ? `<i class="dash" aria-hidden="true"></i>热备 <b>${esc(g.hot_standby)}</b><span>${standby && standby.latency != null ? ms(standby.latency) : ''}</span>
+         <button class="tip" type="button" data-tip="standby" aria-label="说明：热备节点">?</button>`
+      : '暂无成熟热备 · 故障时保持当前选择并继续检测');
+
+    const r = readouts.get(g.name);
+    if (r) r.target = node.latency == null ? null : Math.round(node.latency);
+
+    patch(f('availability'), esc(pct(node.long_availability ?? node.availability)));
+    patch(f('jitter'), node.jitter == null ? '—' : `${Math.round(node.jitter)}<small>ms</small>`);
+    patch(f('quality'), node.quality == null ? '—' : `${node.quality}<small>/100</small>`);
+    patch(f('connections'), `${g.active_connections}<small>查看 ›</small>`);
+
+    const next = g.next_action && g.next_action !== g.decision_detail ? ` <span class="next">下一步：${esc(g.next_action)}</span>` : '';
+    patch(f('reason'), esc(g.decision_detail || g.decision) + next);
+    patch(f('handover'), handoverHtml(g, conns));
+
+    const chart = charts.get(g.name);
+    if (chart) chart.setData(g, card);
+  });
+  renderDrawer(d);
+}
+
+/* Latency readout eases between values like an instrument needle. */
+function tickReadouts() {
+  readouts.forEach(r => {
+    if (r.target == null) { if (r.el.textContent !== '—') { r.el.textContent = '—'; r.shown = null; } return; }
+    if (r.shown == null || reduceMotion) r.shown = r.target;
+    else r.shown += (r.target - r.shown) * 0.12;
+    if (Math.abs(r.shown - r.target) < 0.5) r.shown = r.target;
+    const html = `${Math.round(r.shown)}<small>ms</small>`;
+    if (r.el.__html !== html) { r.el.innerHTML = html; r.el.__html = html; }
+  });
+}
+
+/* ====================================================================
+   Handover: an optimize keeps old connections on the old node until they end
+   ==================================================================== */
+function oldNodes(g, conns) {
+  return Object.entries(conns.by_node || {}).filter(([name, count]) => name && name !== g.current && count > 0);
+}
+
+function handoverHtml(g, conns) {
+  const olds = oldNodes(g, conns);
+  if (!olds.length) return '';
+  const total = Math.max(1, conns.total || 0);
+  const onOld = olds.reduce((s, [, c]) => s + c, 0);
+  const onNew = (conns.by_node || {})[g.current] || 0;
+  const since = g.last_switch_at ? Math.max(0, nowSeconds() - g.last_switch_at) : null;
+  const title = `旧节点 ${olds[0][0]} 仍有 ${onOld} 个连接，新请求已走 ${g.current}（${onNew} 个）。旧连接会自然结束，不会被主动断开。`;
+  return `<div class="handover" role="status" title="${esc(title)}">
+    <span class="ho-bar" aria-hidden="true"><i style="width:${(onOld / total * 100).toFixed(1)}%"></i><i style="width:${(onNew / total * 100).toFixed(1)}%"></i></span>
+    <span>交接中 · 旧节点还剩 <b>${onOld}</b> 个连接，等其自然结束${since != null ? ` · ${duration(since)}前切换` : ''}</span>
+  </div>`;
+}
+
+/* ====================================================================
+   Active connections
+   ==================================================================== */
+function siteInitial(host) {
+  const h = String(host || '').replace(/^www\./, '');
+  return /^[a-z0-9]/i.test(h) ? h[0] : '·';
+}
+
+function drawerHtml(g, c) {
+  const now = nowSeconds();
+  const total = c.total || 0;
+  const sites = c.sites || [];
+  const nodes = Object.entries(c.by_node || {}).sort((a, b) => (b[0] === g.current) - (a[0] === g.current) || b[1] - a[1]);
+  const down = sites.reduce((sum, s) => sum + (s.download || 0), 0);
+  const up = sites.reduce((sum, s) => sum + (s.upload || 0), 0);
+  const olds = nodes.filter(([name]) => name !== g.current);
+  const summary = `<div class="dr-sum">
+      <div><b class="num">${total}</b><span>个连接</span></div>
+      <div><b class="num">${sites.length + (c.more_sites || 0)}</b><span>个网站</span></div>
+      <div><b class="num" title="↑ ${esc(bytes(up))}">${esc(bytes(down))}</b><span>已下载</span></div>
+    </div>`;
+  if (!total) return summary + '<div class="dr-empty">当前没有经过这条线路的连接。<br>打开要走这条线路的应用后，这里会实时出现。</div>';
+  const nodeRows = nodes.map(([name, count]) => {
+    const cur = name === g.current;
+    const color = cur ? 'var(--accent)' : 'var(--standby)';
+    return `<div class="nd"><i style="background:${color}"></i>
+      <span class="nd-name">${esc(name)}<em class="${cur ? 'cur' : 'old'}">${cur ? '当前' : '旧节点'}</em></span>
+      <span class="nd-count">${count}<small>个</small></span>
+      <span class="track"><i style="width:${(count / total * 100).toFixed(1)}%;background:${color}"></i></span></div>`;
+  }).join('');
+  const handover = olds.length
+    ? `<p class="dr-handover">正在交接：新请求已走当前节点；旧节点上的 ${olds.reduce((s, [, n]) => s + n, 0)} 个连接会留到自然结束，不会被主动断开。</p>` : '';
+  const siteRows = sites.map(site => {
+    const onOld = Object.entries(site.nodes || {}).filter(([name]) => name !== g.current).reduce((sum, [, n]) => sum + n, 0);
+    const bits = [esc(site.process || '未知应用')];
+    if (site.since) bits.push(`已 ${esc(duration(Math.max(0, now - site.since)))}`);
+    bits.push(`↓ ${esc(bytes(site.download || 0))}`);
+    return `<div class="site">
+      <span class="av" aria-hidden="true">${esc(siteInitial(site.host))}</span>
+      <span class="site-host"><b title="${esc(site.host)}">${esc(site.host)}</b><small>${onOld ? `<em>旧节点 ${onOld}</em>` : ''}${bits.join(' · ')}</small></span>
+      <span class="count">${site.count}<small>连接</small></span>
+    </div>`;
+  }).join('');
+  return `${summary}
+    <section class="dr-sec"><h3>按节点</h3>${handover}${nodeRows}</section>
+    <section class="dr-sec"><h3>按网站<span>按连接数排序</span></h3>
+      <div class="site-list">${siteRows}</div>
+      ${c.more_sites ? `<p class="note-sm">另有 ${c.more_sites} 个网站未列出。</p>` : ''}
+    </section>
+    <p class="note-sm">只显示网站域名，不显示 IP 和完整网址；只在本机页面显示，不保存。</p>`;
+}
+
+function renderDrawer(d) {
+  if (!drawer.group) return;
+  const g = d.groups.find(item => item.name === drawer.group) || d.groups[0];
+  if (!g) return;
+  const c = g.connections || { total: g.active_connections, by_node: {}, sites: [] };
+  patch($('#conn-tabs'), d.groups.map(item => `<button type="button" role="tab" aria-selected="${item.name === g.name}" data-group="${esc(item.name)}"><b>${esc(item.region || '')}</b>${esc(regionName(item.region))}<span class="count">${item.active_connections}</span></button>`).join(''));
+  setText($('#conn-title'), `${regionName(g.region)}线路 · 活跃连接`);
+  const age = c.observed_at ? `约 ${Math.max(0, Math.round(nowSeconds() - c.observed_at))} 秒前更新` : '等待下一轮完整检测';
+  setText($('#conn-meta'), `实时 · ${age}`);
+  patch($('#conn-body'), drawerHtml(g, c));
+}
+
+function openDrawer(group, trigger) {
+  closeTip();
+  drawer.group = group;
+  drawer.trigger = trigger || null;
+  const el = $('#conn-drawer');
+  el.inert = false;
+  el.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('drawer-open');
+  $('#conn-body').scrollTop = 0;
+  if (snapshot) renderDrawer(snapshot);
+  $('#conn-close').focus({ preventScroll: true });
+}
+
+function closeDrawer() {
+  if (!drawer.group) return;
+  drawer.group = null;
+  const el = $('#conn-drawer');
+  el.inert = true;
+  el.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('drawer-open');
+  if (drawer.trigger) drawer.trigger.focus({ preventScroll: true });
+  drawer.trigger = null;
+}
+
+/* ====================================================================
+   Latency chart. Built in time coordinates when data, range or scale
+   change; each animation frame only slides it, so motion is continuous.
+   Lines use monotone cubic curves: smooth, never overshooting a sample.
+   ==================================================================== */
+const SWITCH_KINDS = {
+  failover: { label: '故障切换', color: 'var(--bad)', dash: false },
+  optimize: { label: '回优', color: 'var(--good)', dash: true },
+  removed: { label: '节点被移除', color: 'var(--warn)', dash: true },
+};
+
+function niceMax(v) {
+  const steps = [50, 80, 100, 150, 200, 300, 400, 500, 800, 1000, 1500, 2000, 3000];
+  return steps.find(s => s >= v) || Math.ceil(v / 1000) * 1000;
+}
+
+function nearest(points, t, within) {
+  let best = null;
+  (points || []).forEach(p => { if (Math.abs(p[0] - t) <= within && (!best || Math.abs(p[0] - t) < Math.abs(best[0] - t))) best = p; });
+  return best;
+}
+
+/* Fritsch–Carlson monotone cubic through screen points [[x, y], ...]. */
+function monotone(pts) {
+  const n = pts.length;
+  if (n === 0) return '';
+  if (n === 1) return `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  const dx = [], dy = [], m = [], t = [];
+  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; dy[i] = pts[i + 1][1] - pts[i][1]; m[i] = dx[i] ? dy[i] / dx[i] : 0; }
+  t[0] = m[0]; t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+    const a = t[i] / m[i], b = t[i + 1] / m[i], h = a * a + b * b;
+    if (h > 9) { const k = 3 / Math.sqrt(h); t[i] = k * a * m[i]; t[i + 1] = k * b * m[i]; }
+  }
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += `C${(pts[i][0] + h).toFixed(1)},${(pts[i][1] + h * t[i]).toFixed(1)} ${(pts[i + 1][0] - h).toFixed(1)},${(pts[i + 1][1] - h * t[i + 1]).toFixed(1)} ${pts[i + 1][0].toFixed(1)},${pts[i + 1][1].toFixed(1)}`;
+  }
+  return d;
+}
+
+let chartSeq = 0;
+function makeChart(plot) {
+  const L = 44, R = 18, T = 22, B = 22;
+  const id = `c${++chartSeq}`;
+  const st = { points: null, dataKey: '', top: 100, targetTop: 100, w: 0, h: 0, drawnKey: '', base: null, hoverX: null, pinned: false };
+  plot.innerHTML = `<svg role="img" aria-label="实时延迟曲线"><defs>
+      <clipPath id="clip-${id}"><rect></rect></clipPath>
+      <linearGradient id="grad-${id}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" style="stop-color:var(--accent)" stop-opacity=".20"></stop>
+        <stop offset="1" style="stop-color:var(--accent)" stop-opacity="0"></stop>
+      </linearGradient></defs>
+      <g class="yaxis"></g>
+      <g clip-path="url(#clip-${id})"><g class="slide"></g><g class="hover"></g></g>
+    </svg><div class="plot-tip" hidden></div><div class="empty">等待第一批探测数据…</div>`;
+  const svg = plot.querySelector('svg'), yaxis = svg.querySelector('.yaxis'), slide = svg.querySelector('.slide');
+  const hoverG = svg.querySelector('.hover'), clip = svg.querySelector('clipPath rect'), tip = plot.querySelector('.plot-tip');
+  const empty = plot.querySelector('.empty');
+
+  function geometry() {
+    const w = Math.max(240, plot.clientWidth || 600), h = plot.clientHeight || 190;
+    if (w !== st.w || h !== st.h) {
+      st.w = w; st.h = h; st.drawnKey = '';
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      clip.setAttribute('x', L); clip.setAttribute('y', 0); clip.setAttribute('width', w - L); clip.setAttribute('height', h);
+    }
+    return { w, h, iw: w - L - R, ih: h - T - B };
+  }
+
+  function draw() {
+    const pts = st.points || [];
+    const { w, iw, ih } = geometry();
+    const pps = iw / rangeSeconds;
+    const base = st.base = nowSeconds();
+    const X = t => L + iw - (base - t) * pps;
+    const top = st.top;
+    const Y = v => T + ih - Math.min(v, top) / top * ih;
+    const probes = pts.filter(p => p[2] === 'probe'), standby = pts.filter(p => p[2] === 'standby'), switches = pts.filter(p => p[2] === 'switch');
+
+    let yhtml = '';
+    for (let i = 1; i <= 3; i++) {
+      const v = top / 3 * i, y = Y(v);
+      yhtml += `<line class="grid" x1="${L}" x2="${w - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>`;
+      yhtml += `<text class="axis" x="${L - 8}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`;
+    }
+    yhtml += `<line class="baseline" x1="${L}" x2="${w - R}" y1="${(T + ih).toFixed(1)}" y2="${(T + ih).toFixed(1)}"></line>`;
+    yhtml += `<text class="axis" x="${L - 8}" y="${(T + ih + 3.5).toFixed(1)}" text-anchor="end">0</text>`;
+    yhtml += `<text class="axis" x="${L - 8}" y="${T - 9}" text-anchor="end">ms</text>`;
+    yaxis.innerHTML = yhtml;
+
+    const runs = (points, bridge) => {
+      const out = []; let run = [];
+      (bridge ? points.filter(p => p[1] != null) : points).forEach(p => {
+        if (p[1] == null) { if (run.length) out.push(run); run = []; return; }
+        run.push([X(p[0]), Y(p[1])]);
+      });
+      if (run.length) out.push(run);
+      return out;
+    };
+    const curRuns = runs(probes), sbRuns = runs(standby, true);
+    const lineD = curRuns.map(monotone).join('');
+    const areaD = curRuns.filter(r => r.length > 1).map(r => monotone(r) + `L${r[r.length - 1][0].toFixed(1)},${(T + ih).toFixed(1)}L${r[0][0].toFixed(1)},${(T + ih).toFixed(1)}Z`).join('');
+    const tickEvery = rangeSeconds <= 300 ? 60 : rangeSeconds <= 900 ? 180 : 300;
+    let ticks = '';
+    for (let t = Math.ceil((base - rangeSeconds - 120) / tickEvery) * tickEvery; t <= base + 120; t += tickEvery) {
+      ticks += `<text class="axis" x="${X(t).toFixed(1)}" y="${T + ih + 16}" text-anchor="middle">${clock(t)}</text>`;
+    }
+    const fails = probes.filter(p => p[1] == null).map(p => `<rect x="${(X(p[0]) - 2).toFixed(1)}" y="${(T + ih - 10).toFixed(1)}" width="4" height="10" rx="1.5" style="fill:var(--bad)"></rect>`).join('');
+    const sbFails = standby.filter(p => p[1] == null).map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${(T + ih - 4).toFixed(1)}" r="2.8" fill="none" style="stroke:var(--standby)" stroke-width="1.4"></circle>`).join('');
+    const sw = switches.map(p => {
+      const x = X(p[0]), k = SWITCH_KINDS[p[4]] || SWITCH_KINDS.optimize;
+      const label = `${k.label} → ${shorten(p[3], 11)}`, tw = textWidth(label, 10.5) + 14;
+      return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T - 2}" y2="${T + ih}" style="stroke:${k.color}" stroke-width="${k.dash ? 1.5 : 1.8}"${k.dash ? ' stroke-dasharray="4 3"' : ''}></line>
+        <g transform="translate(${(x - tw).toFixed(1)},${T - 18})"><rect width="${tw.toFixed(1)}" height="17" rx="8.5" style="fill:var(--surface);stroke:${k.color}" stroke-width="1"></rect>
+        <text class="flag-text" x="${(tw / 2).toFixed(1)}" y="12" text-anchor="middle" style="fill:${k.color}">${esc(label)}</text></g>`;
+    }).join('');
+    const last = probes[probes.length - 1];
+    const lastDot = last && last[1] != null
+      ? `<circle class="pulse" cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="4" style="fill:var(--accent)"></circle><circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="4" stroke-width="2" style="fill:var(--accent);stroke:var(--surface)"></circle>`
+      : '';
+    slide.innerHTML = `${ticks}
+      <path d="${areaD}" fill="url(#grad-${id})"></path>
+      <path d="${sbRuns.map(monotone).join('')}" fill="none" style="stroke:var(--standby)" stroke-width="1.5" stroke-dasharray="5 4" stroke-linecap="round"></path>
+      <path d="${lineD}" fill="none" style="stroke:var(--accent)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></path>
+      ${fails}${sbFails}${sw}${lastDot}`;
+    Object.assign(st, { pps, X, Y, probes, standby, switches });
+    empty.hidden = probes.length > 0;
+  }
+
+  function drawHover(dx) {
+    if (st.hoverX == null || !st.probes || !st.probes.length) {
+      if (hoverG.innerHTML) hoverG.innerHTML = '';
+      tip.hidden = true;
+      return;
+    }
+    const t = st.base - (L + (st.w - L - R) - (st.hoverX - dx)) / st.pps;
+    const p = nearest(st.probes, t, Math.max(6, 8 / st.pps));
+    if (!p) { hoverG.innerHTML = ''; tip.hidden = true; return; }
+    const x = st.X(p[0]) + dx;
+    hoverG.innerHTML = `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${st.h - B}" style="stroke:var(--hair-2)"></line>` +
+      (p[1] != null ? `<circle cx="${x.toFixed(1)}" cy="${st.Y(p[1]).toFixed(1)}" r="4.5" stroke-width="2" style="fill:var(--surface);stroke:var(--accent)"></circle>` : '');
+    const sb = nearest(st.standby, p[0], 25), sw = nearest(st.switches, p[0], 8);
+    const k = sw ? SWITCH_KINDS[sw[4]] || SWITCH_KINDS.optimize : null;
+    const html = `<div class="t">${clock(p[0], true)}</div>
+      <div class="row"><span>当前</span><b>${p[1] == null ? '<span style="color:var(--bad)">失败</span>' : p[1] + ' ms'}</b></div>
+      ${sb ? `<div class="row"><span>热备</span><b>${sb[1] == null ? '失败' : sb[1] + ' ms'}</b></div>` : ''}
+      <div class="t" style="margin-top:3px">${esc(p[3] || '')}</div>
+      ${k ? `<div class="row" style="margin-top:4px;color:${k.color}"><span>${k.label}</span><b>${clock(sw[0], true)}</b></div><div class="t">→ ${esc(sw[3] || '')}</div>` : ''}`;
+    if (tip.__html !== html) { tip.innerHTML = html; tip.__html = html; }
+    tip.hidden = false;
+    const tw = tip.offsetWidth || 170;
+    tip.style.left = `${x + 14 + tw > st.w - 4 ? Math.max(4, x - tw - 14) : x + 14}px`;
+    tip.style.top = '8px';
+  }
+
+  function frame() {
+    if (!st.points) return;
+    geometry();
+    if (Math.abs(st.top - st.targetTop) > 0.5 && !reduceMotion) st.top += (st.targetTop - st.top) * 0.18;
+    else st.top = st.targetTop;
+    const now = nowSeconds();
+    const key = `${st.dataKey}|${Math.round(st.top)}|${rangeSeconds}|${st.w}|${st.h}`;
+    if (key !== st.drawnKey || st.base == null || now - st.base > 30 || now < st.base) { draw(); st.drawnKey = key; }
+    const dx = -(now - st.base) * st.pps;
+    slide.setAttribute('transform', `translate(${reduceMotion ? Math.round(dx) : dx.toFixed(2)},0)`);
+    drawHover(dx);
+  }
+
+  const move = event => {
+    const rect = plot.getBoundingClientRect();
+    st.hoverX = event.clientX - rect.left;
+    st.pinned = event.pointerType !== 'mouse';
+  };
+  plot.addEventListener('pointermove', move);
+  plot.addEventListener('pointerdown', move);
+  plot.addEventListener('pointerleave', event => { if (event.pointerType === 'mouse') st.hoverX = null; });
+
+  return {
+    st,
+    frame,
+    reset() { st.dataKey = ''; st.drawnKey = ''; st.base = null; },
+    clearPinned() { if (st.pinned) { st.hoverX = null; st.pinned = false; } },
+    setData(g, card) {
+      const from = nowSeconds() - rangeSeconds - 30;
+      const pts = (g.timeline || []).filter(p => p[0] >= from);
+      const key = pts.length ? `${pts.length}:${pts[pts.length - 1][0]}:${pts[0][0]}` : 'none';
+      if (key === st.dataKey) return;
+      st.dataKey = key;
+      st.points = pts;
+      const values = pts.filter(p => p[2] !== 'switch').map(p => p[1]).filter(v => v != null);
+      st.targetTop = niceMax(Math.max(40, ...values) * 1.15);
+      if (st.base == null) st.top = st.targetTop;
+      const last = pts.filter(p => p[2] === 'probe').pop();
+      patch(card.querySelector('[data-f="last"]'), !last ? '' : last[1] == null ? '实时 <b style="color:var(--bad)">失败</b>' : `实时 <b>${last[1]}</b> ms`);
+    },
+  };
+}
+
+function animate() {
+  charts.forEach(chart => chart.frame());
+  tickReadouts();
+  requestAnimationFrame(animate);
+}
+
+/* ====================================================================
+   Node table, grouped by region
+   ==================================================================== */
+function allRows(d) {
+  const current = new Set(d.groups.map(g => g.current));
+  const standby = new Set(d.groups.map(g => g.hot_standby).filter(Boolean));
+  const regions = new Map();
+  d.groups.forEach(g => (g.candidates || []).forEach(n => regions.set(n, regionName(g.region))));
+  const rank = r => r.current ? 0 : r.standby ? 1 : r.cls === 'bad' ? 2 : r.cls === 'warn' ? 3 : 4;
+  const regionRank = name => name === '台湾' ? 0 : name === '香港' ? 1 : 2;
+  return Object.entries(d.nodes)
+    .map(([name, node]) => ({ name, node, region: regions.get(name) || '其他', current: current.has(name), standby: standby.has(name), cls: sevClass(node.lifecycle_severity) }))
+    .sort((a, b) => regionRank(a.region) - regionRank(b.region) || rank(a) - rank(b) || (b.node.quality ?? -1) - (a.node.quality ?? -1));
+}
+
+function matches(r) {
+  return activeFilter === 'all'
+    || activeFilter === 'tw' && r.region === '台湾'
+    || activeFilter === 'hk' && r.region === '香港'
+    || activeFilter === 'focus' && (r.current || r.standby || r.cls !== 'good');
+}
+
+
+function rowHtml(r, d) {
+  const n = r.node;
+  const a = n.long_availability ?? n.availability;
+  const aw = a == null ? 0 : Math.round(a * 100);
+  const barCls = a == null ? '' : a >= 0.95 ? '' : a >= 0.8 ? 'warn' : 'bad';
+  const q = n.quality;
+  const streak = n.last_success
+    ? `<span class="streak ok" title="连续成功 ${n.success_streak} 次">${n.success_streak}</span>`
+    : `<span class="streak fail" title="连续失败 ${n.failure_streak} 次">失败 ${n.failure_streak}</span>`;
+  const sampling = n.lifecycle === 'warming' ? ` · 采样 ${n.samples}/${d.policy.min_samples}` : '';
+  const tags = (r.current ? '<span class="tag cur">当前</span>' : '') + (r.standby ? '<span class="tag hot">热备</span>' : '');
+  return `<td><div class="nm"><span class="dot ${r.cls === 'good' ? '' : r.cls}"></span><span class="nm-copy"><b>${esc(r.name)}${tags}</b><small>${esc(n.lifecycle_title || '')}${sampling}</small></span></div></td>
+    <td data-label="可用率"><span class="avail"><span class="pctv">${pct(a)}</span><span class="bar"><i class="${barCls}" style="width:${aw}%"></i></span></span></td>
+    <td data-label="平均延迟">${ms(n.latency)}</td>
+    <td data-label="抖动">${ms(n.jitter)}</td>
+    <td data-label="综合评分"><span class="q">${q == null ? '—' : `${q}/100`}</span></td>
+    <td data-label="状态"><span class="state ${r.cls === 'good' ? '' : r.cls}" title="${esc(n.lifecycle_detail || '')}">${esc(n.lifecycle_title || '未知')}</span></td>
+    <td data-label="连续">${streak}</td>`;
+}
+
+function renderNodes(d) {
+  const all = allRows(d);
+  const saved = activeFilter;
+  ['focus', 'all', 'tw', 'hk'].forEach(key => { activeFilter = key; setText($(`[data-count="${key}"]`), String(all.filter(matches).length)); });
+  activeFilter = saved;
+  const rows = all.filter(matches);
+  const body = $('#node-rows');
+  if (!body.__rows) body.__rows = new Map();
+  const map = body.__rows;
+  const ordered = [];
+  if (!rows.length) {
+    ordered.push(['__empty', '', '<td class="empty-row" colspan="7">没有符合筛选条件的节点</td>']);
+  } else {
+    let region = null;
+    rows.forEach(r => {
+      if (r.region !== region) {
+        region = r.region;
+        const inRegion = all.filter(x => x.region === region);
+        const healthy = inRegion.filter(x => x.cls === 'good').length;
+        ordered.push([`__hdr_${region}`, 'group-row', `<td colspan="7">${esc(region)}<span>${inRegion.length} 个节点 · ${healthy} 个稳定${inRegion.length - healthy ? ` · ${inRegion.length - healthy} 个需留意` : ''}</span></td>`]);
+      }
+      ordered.push([r.name, r.current ? 'is-current' : '', rowHtml(r, d)]);
+    });
+  }
+  const wanted = new Set(ordered.map(item => item[0]));
+  for (const [key, tr] of map) if (!wanted.has(key)) { tr.remove(); map.delete(key); }
+  ordered.forEach(([key, cls, html], index) => {
+    let tr = map.get(key);
+    if (!tr) { tr = document.createElement('tr'); map.set(key, tr); }
+    if (tr.className !== cls) tr.className = cls;
+    patch(tr, html);
+    if (body.children[index] !== tr) body.insertBefore(tr, body.children[index] || null);
+  });
+  setText($('#node-summary'), `累计检测 ${(d.service.cycle_count || 0).toLocaleString('zh-CN')} 轮 · 显示 ${rows.length}/${all.length} 个节点 · 当前和热备排在前面`);
+}
+
+/* ====================================================================
+   Tooltip popover: hover on a mouse, tap on touch, focus on keyboard
+   ==================================================================== */
+const pop = $('#tip-pop');
+let tipOwner = null, tipPinned = false;
+
+function tipContext(button) {
+  if (!snapshot) return {};
+  const card = button.closest('.route');
+  const ctx = { service: snapshot.service, policy: snapshot.policy };
+  if (card) {
+    const g = snapshot.groups.find(item => item.name === card.dataset.group);
+    ctx.group = g;
+    ctx.node = g ? snapshot.nodes[g.current] : null;
+  }
+  return ctx;
+}
+
+function openTip(button, pinned) {
+  const make = TIPS[button.dataset.tip];
+  if (!make) return;
+  const t = make(tipContext(button));
+  pop.innerHTML = `<h4>${esc(t.title)}</h4><p>${esc(t.text)}</p>${t.value ? `<p class="val">${esc(t.value)}</p>` : ''}<a href="/guide#${t.anchor || ''}">详细说明 →</a>`;
+  pop.hidden = false;
+  const r = button.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const left = Math.min(Math.max(12, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 12);
+  let top = r.bottom + 8;
+  if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 8);
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+  if (tipOwner && tipOwner !== button) tipOwner.setAttribute('aria-expanded', 'false');
+  tipOwner = button;
+  tipPinned = pinned;
+  button.setAttribute('aria-expanded', 'true');
+}
+function closeTip() {
+  pop.hidden = true;
+  if (tipOwner) tipOwner.setAttribute('aria-expanded', 'false');
+  tipOwner = null;
+  tipPinned = false;
+}
+
+document.addEventListener('pointerover', event => {
+  const b = event.target.closest('.tip');
+  if (b && event.pointerType === 'mouse' && !tipPinned) openTip(b, false);
+});
+document.addEventListener('pointerout', event => {
+  const b = event.target.closest('.tip');
+  if (b && event.pointerType === 'mouse' && !tipPinned && !pop.contains(event.relatedTarget)) closeTip();
+});
+pop.addEventListener('pointerleave', event => { if (event.pointerType === 'mouse' && !tipPinned) closeTip(); });
+document.addEventListener('click', event => {
+  const b = event.target.closest('.tip');
+  if (b) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (tipOwner === b && tipPinned) closeTip(); else openTip(b, true);
+    return;
+  }
+  if (!pop.contains(event.target)) closeTip();
+  if (!event.target.closest('.plot')) charts.forEach(chart => chart.clearPinned());
+}, true);
+document.addEventListener('focusin', event => { const b = event.target.closest && event.target.closest('.tip'); if (b && !tipPinned) openTip(b, false); });
+document.addEventListener('focusout', event => { if (event.target.closest && event.target.closest('.tip') && !tipPinned) closeTip(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') { if (!pop.hidden) closeTip(); else closeDrawer(); } });
+$('#conn-close').addEventListener('click', closeDrawer);
+$('#conn-scrim').addEventListener('click', closeDrawer);
+$('#conn-tabs').addEventListener('click', event => {
+  const b = event.target.closest('button[data-group]');
+  if (!b || b.dataset.group === drawer.group) return;
+  drawer.group = b.dataset.group;
+  $('#conn-body').scrollTop = 0;
+  if (snapshot) renderDrawer(snapshot);
+});
+window.addEventListener('scroll', () => { if (!tipPinned) closeTip(); }, { passive: true });
+
+/* ====================================================================
+   Controls, polling and render loop
+   ==================================================================== */
+$$('.filter').forEach(b => b.addEventListener('click', () => {
+  activeFilter = b.dataset.filter;
+  $$('.filter').forEach(i => { i.classList.toggle('active', i === b); i.setAttribute('aria-pressed', String(i === b)); });
+  if (snapshot) renderNodes(snapshot);
+}));
+function setRange(value) {
+  rangeSeconds = value;
+  $$('.range button').forEach(i => i.setAttribute('aria-pressed', String(Number(i.dataset.range) === value)));
+  charts.forEach(chart => chart.reset());
+  if (snapshot) renderRoutes(snapshot);
+}
+$$('.range button').forEach(b => b.addEventListener('click', () => {
+  setRange(Number(b.dataset.range));
+  try { localStorage.setItem('steadyroute.range', String(rangeSeconds)); } catch (e) { /* storage unavailable */ }
+}));
+try {
+  const saved = Number(localStorage.getItem('steadyroute.range'));
+  if ([300, 900, 1800].includes(saved)) setRange(saved);
+} catch (e) { /* storage unavailable */ }
+
+function render(d) {
+  snapshot = d;
+  renderHead(d);
+  renderRoutes(d);
+  renderNodes(d);
+  if (tipOwner && !pop.hidden) openTip(tipOwner, tipPinned);
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/status', { cache: 'no-store' });
+    if (!r.ok) throw Error(r.status);
+    render(await r.json());
+  } catch (e) {
+    $('#status-pill').dataset.sev = 'bad';
+    setText($('#status-title'), '暂时无法连接');
+    setText($('#head-meta'), '请稍后刷新，稳航会自动恢复');
+  }
+}
+
+refresh();
+setInterval(refresh, 2000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+setInterval(() => { if (snapshot) { renderHead(snapshot); renderRoutes(snapshot); } }, 1000);
+requestAnimationFrame(animate);
+</script>
 </body>
 </html>

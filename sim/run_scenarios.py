@@ -99,6 +99,13 @@ SCENARIOS = [
         ],
     },
     {
+        "id": "slow",
+        "title": "当前台湾节点变慢（未断线）",
+        "question": "会不会无损回优到更快的节点？旧连接是否保留在原节点？",
+        "duration": 220,
+        "timeline": [{"t": 40, "action": "latency", "node": TW_CURRENT, "ms": 430, "label": "当前台湾节点延迟升到 430 ms"}],
+    },
+    {
         "id": "soak",
         "title": "长时间平稳运行（内存与 CPU）",
         "question": "常驻内存和 CPU 占用是多少？快速通道有没有额外开销？",
@@ -120,6 +127,18 @@ def process_usage(pid):
         return round(rss, 1), round((int(fields[11]) + int(fields[12])) / float(ticks), 2)
     except (OSError, StopIteration, ValueError, IndexError):
         return None, None
+
+
+# (group, host, app, bytes per second, lifetime seconds or None for long-lived streams)
+CLIENT_MIX = [
+    (TW_GROUP, "claude.ai", "Claude", 1500, None), (TW_GROUP, "claude.ai", "Claude", 600, None),
+    (TW_GROUP, "claude.ai", "Google Chrome", 300, None), (TW_GROUP, "api.anthropic.com", "Claude", 2400, None),
+    (TW_GROUP, "statsig.anthropic.com", "Claude", 40, 25), (TW_GROUP, "chatgpt.com", "Google Chrome", 900, None),
+    (TW_GROUP, "ab.chatgpt.com", "Google Chrome", 20, 35), (TW_GROUP, "gemini.google.com", "Safari", 500, None),
+    (HK_GROUP, "grok.com", "Google Chrome", 700, None), (HK_GROUP, "x.ai", "Google Chrome", 60, 30),
+    (HK_GROUP, "github.com", "Git", 1200, None),
+]
+SHORT_LIVED = {host: lifetime for _group, host, _process, _rate, lifetime in CLIENT_MIX if lifetime}
 
 
 def seed_state(now):
@@ -214,8 +233,8 @@ class Run(object):
         self.world.started = started
         (self.dir / "state.json").write_text(json.dumps(seed_state(started), ensure_ascii=False), encoding="utf-8")
         self.server = fake_mihomo.serve(self.world, self.socket)
-        self.world.open_stream(TW_GROUP)
-        self.world.open_stream(HK_GROUP)
+        for group, host, process, rate, _lifetime in CLIENT_MIX:
+            self.world.open_stream(group, host, process, rate)
         # v0.4.4+ writes its own bounded router.log into this directory; stdout is only a fallback.
         log = open(str(self.dir / "bootstrap.log"), "w")
         self.process = subprocess.Popen(
@@ -228,14 +247,28 @@ class Run(object):
         return round(time.time() - self.started, 2)
 
     def client_loop(self):
-        """An AI client: when its stream is closed it reconnects on the current node."""
+        """Apps on the Mac: long-lived streams reconnect when closed; short requests come
+        and go, so after a switch new requests land on the new node while old streams stay."""
         while not self.stop_flag.wait(0.5):
+            now = time.time()
             with self.world.lock:
-                groups = {item["group"] for item in self.world.connections.values()}
-            for group in (TW_GROUP, HK_GROUP):
-                if group not in groups:
-                    self.world.open_stream(group)
-                    self.world.record("reconnect", group=group, node=self.world.groups[group]["now"])
+                for cid, item in list(self.world.connections.items()):
+                    lifetime = SHORT_LIVED.get(item.get("host"))
+                    if lifetime and now - item.get("start", now) > lifetime:
+                        self.world.connections.pop(cid)
+                present = {}
+                for item in self.world.connections.values():
+                    key = (item["group"], item.get("host"), item.get("process"))
+                    present[key] = present.get(key, 0) + 1
+            wanted = {}
+            for group, host, process, rate, _lifetime in CLIENT_MIX:
+                key = (group, host, process)
+                wanted[key] = wanted.get(key, 0) + 1
+                if present.get(key, 0) < wanted[key]:
+                    present[key] = present.get(key, 0) + 1
+                    self.world.open_stream(group, host, process, rate)
+                    if host == "claude.ai":
+                        self.world.record("reconnect", group=group, node=self.world.groups[group]["now"])
 
     def record_loop(self):
         last_id = None
@@ -282,6 +315,8 @@ class Run(object):
                 world.local_offline = False
             elif action == "wake":
                 world.blackout_until = time.time() + float(event.get("blackout", 0))
+            elif action == "latency":
+                world.latency[event["node"]] = float(event["ms"])
         if action == "sleep":
             self.process.send_signal(signal.SIGSTOP)
         elif action == "wake":
