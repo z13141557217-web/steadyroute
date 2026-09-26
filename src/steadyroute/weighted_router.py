@@ -79,7 +79,7 @@ PROBE_WORKERS = 10
 PROBE_INTERVAL_SECONDS = 20
 CYCLE_BUDGET_SECONDS = 10
 CYCLE_DURATION_SAMPLES = 60
-SWITCH_HISTORY_LIMIT = 10
+SWITCH_TIMES_LIMIT = 500             # per kind; only the last 24 h are kept, this is a safety cap
 PREFLIGHT_FRESH_SECONDS = 120
 BUSINESS_TARGET_DOWN_SECONDS = 300
 CONFIRM_TIMEOUT_MS = 2000
@@ -801,6 +801,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
                 "failovers_24h": health_model.count_recent(group_state.get("failover_times"), now, 86400),
                 "performance_switches_24h": health_model.count_recent(
                     group_state.get("performance_switch_times"), now, 86400),
+                "removal_switches_24h": health_model.count_recent(
+                    group_state.get("removal_switch_times"), now, 86400),
                 "last_failover_detect_seconds": group_state.get("last_failover_detect_seconds"),
             },
             "automation": {
@@ -1587,6 +1589,46 @@ def best_failover(candidates, nodes, current):
     return min(available, key=lambda name: float(nodes[name].get("score", 1000000.0)))
 
 
+# How each kind of switch leaves the group. One table, so the three switch paths cannot
+# drift apart again (v0.4.5 and earlier did not count "current removed" switches at all).
+SWITCH_KINDS = {
+    # kind: (history key, recovery_mode, keep old connections, handover grace s, observe s, clear manual hold)
+    "removed": ("removal_switch_times", None, True, 300, 360, True),
+    "failover": ("failover_times", True, False, 0, 60, True),
+    "optimize": ("performance_switch_times", False, True, 300, 360, False),
+}
+
+
+def recent_switch_times(times, now):
+    """Append `now` and keep the last 24 hours (plus an hour of slack), capped for safety."""
+    kept = [int(t) for t in (times or []) if now - int(t) <= 25 * 3600]
+    kept.append(int(now))
+    return kept[-SWITCH_TIMES_LIMIT:]
+
+
+def apply_switch(group_name, group_state, kind, old, new, now):
+    """Record a switch that has just been sent to Mihomo: history, handover and timeline."""
+    history, recovery, keep_old, grace, observe, clear_manual = SWITCH_KINDS[kind]
+    timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": new, "kind": "switch", "reason": kind})
+    group_state[history] = recent_switch_times(group_state.get(history), now)
+    group_state.update({
+        "last_router_selection": new,
+        "last_seen": new,
+        "last_switch_at": int(now),
+        "handover_old_node": old if keep_old else None,
+        "handover_new_node": new,
+        "handover_grace_until": int(now + grace) if grace else 0,
+        "recovery_observe_until": int(now + observe),
+        "better_candidate": None,
+        "better_streak": 0,
+        "dynamic_no_candidate": False,
+    })
+    if recovery is not None:
+        group_state["recovery_mode"] = recovery
+    if clear_manual:
+        group_state["manual_hold_until"] = 0
+
+
 def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run):
     group_info = proxy_data.get(group_name) or {}
     current = group_info.get("now")
@@ -1634,19 +1676,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         ) if mature else None
         if target and business_preflight(group_name, target, state, dry_run):
             select_node(group_name, target, dry_run)
-            timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": target, "kind": "switch", "reason": "removed"})
-            group_state.update({
-                "last_router_selection": target,
-                "last_seen": target,
-                "last_switch_at": int(now),
-                "handover_old_node": current,
-                "handover_new_node": target,
-                "handover_grace_until": int(now + 300),
-                "recovery_observe_until": int(now + 360),
-                "better_candidate": None,
-                "better_streak": 0,
-                "dynamic_no_candidate": False,
-            })
+            apply_switch(group_name, group_state, "removed", current, target, now)
             log("%s: current removed; selected mature backup %s without closing old connections" % (
                 group_name, target,
             ))
@@ -1710,7 +1740,6 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                     len(current_stats.get("recent_failures", [])), QUARANTINE_WINDOW_SECONDS // 60),
             ))
             select_node(group_name, target, dry_run)
-            timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": target, "kind": "switch", "reason": "failover"})
             closed = 0 if dry_run else close_old_connections(group_name, current, connections)
             log("%s: closed %d stale connections" % (group_name, closed))
             logging_setup.write_event(
@@ -1719,23 +1748,10 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                 lane=(group_state.get("last_confirm") or {}).get("lane", "cycle"),
                 detect_seconds=max(0, int(now) - int(current_stats.get("first_failure_at", now))),
                 recent_probes=recent_points(group_name))
-            group_state["failover_times"] = health_model.bounded_append(
-                group_state.get("failover_times"), int(now), SWITCH_HISTORY_LIMIT)
+            apply_switch(group_name, group_state, "failover", current, target, now)
             group_state["last_failover_detect_seconds"] = max(
                 0, int(now) - int(current_stats.get("first_failure_at", now)))
-            group_state["last_router_selection"] = target
-            group_state["last_seen"] = target
-            group_state["last_switch_at"] = int(now)
             group_state["last_failover_at"] = int(now)
-            group_state["recovery_mode"] = True
-            group_state["handover_old_node"] = None
-            group_state["handover_new_node"] = target
-            group_state["handover_grace_until"] = 0
-            group_state["recovery_observe_until"] = int(now + 60)
-            group_state["better_candidate"] = None
-            group_state["better_streak"] = 0
-            group_state["manual_hold_until"] = 0
-            group_state["dynamic_no_candidate"] = False
             return
         log("%s: current node failed but no tested backup is available" % group_name)
         group_state["dynamic_no_candidate"] = True
@@ -1812,19 +1828,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         "occurred_at": int(now),
     }]
     select_node(group_name, leader, dry_run)
-    timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": leader, "kind": "switch", "reason": "optimize"})
-    group_state["last_router_selection"] = leader
-    group_state["last_seen"] = leader
-    group_state["last_switch_at"] = int(now)
-    group_state["recovery_mode"] = False
-    group_state["performance_switch_times"] = health_model.bounded_append(
-        group_state.get("performance_switch_times"), int(now), SWITCH_HISTORY_LIMIT)
-    group_state["handover_old_node"] = current
-    group_state["handover_new_node"] = leader
-    group_state["handover_grace_until"] = int(now + 300)
-    group_state["recovery_observe_until"] = int(now + 360)
-    group_state["better_candidate"] = None
-    group_state["better_streak"] = 0
+    apply_switch(group_name, group_state, "optimize", current, leader, now)
     logging_setup.write_event(
         "optimize", group=group_name, **{"from": current}, to=leader,
         score_from=round(current_score, 1), score_to=round(leader_score, 1),
