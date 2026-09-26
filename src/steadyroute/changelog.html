@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>更新日志 · 稳航 SteadyRoute</title>
+<link rel="stylesheet" href="/assets/pages.css">
+<style>
+.log { display: grid; gap: 0; overflow: hidden; }
+.rel { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 24px; padding: 22px 26px; border-top: 1px solid var(--hair); }
+.rel:first-child { border-top: 0; }
+.rel-side { display: grid; gap: 6px; align-content: start; }
+.rel-side .v { font-family: var(--display); font-size: 20px; font-weight: 680; letter-spacing: -.01em; color: var(--ink); }
+.rel-side .d { font-size: 12px; color: var(--ink-4); }
+.rel-side .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.badge.running { background: var(--good-soft); color: var(--good); }
+.badge.next { background: var(--accent-soft); color: var(--accent); }
+.rel-main { display: grid; gap: 10px; min-width: 0; }
+.rel-main h2 { font-family: var(--display); font-size: 16px; font-weight: 650; line-height: 1.4; }
+.rel-main > p { font-size: 13.5px; color: var(--ink-3); line-height: 1.7; }
+.items { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.items li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; font-size: 13.5px; color: var(--ink-2); line-height: 1.7; }
+.kind { justify-self: start; margin-top: 2px; height: 20px; padding: 0 6px; border-radius: 5px; font-size: 11px; font-weight: 600; display: inline-grid; place-items: center; white-space: nowrap; }
+.kind.add { background: var(--accent-soft); color: var(--accent); }
+.kind.fix { background: var(--warn-soft); color: var(--warn); }
+.kind.imp { background: var(--good-soft); color: var(--good); }
+.kind.safe { background: var(--sunken); color: var(--ink-2); }
+.rel.is-running { background: linear-gradient(90deg, var(--accent-soft), transparent 40%); }
+.more { padding: 14px 26px 18px; border-top: 1px solid var(--hair); display: flex; justify-content: center; }
+.more button { border: 1px solid var(--hair-2); background: var(--surface-2); color: var(--ink-2); border-radius: 999px; height: 32px; padding: 0 16px; cursor: pointer; font-size: 12.5px; }
+.more button:hover { color: var(--ink); background: var(--sunken); }
+@media (max-width: 720px) {
+  .rel { grid-template-columns: 1fr; gap: 10px; padding: 18px; }
+  .rel-side { grid-auto-flow: column; justify-content: start; align-items: baseline; gap: 10px; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="稳航 看板">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" style="stop-color:var(--accent)"></stop>
+            <stop offset="1" style="stop-color:var(--accent-2)"></stop>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="32" height="32" rx="9" fill="url(#brand-g)"></rect>
+        <path d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".95"></path>
+        <circle cx="22.6" cy="12.3" r="2.6" fill="#fff"></circle>
+        <circle cx="7" cy="21.5" r="1.6" fill="#fff" opacity=".7"></circle>
+      </svg>
+      <span class="brand-name"><b>稳航</b><span>SteadyRoute</span></span>
+    </a>
+    <nav class="nav" aria-label="页面">
+      <a href="/">看板</a>
+      <a href="/nodes">全部节点</a>
+      <a href="/guide">使用说明</a>
+      <a href="/changelog" aria-current="page">更新日志</a>
+    </nav>
+    <span class="status-pill" id="status-pill" data-sev="warn"><span class="beacon"></span><span id="status-title">连接中</span></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="page-head">
+    <div>
+      <p class="eyebrow">每个版本改了什么</p>
+      <h1>更新日志</h1>
+      <p class="lead">只写你用得到的变化。开发细节在项目里的 CHANGELOG.md。</p>
+    </div>
+    <span class="meta" id="meta"></span>
+  </section>
+
+  <section class="card log" id="log" aria-label="版本列表"></section>
+</main>
+
+<footer class="wrap"><span>仅监听本机 127.0.0.1</span><span id="footer-version"></span></footer>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const now = () => Date.now() / 1000;
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* kind: add 新增 · imp 改进 · fix 修复 · safe 安全 */
+const RELEASES = [
+  { version: '0.4.5', date: null, title: '看板重新设计，新增三个页面',
+    items: [
+      ['imp', '看板重新设计：顶部状态面板配动态稳航图标，两张线路卡片逐行对齐，一屏能看到线路和节点表。'],
+      ['add', '延迟曲线可以看 5 / 15 / 30 分钟，平滑滚动；热备节点也画成虚线，故障切换和回优用不同颜色区分。'],
+      ['add', '活跃连接可以点开查看：按节点、按网站列出，回优后旧节点上还没结束的连接也看得到。'],
+      ['add', '“全部节点”页：只读查看订阅里的所有节点，按地区分组，显示 Clash 自己的测速结果。'],
+      ['add', '“使用说明”页和本页；看板上每个指标旁的 ? 都能看到解释。'],
+    ] },
+  { version: '0.4.4', date: '2026-09-26', title: '日志不再无限增长',
+    items: [
+      ['fix', '日志自动按天轮换、压缩和清理，四类日志总共不超过约 38 MB。'],
+      ['fix', '最快的节点不再因为一次偶发丢包就被隔离并强制切走。'],
+      ['fix', '修复回优和故障恢复同时发生时，一轮检测的记录可能丢失的问题。'],
+      ['add', '看板显示内存“当前（峰值）”，以及上次休眠恢复的时间。'],
+    ] },
+  { version: '0.4.3', date: '2026-09-26', title: '断线后几秒内切换',
+    items: [
+      ['add', '当前节点每 5 秒测一次，断线到切换从约 50 秒缩短到约 6 秒。'],
+      ['add', '每条线路都有热备节点，故障时直接切过去。'],
+      ['add', '同地区家宽铁律写进代码：选路和下发前都会检查，越界的选择直接拒绝。'],
+      ['fix', '本机断网、刚从休眠醒来、AI 网站自己挂了，都不再被误判成节点故障。'],
+      ['add', '看板线路卡片加上实时延迟曲线。'],
+    ] },
+  { version: '0.4.2', date: '2026-09-21', title: '手动选择更好用',
+    items: [
+      ['imp', '在 Clash 里手动选的节点会被尊重 1 小时（原来是 6 小时），期间只暂停回优，坏了照样切换。'],
+      ['imp', '稳航内部用的两个发现组从 Clash Verge 代理页隐藏。'],
+    ] },
+  { version: '0.4.1', date: '2026-09-21', title: '兼容 Clash Verge 2.5.4',
+    items: [
+      ['fix', '兼容 Clash Verge 2.5.4 服务模式的新连接方式。'],
+      ['fix', 'Clash Verge 重载配置后会恢复你原来选中的节点，不再被重置到第一个。'],
+    ] },
+  { version: '0.4.0', date: '2026-09-20', title: '自动发现订阅里的家宽节点（观察模式）',
+    items: [
+      ['add', '自动从订阅里找出台湾、香港家宽节点，新节点先预热，消失的节点保留记录 24 小时。'],
+      ['safe', '目前只观察不接管，选路仍使用固定候选列表。'],
+    ] },
+  { version: '0.3.0', date: '2026-09-20', title: '状态更清楚',
+    items: [
+      ['add', '每条线路、每个节点都有明确的状态和中文说明，看板直接显示原因。'],
+      ['imp', '状态文件升级并自动备份，旧版本数据无缝迁移。'],
+    ] },
+  { version: '0.2.0', date: '2026-09-19', title: '安全部署与一键回滚',
+    items: [
+      ['add', '部署前自动完整备份，部署后自检，失败自动恢复；支持一键回滚。'],
+    ] },
+  { version: '0.1.0', date: '2026-09-19', title: '第一个版本',
+    items: [
+      ['add', '台湾、香港两条家宽线路的自动选路和本地看板。'],
+    ] },
+];
+const KIND = { add: '新增', imp: '改进', fix: '修复', safe: '安全' };
+const SHOW = 4;
+let running = null, expanded = false;
+
+function render() {
+  const list = expanded ? RELEASES : RELEASES.slice(0, SHOW);
+  $('#log').innerHTML = list.map(r => {
+    const isRunning = running && running === r.version;
+    const badges = (isRunning ? '<span class="badge running">正在运行</span>' : '') + (r.date ? '' : '<span class="badge next">即将发布</span>');
+    return `<article class="rel${isRunning ? ' is-running' : ''}" id="v${esc(r.version)}">
+      <div class="rel-side"><span class="v">v${esc(r.version)}</span><span class="d">${r.date ? esc(r.date) : '开发中'}</span>${badges ? `<span class="badges">${badges}</span>` : ''}</div>
+      <div class="rel-main"><h2>${esc(r.title)}</h2>
+        <ul class="items">${r.items.map(([k, t]) => `<li><span class="kind ${k}">${KIND[k]}</span><span>${esc(t)}</span></li>`).join('')}</ul>
+      </div>
+    </article>`;
+  }).join('') + (RELEASES.length > SHOW
+    ? `<div class="more"><button type="button" id="more">${expanded ? '收起早期版本' : `显示更早的 ${RELEASES.length - SHOW} 个版本`}</button></div>` : '');
+}
+$('#log').addEventListener('click', e => { if (e.target.closest('#more')) { expanded = !expanded; render(); } });
+
+function renderStatus(d) {
+  const pill = $('#status-pill');
+  if (!d) { pill.dataset.sev = 'bad'; $('#status-title').textContent = '连不上稳航'; return; }
+  const s = d.service || {};
+  const stale = s.stale_at != null && now() >= s.stale_at;
+  pill.dataset.sev = stale ? 'warn' : s.state_severity === 'ok' ? 'ok' : s.state_severity === 'critical' ? 'bad' : 'warn';
+  $('#status-title').textContent = stale ? (s.stale_title || '检测延迟') : (s.state_title || '运行中');
+  if (s.version && s.version !== running) {
+    running = s.version;
+    $('#footer-version').textContent = `稳航 v${s.version}`;
+    $('#meta').textContent = `这台 Mac 正在运行 v${s.version}`;
+    render();
+  }
+}
+function pollStatus() {
+  fetch('/api/status', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(renderStatus).catch(() => renderStatus(null));
+}
+render();
+pollStatus();
+setInterval(pollStatus, 15000);
+</script>
+</body>
+</html>

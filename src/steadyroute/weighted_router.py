@@ -26,6 +26,7 @@ try:
     import health_model
     import logging_setup
     import runtime_metrics
+    import node_catalog
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import state_contract
@@ -34,6 +35,7 @@ except ModuleNotFoundError:
     import health_model
     import logging_setup
     import runtime_metrics
+    import node_catalog
 
 
 CONTROLLER_SOCKET_PATHS = (
@@ -49,6 +51,14 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 ACCEPTANCE_DASHBOARD_PATH = os.path.join(APP_DIR, "acceptance_dashboard.html")
 ACCEPTANCE_FIXTURE_PATH = os.path.join(APP_DIR, "fixtures", "status_contract_v2.json")
 CANDIDATE_DASHBOARD_PATH = os.path.join(APP_DIR, "candidate_dashboard.html")
+# Read-only sub-pages served next to the dashboard (same folder as this file when deployed).
+STATIC_PAGES = {
+    "/nodes": ("nodes.html", "text/html; charset=utf-8"),
+    "/guide": ("guide.html", "text/html; charset=utf-8"),
+    "/changelog": ("changelog.html", "text/html; charset=utf-8"),
+    "/assets/pages.css": ("pages.css", "text/css; charset=utf-8"),
+}
+PAGE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
 DASHBOARD_HOST = "127.0.0.1"
 DASHBOARD_PORT = 17654
 SERVICE_NAME = "稳航 SteadyRoute"
@@ -1006,8 +1016,34 @@ def read_dashboard_cache(kind):
         return None if DASHBOARD_CACHE is None else DASHBOARD_CACHE.get(kind)
 
 
+NODES_CACHE = None
+
+
+def update_nodes_cache(state, proxy_data, now):
+    """Re-encode the read-only subscription catalogue once per full cycle."""
+    global NODES_CACHE
+    if not proxy_data:
+        return
+    current = [(proxy_data.get(name) or {}).get("now") for name in GROUPS]
+    standby = [(state.get("groups", {}).get(name) or {}).get("hot_standby") for name in GROUPS]
+    catalog = node_catalog.build_catalog(proxy_data, POLICIES, now, current=current, standby=standby)
+    encoded = json.dumps(catalog, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    with DASHBOARD_CACHE_LOCK:
+        NODES_CACHE = encoded
+
+
+def read_nodes_cache():
+    with DASHBOARD_CACHE_LOCK:
+        return NODES_CACHE
+
+
 def cached_api_response(path):
     route = urlsplit(path).path
+    if route == "/api/nodes":
+        content = read_nodes_cache()
+        if content is None:
+            return 503, "application/json; charset=utf-8", b'{"error":"catalog_unavailable"}'
+        return 200, "application/json; charset=utf-8", content
     kind = "v1" if route == "/api/v1/status" else "legacy" if route == "/api/status" else None
     if kind is None:
         return 404, "application/json; charset=utf-8", b'{"error":"not_found"}'
@@ -1015,6 +1051,18 @@ def cached_api_response(path):
     if content is None:
         return 503, "application/json; charset=utf-8", b'{"error":"snapshot_unavailable"}'
     return 200, "application/json; charset=utf-8", content
+
+
+def static_page_response(path):
+    route = urlsplit(path).path.rstrip("/") or "/"
+    entry = STATIC_PAGES.get(route)
+    if entry is None:
+        return 404, "text/plain; charset=utf-8", b"not found"
+    try:
+        with open(os.path.join(APP_DIR, entry[0]), "rb") as handle:
+            return 200, entry[1], handle.read()
+    except OSError:
+        return 404, "text/plain; charset=utf-8", b"not found"
 
 
 def static_acceptance_response(path):
@@ -1089,7 +1137,19 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self._send(content)
             return
-        if route in ("/api/status", "/api/v1/status"):
+        if (route.rstrip("/") or "/") in STATIC_PAGES:
+            status, content_type, content = static_page_response(route)
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Security-Policy", PAGE_CSP)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self._send(content)
+            return
+        if route in ("/api/status", "/api/v1/status", "/api/nodes"):
             status, content_type, content = cached_api_response(route)
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -1856,6 +1916,10 @@ def publish_state(state, proxy_data, connections, now):
     snapshots = build_status_snapshots(state, proxy_data, connections, now=int(now))
     save_state(state)
     update_dashboard_cache(snapshots)
+    try:
+        update_nodes_cache(state, proxy_data, int(now))
+    except Exception as error:   # the catalogue is display-only; never let it break a cycle
+        log_warning("node catalogue skipped: %s" % error)
     sync_state_events(state)
     RUNTIME.update({
         "last_state": state, "last_proxy_data": proxy_data, "last_connections": connections,

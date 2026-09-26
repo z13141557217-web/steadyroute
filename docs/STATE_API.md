@@ -120,3 +120,29 @@ phys_footprint，与活动监视器"内存"列同口径；取不到时为 `null`
 本阶段不部署生产。若后续管理窗口验收失败，使用 `rollback-local.sh --apply` 恢复
 v0.2.0 的完整目录与发布前状态。不得只替换 Python 文件，也不得让旧版本覆盖未知
 schema。性能回退时优先恢复旧实现并保留本机诊断副本。
+
+v0.4.5（看板重新设计）只追加字段，schema 仍为 2：
+
+- `timeline` / `recent_probes` 元素扩展为 `[unix 秒, 毫秒或 null, "probe"|"standby"|"switch",
+  节点名, 原因]`。`standby` 是热备的轻量探测（每轮一次，只用于曲线，不计入节点统计）；
+  `switch` 的原因为 `failover`、`optimize` 或 `removed`，其余为 `null`。legacy `timeline`
+  保留最近 30 分钟（看板可选 5 / 15 / 30 分钟），v1 `recent_probes` 仍为最近 5 分钟；
+  每组最多 480 点，只在内存。
+- legacy 组追加 `hot_standby`、`metrics` 和 `connections`：`{total, by_node, sites, more_sites,
+  observed_at}`。`sites` 按站点聚合，每项 `{host, count, nodes, upload, download, since,
+  process}`，最多 30 个，其余计入 `more_sites`。只给域名；没有域名的连接统一显示为
+  “IP 直连（地址已隐藏）”，从不输出 IP、端口或完整 URL，也不写入日志和状态文件。
+- legacy `service` 追加 `version`。`memory_peak_mb` 改为与 `memory_current_mb` 同口径的
+  峰值（macOS 为 phys_footprint 峰值，Linux 为 VmHWM）；原 RSS 峰值仍在 `memory_mb`。
+
+新增只读接口 `GET /api/nodes`，供“全部节点”页使用：列出 Clash 订阅中的每个节点（不含
+策略组、内置出口和“到期 / 剩余流量”一类提示条目），每项 `{name, region, region_label,
+type, udp, residential, group, role, delay_ms, delay_at}`。`role` 为 `current`、`standby`、
+`monitored`（稳航选路范围内的同地区家宽）或 `view`（只供查看，永远不会被选中）；
+`delay_ms` 取 Clash 自己最近一次测速（`0` 表示超时，`null` 表示未测）。顶层另有
+`generated_at`、`total`、`residential`、`monitored`、`notices_hidden`、`truncated` 和
+`regions`。目录在每次完整周期结束时生成并编码一次，最多 1000 个节点；请求只读缓存，
+首个周期完成前返回 `503 catalog_unavailable`。接口不含服务器地址，也不影响选路。
+
+新增静态页 `/nodes`、`/guide`、`/changelog` 和共享样式 `/assets/pages.css`，与看板同在
+`127.0.0.1:17654`，只读取 `/api/status` 和 `/api/nodes`，不加载任何外部资源。

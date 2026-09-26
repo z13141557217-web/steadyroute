@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>使用说明 · 稳航 SteadyRoute</title>
+<link rel="stylesheet" href="/assets/pages.css">
+<style>
+html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+.guide { display: grid; grid-template-columns: 208px minmax(0, 840px); gap: 28px; align-items: start; }
+.toc { position: sticky; top: 80px; display: grid; gap: 1px; padding: 6px 0; }
+.toc p { font-size: 11.5px; color: var(--ink-4); letter-spacing: .06em; padding: 0 12px 6px; }
+.toc a { display: block; padding: 6px 12px; border-radius: 8px; color: var(--ink-3); font-size: 13px; border-left: 2px solid transparent; }
+.toc a:hover { color: var(--ink); background: var(--sunken); }
+.toc a.on { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
+.doc { display: grid; gap: 16px; min-width: 0; }
+.gsec { padding: 24px 28px 26px; display: grid; gap: 12px; }
+.gsec > .k { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .1em; }
+.gsec h2 { font-family: var(--display); font-size: 19px; font-weight: 660; line-height: 1.35; margin-top: -4px; }
+.gsec h3 { font-size: 14px; font-weight: 650; margin-top: 6px; }
+.gsec p, .gsec li { font-size: 14px; color: var(--ink-2); line-height: 1.8; }
+.gsec ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.gsec b { color: var(--ink); font-weight: 600; }
+.gsec code { font-family: var(--mono); font-size: 12.5px; background: var(--sunken); padding: 1px 6px; border-radius: 5px; color: var(--ink); }
+.live { font-family: var(--display); font-weight: 650; color: var(--accent); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--hair); border-radius: 14px; background: var(--surface-2); overflow: hidden; }
+.facts div { padding: 12px 16px; display: grid; gap: 2px; border-left: 1px solid var(--hair); }
+.facts div:first-child { border-left: 0; }
+.facts span { font-size: 11.5px; color: var(--ink-3); }
+.facts b { font-family: var(--display); font-size: 18px; font-weight: 650; }
+.facts small { font-size: 11.5px; color: var(--ink-4); }
+.steps { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 0; counter-reset: s; }
+.steps li { position: relative; padding: 0 0 14px 40px; counter-increment: s; }
+.steps li::before {
+  content: counter(s); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font-family: var(--display); font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+}
+.steps li::after { content: ""; position: absolute; left: 11.5px; top: 28px; bottom: 2px; width: 1px; background: var(--hair-2); }
+.steps li:last-child { padding-bottom: 0; }
+.steps li:last-child::after { display: none; }
+.steps li b { display: block; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compare > div { border: 1px solid var(--hair); border-radius: 14px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
+.compare h4 { margin: 0; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+.compare h4 i { width: 3px; height: 14px; border-radius: 2px; }
+.compare dl { margin: 0; display: grid; gap: 5px; }
+.compare dl div { display: grid; grid-template-columns: 76px 1fr; gap: 8px; font-size: 12.5px; }
+.compare dt { color: var(--ink-3); }
+.compare dd { margin: 0; color: var(--ink); }
+.callout { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 10px 14px; font-size: 13.5px; color: var(--ink-2); line-height: 1.75; }
+.callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+.states { width: 100%; border-collapse: collapse; font-size: 13px; }
+.states td { padding: 9px 10px; border-top: 1px solid var(--hair); vertical-align: top; color: var(--ink-2); line-height: 1.6; }
+.states tr:first-child td { border-top: 0; }
+.states td:first-child { white-space: nowrap; width: 1%; padding-left: 0; }
+.chip { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+.chip.ok { background: var(--good-soft); color: var(--good); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.info { background: var(--sunken); color: var(--ink-2); }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 18px; }
+.legend div { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+.legend i { flex: 0 0 22px; display: inline-block; }
+.lg-cur { height: 3px; border-radius: 2px; background: var(--accent); }
+.lg-sb { border-top: 2px dashed var(--standby); }
+.lg-fail { flex-basis: 8px !important; width: 8px; height: 8px; border-radius: 2px; background: var(--bad); margin-inline: 7px; }
+.lg-miss { flex-basis: 9px !important; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--standby); margin-inline: 6px; }
+.lg-fo { flex-basis: 2px !important; width: 2px; height: 14px; background: var(--bad); margin-inline: 10px; }
+.lg-op { flex-basis: 0 !important; height: 14px; border-left: 2px dashed var(--good); margin-inline: 10px; }
+.qa { display: grid; gap: 0; }
+.qa details { border-top: 1px solid var(--hair); }
+.qa details:first-child { border-top: 0; }
+.qa summary { list-style: none; cursor: pointer; padding: 12px 0; font-size: 14px; font-weight: 600; color: var(--ink); display: flex; justify-content: space-between; gap: 12px; }
+.qa summary::-webkit-details-marker { display: none; }
+.qa summary::after { content: "+"; color: var(--ink-4); font-weight: 400; font-size: 18px; line-height: 1; }
+.qa details[open] summary::after { content: "−"; }
+.qa details p { padding: 0 0 14px; }
+@media (max-width: 900px) {
+  .guide { grid-template-columns: 1fr; }
+  .toc { position: static; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 0; }
+  .toc p { display: none; }
+  .toc a { white-space: nowrap; border: 1px solid var(--hair); border-radius: 999px; }
+}
+@media (max-width: 720px) {
+  html { scroll-padding-top: 108px; }
+  .gsec { padding: 18px 18px 20px; }
+  .compare { grid-template-columns: 1fr; }
+  .facts div { border-left: 0; border-top: 1px solid var(--hair); }
+  .facts div:first-child { border-top: 0; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="稳航 看板">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" style="stop-color:var(--accent)"></stop>
+            <stop offset="1" style="stop-color:var(--accent-2)"></stop>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="32" height="32" rx="9" fill="url(#brand-g)"></rect>
+        <path d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".95"></path>
+        <circle cx="22.6" cy="12.3" r="2.6" fill="#fff"></circle>
+        <circle cx="7" cy="21.5" r="1.6" fill="#fff" opacity=".7"></circle>
+      </svg>
+      <span class="brand-name"><b>稳航</b><span>SteadyRoute</span></span>
+    </a>
+    <nav class="nav" aria-label="页面">
+      <a href="/">看板</a>
+      <a href="/nodes">全部节点</a>
+      <a href="/guide" aria-current="page">使用说明</a>
+      <a href="/changelog">更新日志</a>
+    </nav>
+    <span class="status-pill" id="status-pill" data-sev="warn"><span class="beacon"></span><span id="status-title">连接中</span></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="page-head">
+    <div>
+      <p class="eyebrow">稳航是怎么工作的</p>
+      <h1>使用说明</h1>
+      <p class="lead">从“它在做什么”到“看板上每个数字的意思”。文中<span class="live">蓝色数字</span>取自正在运行的稳航，改了配置这里会跟着变。</p>
+    </div>
+    <span class="meta" id="meta"></span>
+  </section>
+
+  <div class="guide">
+    <nav class="toc" aria-label="目录">
+      <p>目录</p>
+      <a href="#overview">稳航是什么</a>
+      <a href="#iron-rule">铁律：只换同地区家宽</a>
+      <a href="#detection">怎么检测</a>
+      <a href="#failover">故障切换</a>
+      <a href="#optimize">无损回优</a>
+      <a href="#quarantine">坏节点怎么处理</a>
+      <a href="#lifecycle">节点状态</a>
+      <a href="#metrics">看板上的数字</a>
+      <a href="#chart">延迟曲线怎么看</a>
+      <a href="#connections">活跃连接与交接</a>
+      <a href="#sleep">休眠与断网</a>
+      <a href="#memory">内存占用</a>
+      <a href="#logs">日志在哪里</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+
+    <div class="doc">
+      <section class="card gsec" id="overview">
+        <span class="k">01</span>
+        <h2>稳航是什么</h2>
+        <p>稳航是跑在这台 Mac 上的一个小助手，专门照看 Clash Verge 里的两条线路：<b>AI 台湾家宽线路</b>（给 ChatGPT、Claude 这类 AI 服务用）和<b>香港家宽自动备援</b>。它做三件事：</p>
+        <ul>
+          <li><b>一直在测</b>：当前节点每隔几秒测一次，其他候选节点轮流测，还会定期真正打开一次 AI 网站。</li>
+          <li><b>坏了马上换</b>：当前节点确认故障后，立刻换到事先准备好的同地区“热备”节点。</li>
+          <li><b>慢了悄悄换</b>：当前节点没坏、但有明显更快更稳的同地区家宽时，在不打断正在进行的对话的前提下换过去。</li>
+        </ul>
+        <p>它不改你的订阅，不碰其他策略组，也不上传任何数据；看板只在本机 <code>127.0.0.1:17654</code> 上提供，别的设备访问不到。</p>
+      </section>
+
+      <section class="card gsec" id="iron-rule">
+        <span class="k">02</span>
+        <h2>铁律：只在同地区的家宽节点之间切换</h2>
+        <p><b>台湾线路只会换到台湾家宽，香港线路只会换到香港家宽。</b>这条规则没有例外：哪怕同地区的家宽全部不可用，稳航也不会换到其他地区或机房节点，而是保持当前选择、继续检测，并在看板上用红色提示你。</p>
+        <p>这样做是因为 AI 服务会根据出口 IP 的地区和类型做风控，出口在不同地区之间来回跳、或者从家宽变成机房 IP，都可能触发额外验证。稳定的同地区家宽出口是这条线路存在的意义。</p>
+        <h3>候选节点从哪里来</h3>
+        <p>稳航会在订阅里自动找名称同时带有<b>地区</b>和<b>家宽</b>字样的节点：台湾找“台湾 / 台灣 / 🇹🇼”加“家宽 / HINET / Seednet”，香港找“香港 / 🇭🇰”加“家宽 / HKT / HKBN”，并排除“到期、剩余流量、官网”这类提示条目。订阅更新后出现的新节点会先<a href="#lifecycle">预热</a>，攒够样本才参与选路。订阅里其他节点可以在<a href="/nodes">全部节点</a>页查看，但永远不会被选中。</p>
+      </section>
+
+      <section class="card gsec" id="detection">
+        <span class="k">03</span>
+        <h2>怎么检测</h2>
+        <div class="facts">
+          <div><span>当前节点</span><b class="live" data-live="fast">5 秒</b><small>一次轻量探测</small></div>
+          <div><span>完整检测</span><b class="live" data-live="cycle">20 秒</b><small>一轮，测候选和热备</small></div>
+          <div><span>打开 AI 网站</span><b class="live" data-live="business">60 秒</b><small>一次，当前节点和热备</small></div>
+        </div>
+        <ul>
+          <li><b>快速通道</b>：只测当前节点，间隔很短，用来尽早发现断线。</li>
+          <li><b>完整检测</b>：每一轮测所有候选节点能否连通、延迟多少，同时给热备单独测一次，并轮流抽查几个备用节点，保证“换过去的那个”一直是新鲜可靠的。</li>
+          <li><b>业务检测</b>：通过当前节点和热备真正打开 AI 网站（台湾线路用 chatgpt.com 和 claude.ai，香港线路用 grok.com）的检测页，确认不只是“能连上”，而是“能用”。</li>
+          <li><b>本机网络检查</b>：怀疑故障时会绕开代理直接测一下本机网络，本机断网时不会冤枉节点。</li>
+        </ul>
+      </section>
+
+      <section class="card gsec" id="failover">
+        <span class="k">04</span>
+        <h2>故障切换：什么时候判定坏了、怎么换</h2>
+        <ol class="steps">
+          <li><b>发现失败</b>当前节点某次探测失败。</li>
+          <li><b>当场复测</b>同一轮里马上再测 2 次，间隔不到 1 秒，同时检查本机网络。</li>
+          <li><b>确认故障</b>连续 <span class="live" data-live="confirm">3</span> 次都失败，才认定当前节点真的坏了。</li>
+          <li><b>换到热备</b>立刻切到同地区热备。热备最近没有验证过时，会先确认它能打开 AI 网站再换。</li>
+          <li><b>断开旧连接</b>只断开还挂在坏节点上的连接，应用会自动重连到新节点；其他连接不受影响。</li>
+        </ol>
+        <div class="callout">以下情况<b>不会</b>判定故障：本机断网；Mac 刚从休眠醒来；这一轮所有节点同时失败（说明是本地或 Clash 的问题）；当前节点和热备都打不开同一个 AI 网站（说明是网站自己出了问题，不是节点的错）。</div>
+        <p>如果 10 分钟内已经故障切换了 3 次，说明整体环境不稳，之后每次切换前都会完整验证目标节点能打开 AI 网站，避免在一堆坏节点之间来回跳。</p>
+      </section>
+
+      <section class="card gsec" id="optimize">
+        <span class="k">05</span>
+        <h2>无损回优：节点没坏，但有更快的</h2>
+        <p>当前节点能用但变慢了，稳航会在同地区家宽里找更好的，满足下面全部条件才换：</p>
+        <div class="facts">
+          <div><span>至少快</span><b class="live" data-live="gain">180 ms 且 30%</b><small>两个条件同时满足</small></div>
+          <div><span>连续确认</span><b class="live" data-live="confirmations">3 轮</b><small>每轮都更快才算</small></div>
+          <div><span>两次回优间隔</span><b class="live" data-live="cooldown">30 分钟</b><small>避免频繁换出口</small></div>
+          <div><span>候选门槛</span><b class="live" data-live="minavail">可用率 ≥ 90%</b><small>且样本足够</small></div>
+        </div>
+        <p><b>“无损”指的是不打断正在进行的连接</b>：换节点后只有新请求走新节点，旧连接继续留在原节点上直到自然结束，稳航不会主动断开它们。所以正在生成的回答、正在上传的文件都不会被打断。</p>
+        <div class="compare">
+          <div>
+            <h4><i style="background:var(--bad)"></i>故障切换</h4>
+            <dl>
+              <div><dt>什么时候</dt><dd>当前节点确认坏了</dd></div>
+              <div><dt>换到哪里</dt><dd>同地区热备</dd></div>
+              <div><dt>旧连接</dt><dd>断开，应用自动重连</dd></div>
+              <div><dt>看板标记</dt><dd>红色实线</dd></div>
+            </dl>
+          </div>
+          <div>
+            <h4><i style="background:var(--good)"></i>无损回优</h4>
+            <dl>
+              <div><dt>什么时候</dt><dd>有明显更快的同地区家宽</dd></div>
+              <div><dt>换到哪里</dt><dd>连续确认更快的那个</dd></div>
+              <div><dt>旧连接</dt><dd>保留到自然结束</dd></div>
+              <div><dt>看板标记</dt><dd>绿色虚线</dd></div>
+            </dl>
+          </div>
+        </div>
+        <h3>你手动选的节点</h3>
+        <p>如果你在 Clash 里手动把线路换成了另一个同地区家宽，稳航会尊重这个选择 1 小时，期间不做回优；但如果你选的节点坏了，仍然会故障切换。</p>
+      </section>
+
+      <section class="card gsec" id="quarantine">
+        <span class="k">06</span>
+        <h2>坏节点怎么处理</h2>
+        <div class="facts">
+          <div><span>触发隔离</span><b class="live" data-live="qtrigger">10 分钟内失败 3 次</b><small>&nbsp;</small></div>
+          <div><span>隔离时长</span><b class="live" data-live="qtime">30 分钟</b><small>期间不会被选中</small></div>
+          <div><span>恢复条件</span><b class="live" data-live="qrecover">连续成功 3 次</b><small>期满后试探</small></div>
+        </div>
+        <p>隔离到期后节点进入“半开放验证”，用少量探测试探它是否真的恢复了，连续成功才重新成为候选。近 24 小时可用率低于 <span class="live" data-live="minavailpct">90%</span> 的节点也不会被主动换上。</p>
+        <p>偶发的单次失败如果被同一轮的其他探测否定（比如复测成功了），只会影响可用率，不计入隔离，避免把最快的节点因为一次丢包就关进去。</p>
+      </section>
+
+      <section class="card gsec" id="lifecycle">
+        <span class="k">07</span>
+        <h2>节点状态</h2>
+        <table class="states">
+          <tr><td><span class="chip info">节点正在预热</span></td><td>新发现的节点正在积累样本：至少 10 次探测、最近连续成功 3 次，并且至少成功打开过一次 AI 网站。攒够之前不会被选中。</td></tr>
+          <tr><td><span class="chip ok">节点健康</span></td><td>各项检测正常，可以作为当前节点或热备。</td></tr>
+          <tr><td><span class="chip warn">节点质量下降</span></td><td>还能用，但最近有失败或变慢，不会被主动换上。</td></tr>
+          <tr><td><span class="chip bad">节点已隔离</span></td><td>短时间内失败太多，暂停使用，见<a href="#quarantine">坏节点怎么处理</a>。</td></tr>
+          <tr><td><span class="chip warn">节点正在半开放验证</span></td><td>隔离期满，正在用少量探测确认它是否恢复。</td></tr>
+          <tr><td><span class="chip info">节点已退役</span></td><td>节点已从订阅里消失，记录保留 24 小时后清理。</td></tr>
+        </table>
+      </section>
+
+      <section class="card gsec" id="metrics">
+        <span class="k">08</span>
+        <h2>看板上的数字</h2>
+        <ul>
+          <li><b>平均延迟</b>：最近几次探测的平均响应时间，越新的探测权重越大，变快变慢都能很快体现。越低越好。</li>
+          <li><b>近 24 小时可用率</b>：最近 24 小时里探测成功的比例。</li>
+          <li><b>抖动</b>：延迟忽高忽低的幅度。抖动大的节点即使平均延迟低，用起来也可能卡。</li>
+          <li><b>综合评分</b>：0～100 分，可用率占 65%，延迟占 25%，抖动占 10%；样本少时会打折，最近一次失败时最多 39 分，每连续失败一次再扣 8 分。<b>只用于展示</b>，选路时直接比较延迟、抖动和可用率。</li>
+          <li><b>活跃连接</b>：此刻经过这条线路的连接数，点“查看”能看到是哪些网站，见<a href="#connections">活跃连接与交接</a>。</li>
+          <li><b>连续次数</b>：节点表最后一列。最近一次成功时显示连续成功了几次，失败时显示红色的“失败 N”。</li>
+          <li><b>24 小时切换</b>：顶部统计，分成“故障”和“回优”两类。</li>
+        </ul>
+      </section>
+
+      <section class="card gsec" id="chart">
+        <span class="k">09</span>
+        <h2>延迟曲线怎么看</h2>
+        <div class="legend">
+          <div><i class="lg-cur"></i>实线：当前节点，每 5 秒一个点</div>
+          <div><i class="lg-sb"></i>虚线：热备节点，每 20 秒一个点</div>
+          <div><i class="lg-fail"></i>红块：当前节点这次探测失败</div>
+          <div><i class="lg-miss"></i>空心圈：热备这次探测失败</div>
+          <div><i class="lg-fo"></i>红色实线：故障切换</div>
+          <div><i class="lg-op"></i>绿色虚线：无损回优</div>
+        </div>
+        <p>曲线用的是一种很轻的探测（不含加密握手），所以数值通常比“平均延迟”低，适合看<b>变化趋势</b>和<b>两条线的对比</b>。右上角可以切换 5 / 15 / 30 分钟；鼠标移到曲线上（手机上点一下）能看到具体时间和数值。</p>
+      </section>
+
+      <section class="card gsec" id="connections">
+        <span class="k">10</span>
+        <h2>活跃连接与交接</h2>
+        <p>点线路卡片上活跃连接旁的“查看”，右侧会滑出一个面板：上面是连接数、网站数和已下载流量，中间按节点显示连接分布，下面按网站列出每个连接来自哪个应用、持续了多久。</p>
+        <p><b>交接</b>：无损回优之后的一段时间里，你会看到“当前”和“旧节点”两个节点同时有连接。这是正常的：新请求已经走新节点，旧连接等自然结束后就会消失，稳航不会去断开它们。</p>
+        <div class="callout">隐私：只显示网站域名，不显示 IP 地址和完整网址；这些信息只在本机页面上显示，不写日志，也不保存。</div>
+      </section>
+
+      <section class="card gsec" id="sleep">
+        <span class="k">11</span>
+        <h2>休眠与断网</h2>
+        <p><b>合盖休眠</b>：稳航能分辨“时间突然跳过去了一大段”，醒来后的几分钟里只观察、不判定故障，因为这时候连接本来就在重建，失败一两次很正常。看板顶部会显示“上次休眠恢复”的时间。</p>
+        <p><b>本机断网</b>：直连测试也失败时，稳航判断是你这边没网，暂停一切切换，等网络恢复后自动继续。看板上会显示“本机网络不可用”。</p>
+      </section>
+
+      <section class="card gsec" id="memory">
+        <span class="k">12</span>
+        <h2>内存占用</h2>
+        <p>看板顶部的大数字是此刻实际占用，和活动监视器“内存”一列同口径，会上下浮动；“峰值”是本次启动以来的最高值，只升不降，重启后清零。正常在几十 MB。判断有没有内存泄漏要看长时间的趋势，而不是峰值。</p>
+      </section>
+
+      <section class="card gsec" id="logs">
+        <span class="k">13</span>
+        <h2>日志在哪里</h2>
+        <p>所有日志都在 <code>~/Library/Logs/Clash-Verge-Stability-Router/</code>，会自动轮换、压缩和清理，总共不超过约 38 MB：</p>
+        <ul>
+          <li><code>router.log</code>：日常运行记录，保留 14 天。</li>
+          <li><code>events.jsonl</code>：每次故障切换、回优、休眠恢复等决策，保留 90 天。</li>
+          <li><code>node-events.jsonl</code>：节点状态变化（下降、隔离、恢复），保留 30 天。</li>
+          <li><code>router-error.log</code>：警告和错误，保留 30 天。</li>
+        </ul>
+        <p>在项目目录运行 <code>./scripts/status.sh</code> 可以一次看到运行状态、最近的决策和错误。</p>
+      </section>
+
+      <section class="card gsec" id="faq">
+        <span class="k">14</span>
+        <h2>常见问题</h2>
+        <div class="qa">
+          <details><summary>为什么看板上的延迟和 Clash 里显示的不一样？</summary>
+            <p>两边测的地址和方式不同：Clash 的测速是它自己发起的，而且可能是很久以前测的；稳航每几秒就测一次，还分轻量探测和完整检测两种。比较同一个节点的变化趋势比比较绝对数值更有意义。</p></details>
+          <details><summary>明明有更快的节点，为什么不换？</summary>
+            <p>回优有门槛：要快 180 ms 以上且快 30%，连续 3 轮确认，距离上次回优至少 30 分钟，候选的可用率还要够高。如果你刚在 Clash 里手动选过节点，1 小时内也不会回优。这些门槛是为了让出口保持稳定，而不是追求每一毫秒。</p></details>
+          <details><summary>同地区的家宽全坏了会怎样？</summary>
+            <p>稳航会保持当前选择，继续检测，看板显示红色告警。它不会为了“能连上”而换到其他地区或非家宽节点，见<a href="#iron-rule">铁律</a>。</p></details>
+          <details><summary>看板打不开怎么办？</summary>
+            <p>先确认稳航在运行：它由系统的 LaunchAgent 自动启动，开机后自己会跑起来。看板地址是 <code>http://127.0.0.1:17654</code>。运行 <code>./scripts/status.sh</code> 能看到它是否在线以及最近的错误。</p></details>
+          <details><summary>一直在测，会不会耗流量、拖慢网速？</summary>
+            <p>不会。每次探测只是一个几百字节的小请求，业务检测也只打开 AI 网站很小的检测页。和正常上网相比可以忽略。</p></details>
+          <details><summary>“全部节点”里的节点能用来切换吗？</summary>
+            <p>不能，那个页面只用来查看订阅里有什么。稳航只会在同地区的家宽节点之间切换。</p></details>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer class="wrap"><span>仅监听本机 127.0.0.1 · 所有数据只在这台 Mac 上</span><span id="footer-version"></span></footer>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const now = () => Date.now() / 1000;
+
+/* Numbers in blue come from the running service, so the guide never drifts from the config. */
+function fillLive(d) {
+  const s = d.service || {}, p = d.policy || {};
+  const min = v => `${Math.round(v / 60)} 分钟`;
+  const values = {
+    fast: s.fast_probe_interval_seconds && `${s.fast_probe_interval_seconds} 秒`,
+    cycle: s.probe_interval_seconds && `${s.probe_interval_seconds} 秒`,
+    business: p.business_probe_interval_seconds && `${p.business_probe_interval_seconds} 秒`,
+    confirm: p.confirm_probes && String(p.confirm_probes),
+    gain: p.absolute_gain_ms && p.relative_gain != null && `${p.absolute_gain_ms} ms 且 ${Math.round(p.relative_gain * 100)}%`,
+    confirmations: p.confirmations && `${p.confirmations} 轮`,
+    cooldown: p.cooldown_seconds && min(p.cooldown_seconds),
+    minavail: p.min_availability != null && `可用率 ≥ ${Math.round(p.min_availability * 100)}%`,
+    minavailpct: p.min_availability != null && `${Math.round(p.min_availability * 100)}%`,
+    qtrigger: p.quarantine_window_seconds && p.quarantine_failures && `${min(p.quarantine_window_seconds)}内失败 ${p.quarantine_failures} 次`,
+    qtime: p.quarantine_seconds && min(p.quarantine_seconds),
+    qrecover: p.quarantine_recovery_successes && `连续成功 ${p.quarantine_recovery_successes} 次`,
+  };
+  document.querySelectorAll('[data-live]').forEach(el => {
+    const v = values[el.dataset.live];
+    if (v && el.textContent !== v) el.textContent = v;
+  });
+}
+
+function renderStatus(d) {
+  const pill = $('#status-pill');
+  if (!d) { pill.dataset.sev = 'bad'; $('#status-title').textContent = '连不上稳航'; $('#meta').textContent = '数字为默认配置'; return; }
+  const s = d.service || {};
+  const stale = s.stale_at != null && now() >= s.stale_at;
+  pill.dataset.sev = stale ? 'warn' : s.state_severity === 'ok' ? 'ok' : s.state_severity === 'critical' ? 'bad' : 'warn';
+  $('#status-title').textContent = stale ? (s.stale_title || '检测延迟') : (s.state_title || '运行中');
+  if (s.version) { $('#footer-version').textContent = `稳航 v${s.version}`; $('#meta').textContent = `按 v${s.version} 当前配置`; }
+  fillLive(d);
+}
+function pollStatus() {
+  fetch('/api/status', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(renderStatus).catch(() => renderStatus(null));
+}
+
+/* Highlight the section being read. */
+const links = new Map([...document.querySelectorAll('.toc a')].map(a => [a.getAttribute('href').slice(1), a]));
+const seen = new Set();
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) seen.add(e.target.id); else seen.delete(e.target.id); });
+  const first = [...links.keys()].find(id => seen.has(id));
+  links.forEach((a, id) => a.classList.toggle('on', id === first));
+}, { rootMargin: '-72px 0px -55% 0px' });
+document.querySelectorAll('.gsec').forEach(sec => observer.observe(sec));
+
+pollStatus();
+setInterval(pollStatus, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollStatus(); });
+</script>
+</body>
+</html>

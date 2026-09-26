@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>全部节点 · 稳航 SteadyRoute</title>
+<link rel="stylesheet" href="/assets/pages.css">
+<style>
+.sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sum div { padding: 14px 22px; display: grid; gap: 2px; border-left: 1px solid var(--hair); min-width: 0; }
+.sum div:first-child { border-left: 0; }
+.sum span { font-size: 11.5px; color: var(--ink-3); }
+.sum b { font-family: var(--display); font-size: 22px; font-weight: 650; line-height: 1.2; }
+.sum small { font-size: 11.5px; color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 18px; border-bottom: 1px solid var(--hair); }
+.regions { display: flex; gap: 4px; flex: 1 1 360px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.search {
+  flex: 0 1 220px; min-width: 150px; height: 34px; border-radius: 10px; border: 1px solid var(--hair-2); background: var(--surface-2);
+  display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--ink-3);
+}
+.search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.search svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.search input { border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; color: var(--ink); width: 100%; min-width: 0; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 640px; }
+th, td { width: 1%; padding: 9px 20px; text-align: left; white-space: nowrap; vertical-align: middle; }
+th:first-child, td:first-child { width: auto; white-space: normal; padding-left: 22px; }
+th:last-child, td:last-child { padding-right: 22px; }
+th { font-size: 11.5px; font-weight: 500; color: var(--ink-3); background: var(--surface-2); border-bottom: 1px solid var(--hair); }
+th.r, td.r { text-align: right; }
+tbody td { border-bottom: 1px solid var(--hair); font-size: 13.5px; color: var(--ink-2); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:not(.grp):hover td { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+tr.grp td { padding: 14px 22px 6px; font-size: 12px; font-weight: 650; color: var(--ink); letter-spacing: .04em; background: transparent !important; }
+tr.grp td span { color: var(--ink-3); font-weight: 500; letter-spacing: 0; margin-left: 10px; }
+tr.is-current td { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+tr.is-view td { color: var(--ink-3); }
+.nm { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.nm-copy { display: grid; gap: 1px; min-width: 0; }
+.nm-copy b { font-weight: 560; color: var(--ink); overflow-wrap: anywhere; }
+tr.is-view .nm-copy b { font-weight: 500; color: var(--ink-2); }
+.nm-copy small { font-size: 11.5px; color: var(--ink-4); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--ink-4); }
+.dot.good { background: var(--good); box-shadow: 0 0 0 3px var(--good-soft); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.dot.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+.proto { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.delay { font-family: var(--display); font-weight: 600; color: var(--ink); }
+.delay small { font-family: var(--sans); font-weight: 400; font-size: 11.5px; color: var(--ink-4); margin-left: 6px; }
+.delay.fail { color: var(--bad); }
+.delay.none { color: var(--ink-4); font-weight: 400; }
+.empty { padding: 44px 20px; text-align: center; color: var(--ink-3); font-size: 13.5px; line-height: 1.7; }
+.empty b { display: block; color: var(--ink); font-size: 15px; margin-bottom: 4px; }
+
+@media (max-width: 860px) {
+  .sum { grid-template-columns: 1fr 1fr; }
+  .sum div:nth-child(3) { border-left: 0; }
+  .sum div:nth-child(n+3) { border-top: 1px solid var(--hair); }
+}
+@media (max-width: 720px) {
+  .search { flex: 1 1 100%; }
+  table { min-width: 0; }
+  thead { display: none; }
+  tbody tr { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 16px; border-bottom: 1px solid var(--hair); }
+  tbody tr.grp { display: block; padding: 0; }
+  tbody tr.grp td { display: block; padding: 14px 16px 6px !important; }
+  tbody td { width: auto; border: 0 !important; padding: 0 !important; white-space: normal; }
+  tbody td:first-child { grid-column: 1 / -1; }
+  td.proto-cell { display: none; }
+  tr.is-current { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  tr.is-current td { background: transparent !important; box-shadow: none !important; }
+  td.r { text-align: left; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="稳航 看板">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" style="stop-color:var(--accent)"></stop>
+            <stop offset="1" style="stop-color:var(--accent-2)"></stop>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="32" height="32" rx="9" fill="url(#brand-g)"></rect>
+        <path d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".95"></path>
+        <circle cx="22.6" cy="12.3" r="2.6" fill="#fff"></circle>
+        <circle cx="7" cy="21.5" r="1.6" fill="#fff" opacity=".7"></circle>
+      </svg>
+      <span class="brand-name"><b>稳航</b><span>SteadyRoute</span></span>
+    </a>
+    <nav class="nav" aria-label="页面">
+      <a href="/">看板</a>
+      <a href="/nodes" aria-current="page">全部节点</a>
+      <a href="/guide">使用说明</a>
+      <a href="/changelog">更新日志</a>
+    </nav>
+    <span class="status-pill" id="status-pill" data-sev="warn"><span class="beacon"></span><span id="status-title">连接中</span></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="page-head">
+    <div>
+      <p class="eyebrow">订阅里的每一个节点 · 只读</p>
+      <h1>全部节点</h1>
+      <p class="lead">按地区列出 Clash 订阅中的全部节点，方便了解手里有哪些线路。这里只能查看，不能切换。</p>
+    </div>
+    <span class="meta" id="meta">正在读取…</span>
+  </section>
+
+  <div class="note" role="note">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M10 9v5" stroke-linecap="round"></path><circle cx="10" cy="6.2" r=".9" fill="currentColor" stroke="none"></circle></svg>
+    <p><b>稳航只在同地区的家宽节点之间切换</b>：台湾线路只用台湾家宽，香港线路只用香港家宽。标着“仅查看”的节点永远不会被稳航选中。延迟是 Clash 自己最近一次测速的结果，不是稳航测的，可能是很久以前的数字。</p>
+  </div>
+
+  <section class="card sum" aria-label="概况">
+    <div><span>订阅节点</span><b id="s-total">—</b><small id="s-total-note">&nbsp;</small></div>
+    <div><span>家宽节点</span><b id="s-res">—</b><small>名称里带“家宽”等字样</small></div>
+    <div><span>稳航选路范围</span><b id="s-mon">—</b><small>台湾、香港家宽，会被自动选用</small></div>
+    <div><span>地区</span><b id="s-regions">—</b><small id="s-regions-note">&nbsp;</small></div>
+  </section>
+
+  <section class="card" aria-label="节点列表">
+    <div class="toolbar">
+      <div class="regions" id="regions" role="group" aria-label="按地区筛选"></div>
+      <div class="seg" role="group" aria-label="节点类型">
+        <button type="button" data-kind="all" aria-pressed="true">全部</button>
+        <button type="button" data-kind="res" aria-pressed="false">家宽</button>
+        <button type="button" data-kind="other" aria-pressed="false">非家宽</button>
+      </div>
+      <label class="search">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="5"></circle><path d="M11 11l3.2 3.2" stroke-linecap="round"></path></svg>
+        <input type="search" id="q" placeholder="搜索节点名" autocomplete="off" aria-label="搜索节点名">
+      </label>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>节点</th><th>协议</th><th class="r">Clash 测速</th><th>稳航</th></tr>
+        </thead>
+        <tbody id="rows"><tr><td colspan="4"><div class="empty">正在读取订阅节点…</div></td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap"><span>仅监听本机 127.0.0.1 · 每 20 秒随完整检测更新 · 不显示服务器地址</span><span id="footer-version"></span></footer>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const now = () => Date.now() / 1000;
+function ago(t) {
+  if (t == null) return '';
+  const s = Math.max(0, Math.round(now() - t));
+  if (s < 60) return '刚刚';
+  if (s < 3600) return `${Math.round(s / 60)} 分钟前`;
+  if (s < 86400) return `${Math.round(s / 3600)} 小时前`;
+  return `${Math.round(s / 86400)} 天前`;
+}
+
+/* ---- status pill, same wording as the dashboard ---- */
+function renderStatus(d) {
+  const pill = $('#status-pill');
+  if (!d) { pill.dataset.sev = 'bad'; $('#status-title').textContent = '连不上稳航'; return; }
+  const s = d.service || {};
+  const stale = s.stale_at != null && now() >= s.stale_at;
+  pill.dataset.sev = stale ? 'warn' : s.state_severity === 'ok' ? 'ok' : s.state_severity === 'critical' ? 'bad' : 'warn';
+  $('#status-title').textContent = stale ? (s.stale_title || '检测延迟') : (s.state_title || '运行中');
+  if (s.version) $('#footer-version').textContent = `稳航 v${s.version}`;
+}
+function pollStatus() {
+  fetch('/api/status', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(renderStatus).catch(() => renderStatus(null));
+}
+
+/* ---- catalogue ---- */
+let catalog = null, region = 'all', kind = 'all', query = '', drawnKey = '';
+const ROLE = {
+  current: ['cur', '当前在用'],
+  standby: ['hot', '热备'],
+  monitored: ['mon', '候选'],
+  view: ['view', '仅查看'],
+};
+
+function delayCell(n) {
+  if (n.delay_ms == null) return '<span class="delay none">未测</span>';
+  if (n.delay_ms === 0) return `<span class="delay fail">超时<small>${esc(ago(n.delay_at))}</small></span>`;
+  return `<span class="delay">${n.delay_ms} ms<small>${esc(ago(n.delay_at))}</small></span>`;
+}
+function dotClass(n) {
+  if (n.delay_ms == null) return '';
+  if (n.delay_ms === 0) return 'bad';
+  return n.delay_ms <= 200 ? 'good' : n.delay_ms <= 400 ? 'warn' : 'bad';
+}
+function matches(n) {
+  if (region !== 'all' && n.region !== region) return false;
+  if (kind === 'res' && !n.residential) return false;
+  if (kind === 'other' && n.residential) return false;
+  return !query || n.name.toLowerCase().includes(query);
+}
+function rowHtml(n) {
+  const [cls, label] = ROLE[n.role] || ROLE.view;
+  const sub = [n.region_label, n.residential ? '家宽' : '非家宽', n.udp ? 'UDP' : ''].filter(Boolean).join(' · ');
+  const role = n.role === 'view'
+    ? `<span class="pill view" title="不在稳航的选路范围内，只供查看">仅查看</span>`
+    : `<span class="pill ${cls}" title="${esc(n.group || '')}">${label}</span>`;
+  return `<tr class="${n.role === 'current' ? 'is-current' : n.role === 'view' ? 'is-view' : ''}">
+    <td><div class="nm"><span class="dot ${dotClass(n)}"></span><span class="nm-copy"><b>${esc(n.name)}</b><small>${esc(sub)}</small></span></div></td>
+    <td class="proto-cell"><span class="proto">${esc(n.type || '—')}</span></td>
+    <td class="r">${delayCell(n)}</td>
+    <td>${role}</td>
+  </tr>`;
+}
+
+function render() {
+  if (!catalog) return;
+  const regions = catalog.regions || [];
+  const regionButtons = [['all', '全部地区', catalog.total]].concat(regions.map(r => [r.code, r.label, r.count]));
+  if (region !== 'all' && !regions.some(r => r.code === region)) region = 'all';
+  const regionsHtml = regionButtons.map(([code, label, count]) =>
+    `<button class="filter" type="button" data-region="${esc(code)}" aria-pressed="${code === region}">${esc(label)}<span class="count">${count}</span></button>`).join('');
+  const box = $('#regions');
+  if (box.__html !== regionsHtml) { box.innerHTML = regionsHtml; box.__html = regionsHtml; }
+
+  $('#s-total').textContent = catalog.total;
+  $('#s-total-note').textContent = catalog.notices_hidden ? `另有 ${catalog.notices_hidden} 条套餐/到期提示已隐藏` : '不含策略组和提示条目';
+  $('#s-res').textContent = catalog.residential;
+  $('#s-mon').textContent = catalog.monitored;
+  $('#s-regions').textContent = regions.length;
+  $('#s-regions-note').textContent = regions.slice(0, 4).map(r => r.label).join('、') + (regions.length > 4 ? ' 等' : '');
+  $('#meta').textContent = `订阅快照 ${ago(catalog.generated_at)}`;
+
+  const shown = catalog.nodes.filter(matches);
+  const key = `${catalog.generated_at}|${region}|${kind}|${query}|${Math.floor(now() / 30)}`;
+  if (key === drawnKey) return;
+  drawnKey = key;
+  if (!shown.length) {
+    $('#rows').innerHTML = `<tr><td colspan="4"><div class="empty"><b>没有符合条件的节点</b>换个地区或清空搜索试试。</div></td></tr>`;
+    return;
+  }
+  let html = '', last = null;
+  shown.forEach(n => {
+    if (n.region !== last) {
+      last = n.region;
+      const group = shown.filter(x => x.region === n.region);
+      const res = group.filter(x => x.residential).length;
+      html += `<tr class="grp"><td colspan="4">${esc(n.region_label)}<span>${group.length} 个节点 · ${res} 个家宽</span></td></tr>`;
+    }
+    html += rowHtml(n);
+  });
+  if (catalog.truncated) html += `<tr><td colspan="4"><div class="empty">另有 ${catalog.truncated} 个节点未列出（最多显示 1000 个）。</div></td></tr>`;
+  $('#rows').innerHTML = html;
+}
+
+function renderError(message, detail) {
+  $('#rows').innerHTML = `<tr><td colspan="4"><div class="empty"><b>${esc(message)}</b>${esc(detail)}</div></td></tr>`;
+  $('#meta').textContent = '';
+  drawnKey = '';
+}
+
+function pollNodes() {
+  fetch('/api/nodes', { cache: 'no-store' })
+    .then(r => r.status === 503 ? 'pending' : r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+    .then(d => {
+      if (d === 'pending') { if (!catalog) renderError('还没有订阅快照', '稳航完成第一轮检测（约 20 秒）后会自动出现。'); return; }
+      catalog = d;
+      render();
+    })
+    .catch(() => { if (!catalog) renderError('连不上稳航', '请确认稳航正在运行，页面会自动重试。'); });
+}
+
+$('#regions').addEventListener('click', e => {
+  const b = e.target.closest('button[data-region]');
+  if (!b) return;
+  region = b.dataset.region;
+  render();
+});
+document.querySelectorAll('[data-kind]').forEach(b => b.addEventListener('click', () => {
+  kind = b.dataset.kind;
+  document.querySelectorAll('[data-kind]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  render();
+}));
+$('#q').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); render(); });
+
+pollStatus();
+pollNodes();
+setInterval(pollStatus, 10000);
+setInterval(pollNodes, 10000);
+setInterval(render, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { pollStatus(); pollNodes(); } });
+</script>
+</body>
+</html>
