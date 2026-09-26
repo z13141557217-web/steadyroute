@@ -23,7 +23,8 @@
 
 1. 确保工作树干净。
 2. 运行 `./scripts/check.sh`。
-3. 更新 `VERSION` 与 `CHANGELOG.md`。
+3. 更新 `VERSION` 与 `CHANGELOG.md`，并写好 `docs/releases/v<VERSION>.md`（GitHub Release
+   说明，面向使用者；测试会检查它存在）。
 4. 创建发布 commit 和 tag。
 5. 运行 `./scripts/build-release.sh`。
 6. 生成生产备份和校验和。
@@ -32,6 +33,12 @@
 9. 重启 LaunchAgent。
 10. 执行生产冒烟测试。
 11. 记录部署版本、时间、结果和备份位置。
+12. 生产部署成功后运行 `./scripts/publish-release.sh`，在 GitHub 发布 Release。
+
+第 12 步从标签在临时工作树里重新构建发布包，校验包内 commit 与标签一致后，用
+`gh` 创建 Release 并上传 zip 与校验文件；已存在则更新说明和附件。只有最新的标签会
+标为 Latest。补发旧版本：`./scripts/publish-release.sh 0.4.3`。需要先安装并登录
+GitHub CLI（`brew install gh && gh auth login`）。
 
 上述第 6 至 11 步由 `./scripts/deploy-local.sh` 执行。命令默认 dry-run；真实执行使用
 `--apply`。生产 apply 还要求当前 commit 带 `v<VERSION>` 标签，且首次生产写入必须
