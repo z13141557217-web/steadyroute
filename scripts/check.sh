@@ -18,6 +18,6 @@ if command -v plutil >/dev/null 2>&1; then
 fi
 
 # Standard library only, so a missing tool can never turn this into a silent pass.
-python3 "$PROJECT_DIR/scripts/scan-secrets.py" "$PROJECT_DIR"
+python3 "$PROJECT_DIR/scripts/leak-scan.py" "$PROJECT_DIR"
 
 echo "SteadyRoute checks passed."
