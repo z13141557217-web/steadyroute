@@ -171,17 +171,38 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 /* the header is one quiet panel: a status mark and a plain sentence on the left, four facts on the right */
 .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px 40px; align-items: center; padding: 22px 26px; }
 .hs { display: flex; align-items: center; gap: 16px; min-width: 0; }
+/* the SteadyRoute mark, alive: light travels along the route and the destination breathes */
 .hs-mark {
-  position: relative; flex: 0 0 auto; width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
-  color: var(--good); background: var(--good-soft);
+  --m1: #1c93c7; --m2: #0a4f70;   /* fixed deep tones so white stays crisp in both themes */
+  position: relative; flex: 0 0 auto; width: 52px; height: 52px; border-radius: 15px; overflow: hidden;
+  background: linear-gradient(135deg, var(--m1), var(--m2));
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--m1) 70%, transparent), inset 0 1px 0 rgba(255, 255, 255, .22);
+  transition: box-shadow .4s;
 }
-.hs-mark::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); }
-.hs-mark svg { width: 26px; height: 26px; }
-#head-sub { display: inline-flex; gap: 8px; flex-wrap: wrap; }
-.hs-mark .ring { transform-box: fill-box; transform-origin: center; animation: hs-ring 2.8s cubic-bezier(.2, .6, .3, 1) infinite; }
-@keyframes hs-ring { 0% { transform: scale(.55); opacity: .5; } 100% { transform: scale(1.25); opacity: 0; } }
-.hs-mark[data-sev="warn"] { color: var(--warn); background: var(--warn-soft); }
-.hs-mark[data-sev="bad"] { color: var(--bad); background: var(--bad-soft); }
+.hs-mark[data-sev="warn"] { --m1: #e0962a; --m2: #9a5506; }
+.hs-mark[data-sev="bad"] { --m1: #e0524a; --m2: #961c17; }
+.hs-mark::before {    /* a slow sheen, like light on water */
+  content: ""; position: absolute; inset: -40%; background: radial-gradient(closest-side, rgba(255, 255, 255, .28), transparent 70%);
+  transform: translate(-30%, 25%); animation: mk-sheen 7s ease-in-out infinite alternate;
+}
+.hs-mark svg { position: relative; width: 100%; height: 100%; display: block; }
+.hs-mark .track { fill: none; stroke: rgba(255, 255, 255, .38); stroke-width: 2.4; stroke-linecap: round; }
+.hs-mark .flow {
+  fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 26 130;
+  animation: mk-flow 2.6s cubic-bezier(.45, .05, .35, 1) infinite;
+}
+.hs-mark .dest { fill: #fff; }
+.hs-mark .halo { fill: #fff; transform-box: fill-box; transform-origin: center; animation: mk-halo 2.6s ease-out infinite; }
+.hs-mark .origin { fill: #fff; opacity: .75; }
+.hs-mark[data-sev="warn"] .flow { animation-duration: 4.2s; }
+.hs-mark[data-sev="warn"] .halo { animation-duration: 4.2s; }
+.hs-mark[data-sev="bad"] .flow { animation: none; stroke-dashoffset: 26; }
+.hs-mark[data-sev="bad"] .dest { animation: mk-blink 1.1s steps(2, jump-none) infinite; }
+.hs-mark[data-sev="bad"] .halo { animation: none; opacity: 0; }
+@keyframes mk-flow { 0% { stroke-dashoffset: 26; } 100% { stroke-dashoffset: -104; } }
+@keyframes mk-halo { 0%, 55% { transform: scale(1); opacity: 0; } 62% { opacity: .55; } 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes mk-sheen { to { transform: translate(25%, -25%); } }
+@keyframes mk-blink { 50% { opacity: .35; } }
 .hs-copy { display: grid; gap: 7px; min-width: 0; }
 .head h1 { font-family: var(--display); font-size: 19px; font-weight: 620; letter-spacing: .01em; line-height: 1.3; color: var(--ink); text-wrap: balance; }
 .head h1[data-sev="warn"] { color: var(--warn); }
@@ -233,12 +254,6 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
   container-type: inline-size; container-name: route;
   grid-row: span 6; display: grid; grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
 }
-.route::before {       /* a hairline of the route's status colour along the top edge */
-  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--route-tone, var(--good)); opacity: .85;
-}
-.route[data-tone="warn"] { --route-tone: var(--warn); }
-.route[data-tone="bad"] { --route-tone: var(--bad); }
-.route[data-tone="info"] { --route-tone: var(--accent); }
 .r-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 22px 24px 0; }
 .r-title { display: grid; gap: 4px; min-width: 0; }
 .r-title .eyebrow { display: flex; align-items: center; gap: 8px; }
@@ -463,7 +478,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   main.wrap { padding-block: 22px 36px; gap: 22px; }
   .head { padding: 18px; }
   .hs { align-items: flex-start; }
-  .hs-mark { width: 40px; height: 40px; border-radius: 12px; }
+  .hs-mark { width: 44px; height: 44px; border-radius: 13px; }
   .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 0; }
   .kpi { padding: 0 16px; min-width: 0; }
   .kpi .note, .kpi .k { white-space: normal; }
@@ -497,7 +512,8 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   tr.is-current td { background: transparent !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .beacon::after, .pulse, .skeleton, .hs-mark .ring { animation: none; }
+  .beacon::after, .pulse, .skeleton, .hs-mark::before, .hs-mark .flow, .hs-mark .halo, .hs-mark .dest { animation: none !important; }
+  .hs-mark .flow { stroke-dashoffset: 26; }
   * { transition: none !important; }
 }
 </style>
@@ -533,7 +549,15 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 <main class="wrap">
   <section class="head card" aria-live="polite">
     <div class="hs">
-      <span class="hs-mark" id="head-mark" data-sev="warn" aria-hidden="true"></span>
+      <span class="hs-mark" id="head-mark" data-sev="warn" aria-hidden="true">
+        <svg viewBox="0 0 32 32">
+          <path class="track" d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4"></path>
+          <path class="flow" pathLength="100" d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4"></path>
+          <circle class="origin" cx="7" cy="21.5" r="1.6"></circle>
+          <circle class="halo" cx="22.6" cy="12.3" r="2.6"></circle>
+          <circle class="dest" cx="22.6" cy="12.3" r="2.6"></circle>
+        </svg>
+      </span>
       <div class="hs-copy">
         <h1 id="head-title">正在连接稳航…</h1>
         <p class="sub"><span id="head-sub"></span><span class="activity" id="head-activity" hidden></span><span class="head-meta" id="head-meta">正在读取本机状态</span></p>
@@ -750,12 +774,6 @@ function resumeNote(s) {
   return `上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${m} 分钟）`;
 }
 
-const HEAD_MARK = {
-  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle class="ring" cx="12" cy="12" r="10" stroke-width="1.5"></circle><path d="M5.8 12.4l4.2 4.2 8.2-9" stroke-width="2.3"></path></svg>',
-  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 7v6"></path><circle cx="12" cy="16.6" r=".6" fill="currentColor"></circle><circle cx="12" cy="12" r="9" stroke-width="1.6"></circle></svg>',
-  bad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 9l6 6M15 9l-6 6"></path><circle cx="12" cy="12" r="9" stroke-width="1.6"></circle></svg>',
-};
-
 function renderHead(d) {
   const now = nowSeconds(), s = d.service;
   const seen = s.last_probe_at ?? s.updated_at;
@@ -796,7 +814,7 @@ function renderHead(d) {
   setText(activity, note);
   if (lanes) patch($('#head-sub'), sub); else setText($('#head-sub'), sub || '');
   const mark = $('#head-mark');
-  if (mark.dataset.sev !== sev || !mark.firstChild) { mark.dataset.sev = sev; mark.innerHTML = HEAD_MARK[sev] || HEAD_MARK.warn; }
+  if (mark.dataset.sev !== sev) mark.dataset.sev = sev;
 
   const nodes = Object.values(d.nodes);
   const count = codes => nodes.filter(n => codes.includes(n.lifecycle)).length;
