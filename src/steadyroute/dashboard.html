@@ -11,76 +11,73 @@
    ------------------------------------------------------------------ */
 :root {
   color-scheme: light;
-  --bg: #f2f4f7;
+  --bg: #f3f5f8;
   --surface: #ffffff;
   --raised: #f7f9fb;
-  --inset: #edf0f4;
-  --line: #e1e6ed;
-  --line-strong: #ccd4de;
-  --text: #0e1621;
-  --text-2: #354150;
-  --muted: #66727f;
+  --inset: #eef1f5;
+  --line: #e2e7ee;
+  --line-strong: #cdd5df;
+  --text: #0f1722;
+  --text-2: #364252;
+  --muted: #677385;
   --accent: #0a7ca6;
-  --accent-soft: #e2f1f8;
-  --standby: #8893a4;
+  --accent-soft: #e3f2f8;
+  --standby: #8a94a6;
   --good: #16804a;
-  --good-soft: #e2f4e9;
+  --good-soft: #e3f4ea;
   --warn: #a45f06;
   --warn-soft: #fbefdc;
   --bad: #c0343f;
   --bad-soft: #fbe6e8;
-  --hero: linear-gradient(135deg, #e6f3f8 0%, #f4f7fa 55%, #eef3f6 100%);
-  --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px rgba(16, 24, 40, .05);
-  --radius: 16px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 20px rgba(16, 24, 40, .05);
+  --radius: 14px;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #090d12;
-    --surface: #10151c;
-    --raised: #141a22;
-    --inset: #0c1117;
-    --line: #1d2631;
-    --line-strong: #2a3543;
-    --text: #e8edf3;
-    --text-2: #bac4d0;
-    --muted: #7e8a9a;
+    --bg: #0a0e13;
+    --surface: #11161d;
+    --raised: #151b23;
+    --inset: #0d1218;
+    --line: #1e2732;
+    --line-strong: #2b3644;
+    --text: #e7ecf2;
+    --text-2: #b9c3cf;
+    --muted: #7f8b9b;
     --accent: #4fc3e4;
-    --accent-soft: #0e2730;
-    --standby: #7d899a;
+    --accent-soft: #0f2831;
+    --standby: #7e8a9b;
     --good: #4bc98b;
     --good-soft: #0f271b;
     --warn: #e7a93f;
     --warn-soft: #2b2010;
     --bad: #f06a74;
     --bad-soft: #2d1418;
-    --hero: linear-gradient(135deg, #0d2029 0%, #10151c 55%, #0e161d 100%);
-    --shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 10px 28px rgba(0, 0, 0, .3);
+    --shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 8px 24px rgba(0, 0, 0, .28);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #090d12;
-  --surface: #10151c;
-  --raised: #141a22;
-  --inset: #0c1117;
-  --line: #1d2631;
-  --line-strong: #2a3543;
-  --text: #e8edf3;
-  --text-2: #bac4d0;
-  --muted: #7e8a9a;
+  --bg: #0a0e13;
+  --surface: #11161d;
+  --raised: #151b23;
+  --inset: #0d1218;
+  --line: #1e2732;
+  --line-strong: #2b3644;
+  --text: #e7ecf2;
+  --text-2: #b9c3cf;
+  --muted: #7f8b9b;
   --accent: #4fc3e4;
-  --accent-soft: #0e2730;
-  --standby: #7d899a;
+  --accent-soft: #0f2831;
+  --standby: #7e8a9b;
   --good: #4bc98b;
   --good-soft: #0f271b;
   --warn: #e7a93f;
   --warn-soft: #2b2010;
   --bad: #f06a74;
   --bad-soft: #2d1418;
-  --hero: linear-gradient(135deg, #0d2029 0%, #10151c 55%, #0e161d 100%);
-  --shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 10px 28px rgba(0, 0, 0, .3);
+  --shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 8px 24px rgba(0, 0, 0, .28);
 }
 
 * { box-sizing: border-box; }
@@ -93,12 +90,14 @@ body {
   -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
 }
-h1, h2, h3, p { margin: 0; }
+h1, h2, h3, p, dl, dd { margin: 0; }
 button { font: inherit; color: inherit; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
-.wrap { width: min(1240px, 100%); margin: 0 auto; padding-inline: 20px; }
+.wrap { width: min(1180px, 100%); margin: 0 auto; padding-inline: 20px; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
 
 /* ---------- top bar ---------- */
 .topbar {
@@ -108,17 +107,20 @@ a:hover { text-decoration: underline; }
   -webkit-backdrop-filter: saturate(160%) blur(12px);
   border-bottom: 1px solid var(--line);
 }
-.topbar .wrap { display: flex; align-items: center; gap: 22px; min-height: 58px; }
+.topbar .wrap { display: flex; align-items: center; gap: 22px; min-height: 60px; }
 .brand { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .brand svg { width: 26px; height: 26px; }
 .brand b { font-size: 17px; font-weight: 700; letter-spacing: .02em; }
 .brand span { color: var(--muted); font-size: 13px; }
 .nav { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.nav a { padding: 7px 12px; border-radius: 8px; color: var(--muted); white-space: nowrap; font-size: 13.5px; }
+.nav a {
+  padding: 7px 12px; border-radius: 8px; color: var(--muted); white-space: nowrap; font-size: 13.5px;
+}
 .nav a:hover { color: var(--text); background: var(--inset); text-decoration: none; }
 .nav a[aria-current="page"] { color: var(--text); background: var(--inset); font-weight: 600; }
+.live { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
 .live-chip {
-  display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px 5px 9px; flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px 5px 9px;
   border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 600; font-size: 13px;
 }
 .live-chip[data-sev="warn"] { background: var(--warn-soft); color: var(--warn); }
@@ -129,35 +131,15 @@ a:hover { text-decoration: underline; }
   animation: ping 2.4s ease-out infinite;
 }
 @keyframes ping { 0% { transform: scale(.5); opacity: .55; } 80%, 100% { transform: scale(1.4); opacity: 0; } }
+.live-meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 
-main.wrap { padding-block: 22px 40px; display: grid; gap: 18px; }
+main.wrap { padding-block: 22px 56px; display: grid; gap: 18px; }
 
-/* ---------- hero: one sentence answers "is everything OK?" ---------- */
-.hero {
-  background: var(--hero); border: 1px solid var(--line); border-radius: 20px; padding: 22px 24px;
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 32px; align-items: end;
-}
-.hero-kicker { font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.hero h1 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 700; letter-spacing: -.01em; margin-top: 6px; text-wrap: balance; }
-.hero h1[data-sev="info"] { color: var(--accent); }
-.hero h1[data-sev="warn"] { color: var(--warn); }
-.hero h1[data-sev="bad"] { color: var(--bad); }
-.hero-lines { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; }
-.hero-line { display: inline-flex; align-items: baseline; gap: 8px; font-size: 13.5px; color: var(--text-2); min-width: 0; }
-.hero-line b { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
-.hero-line .lat { font-family: var(--mono); font-weight: 600; color: var(--accent); }
-.hero-line .rg { font-size: 11.5px; padding: 1px 7px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
-.facts { display: grid; grid-template-columns: repeat(2, auto); gap: 8px 26px; }
-.fact { display: grid; gap: 1px; min-width: 0; }
-.fact span { font-size: 11.5px; color: var(--muted); display: flex; gap: 4px; align-items: center; white-space: nowrap; }
-.fact b { font-size: 16px; font-weight: 650; white-space: nowrap; }
-.fact b small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 3px; }
-
-/* ---------- section heads & toggles ---------- */
+/* ---------- section heads ---------- */
 .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .section-head h2 { font-size: 15px; font-weight: 650; }
 .section-head p { color: var(--muted); font-size: 12.5px; }
-.segmented, .filters { display: inline-flex; padding: 3px; gap: 2px; background: var(--inset); border-radius: 10px; border: 1px solid var(--line); }
+.segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--inset); border-radius: 9px; border: 1px solid var(--line); }
 /* One selected style for every toggle group: tinted accent, visible in both themes, never glaring. */
 .segmented button, .filter {
   border: 0; background: transparent; min-height: 30px; padding: 5px 12px; border-radius: 7px; color: var(--muted);
@@ -174,42 +156,41 @@ main.wrap { padding-block: 22px 40px; display: grid; gap: 18px; }
 }
 .filter[aria-pressed="true"] .count { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
+/* ---------- cards ---------- */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 
-/* ---------- route rows ---------- */
-.routes { display: grid; gap: 16px; }
-.route { display: grid; grid-template-columns: minmax(330px, 400px) minmax(0, 1fr); min-width: 0; }
-.route-side { padding: 18px 20px; border-right: 1px solid var(--line); display: grid; gap: 14px; align-content: start; min-width: 0; }
-.route-main { padding: 18px 20px 16px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+/* ---------- route cards ---------- */
+.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.route { padding: 18px 18px 16px; display: grid; gap: 14px; min-width: 0; }
 .route-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.route-title { display: grid; gap: 2px; min-width: 0; }
-.region { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.route-title { display: grid; gap: 3px; min-width: 0; }
+.region {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); letter-spacing: .04em;
+}
 .region i { width: 6px; height: 6px; border-radius: 2px; background: var(--accent); }
 .route-title h2 { font-size: 15.5px; font-weight: 650; }
 .pill {
-  display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
-  background: var(--accent-soft); color: var(--accent); max-width: 58%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px;
+  font-weight: 600; white-space: nowrap; background: var(--accent-soft); color: var(--accent); max-width: 60%;
+  overflow: hidden; text-overflow: ellipsis;
 }
 .pill.good { background: var(--good-soft); color: var(--good); }
 .pill.warn { background: var(--warn-soft); color: var(--warn); }
 .pill.bad { background: var(--bad-soft); color: var(--bad); }
-.now-name { font-size: 20px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
-.now-label { font-size: 11.5px; color: var(--muted); letter-spacing: .05em; display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
-
-/* route map: the signature element */
-.map { width: 100%; height: auto; display: block; overflow: visible; }
-.map .wire { fill: none; stroke-width: 2; stroke-linecap: round; }
-.map .wire.live { stroke-dasharray: 3 7; animation: flow 1.1s linear infinite; }
-@keyframes flow { to { stroke-dashoffset: -20; } }
-.map .box-text { font-size: 12px; }
-.map .box-sub { font-size: 11px; font-family: var(--mono); }
-.map .src-text { font-size: 11px; }
-
-.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.metric { padding: 8px 9px; border-radius: 10px; background: var(--inset); min-width: 0; display: grid; gap: 1px; align-content: start; }
-.m-label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 3px; white-space: nowrap; overflow: hidden; }
-.m-value { font-size: 17px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
-.m-value small { font-size: 11.5px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.now { display: grid; gap: 4px; padding: 12px 14px; border-radius: 11px; background: var(--raised); border: 1px solid var(--line); }
+.now-label { font-size: 11.5px; color: var(--muted); letter-spacing: .05em; }
+.now-name { font-size: 19px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
+.now-standby { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.now-standby .dash { width: 14px; border-top: 2px dashed var(--standby); display: inline-block; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.metric { padding: 10px 11px; border-radius: 10px; background: var(--inset); min-width: 0; display: grid; gap: 2px; align-content: start; border: 1px solid transparent; }
+.m-label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.m-value { font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+.m-value small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+.m-toggle { border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; display: inline-flex; align-items: baseline; }
+.m-toggle small { color: var(--accent) !important; text-decoration: underline; text-underline-offset: 3px; }
+.metric.conn:has(.m-toggle:hover) { border-color: var(--line-strong); }
+.metric.conn:has(.m-toggle[aria-expanded="true"]) { border-color: var(--accent); background: var(--accent-soft); }
 
 .handover {
   display: grid; gap: 7px; padding: 10px 12px; border-radius: 11px;
@@ -218,10 +199,9 @@ main.wrap { padding-block: 22px 40px; display: grid; gap: 18px; }
 }
 .handover b { color: var(--text); font-weight: 600; }
 .handover-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; color: var(--good); font-size: 12.5px; }
-.split { display: flex; height: 7px; border-radius: 999px; overflow: hidden; background: var(--inset); }
-.split i { display: block; height: 100%; transition: width .6s ease; }
 
-/* chart */
+/* ---------- chart ---------- */
+.chart { display: grid; gap: 6px; }
 .chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -230,16 +210,17 @@ main.wrap { padding-block: 22px 40px; display: grid; gap: 18px; }
 .legend .sw.fail { width: 8px; height: 8px; border: 0; border-radius: 2px; background: var(--bad); }
 .legend .sw.switch-fail { width: 0; height: 11px; border-top: 0; border-left: 2px solid var(--bad); }
 .legend .sw.switch-opt { width: 0; height: 11px; border-top: 0; border-left: 2px dashed var(--good); }
-.chart-now { font-size: 12px; color: var(--muted); display: inline-flex; align-items: baseline; gap: 6px; }
-.chart-now b { font-size: 18px; color: var(--text); font-weight: 650; font-family: var(--mono); }
-.plot { position: relative; height: 212px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); touch-action: pan-y; overflow: hidden; }
-.plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.chart-now { font-size: 12px; color: var(--muted); }
+.chart-now b { font-size: 16px; color: var(--text); font-weight: 650; font-family: var(--mono); }
+.plot { position: relative; height: 158px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line); touch-action: pan-y; }
+.plot { overflow: hidden; }
+.plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; }
 .plot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12.5px; }
 .axis { fill: var(--muted); font-size: 10.5px; font-family: var(--mono); }
 .grid { stroke: var(--line); stroke-width: 1; }
 .flag { font-size: 10.5px; font-weight: 600; paint-order: stroke; stroke: var(--raised); stroke-width: 3px; }
 .plot-tip {
-  position: absolute; pointer-events: none; z-index: 3; min-width: 158px; padding: 8px 10px; border-radius: 9px;
+  position: absolute; pointer-events: none; z-index: 3; min-width: 150px; padding: 8px 10px; border-radius: 9px;
   background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow); font-size: 12px; line-height: 1.5;
 }
 .plot-tip .t { color: var(--muted); font-family: var(--mono); font-size: 11px; }
@@ -248,43 +229,53 @@ main.wrap { padding-block: 22px 40px; display: grid; gap: 18px; }
 .reason { font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
 .reason .next { color: var(--muted); }
 
-/* connection chips */
-.sites { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.sites-label { font-size: 11.5px; color: var(--muted); margin-right: 2px; }
-.chip {
-  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 12px;
-  background: var(--inset); border: 1px solid var(--line); color: var(--muted); max-width: 220px;
-}
-.chip b { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip.old { border-style: dashed; }
-.chip.old b { color: var(--text-2); }
-.chip-more {
-  border: 1px solid var(--line-strong); background: transparent; border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; color: var(--accent);
-}
-.chip-more:hover { background: var(--accent-soft); }
-.chip-more[aria-expanded="true"] { background: var(--accent-soft); border-color: var(--accent); }
-.conns { grid-column: 1 / -1; border-top: 1px solid var(--line); padding: 14px 20px 16px; display: grid; gap: 8px; }
+/* ---------- connections ---------- */
+.conns { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
 .conns-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
-.site-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 16px; }
-.site { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 12px; align-items: center; padding: 7px 8px; border-radius: 8px; font-size: 12.5px; }
-.site:nth-child(4n+1), .site:nth-child(4n+2) { background: var(--raised); }
+.split { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--inset); }
+.split i { display: block; height: 100%; transition: width .6s ease; }
+.split-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2); }
+.split-legend span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.split-legend em { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.site-list { display: grid; gap: 2px; }
+.site {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 12px; align-items: center;
+  padding: 7px 8px; border-radius: 8px; font-size: 12.5px;
+}
+.site:nth-child(odd) { background: var(--raised); }
 .site-host { min-width: 0; display: grid; }
 .site-host b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .site-host small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site .count { font-weight: 650; min-width: 28px; text-align: right; }
+.site .count { font-weight: 650; min-width: 34px; text-align: right; }
 .site .since, .site .bytes { color: var(--muted); white-space: nowrap; font-size: 12px; }
+.site .old { color: var(--text-2); }
 .conns-note { font-size: 11.5px; color: var(--muted); }
+
+/* ---------- summary strip ---------- */
+.summary { display: grid; grid-template-columns: 1.5fr 1.3fr 1fr 1fr; }
+.summary > div { padding: 15px 18px; border-left: 1px solid var(--line); min-width: 0; display: grid; gap: 4px; align-content: start; }
+.summary > div:first-child { border-left: 0; }
+.s-label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 4px; letter-spacing: .03em; }
+.s-value { font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+.s-value small { font-size: 12.5px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+.s-note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.stack { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--inset); margin-top: 4px; }
+.stack i { display: block; height: 100%; }
+.stack-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.stack-legend b { font-weight: 650; }
 
 /* ---------- nodes ---------- */
 .nodes-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .nodes-head h2 { font-size: 15px; font-weight: 650; }
 .nodes-head p { font-size: 12.5px; color: var(--muted); }
+.filters { display: inline-flex; gap: 2px; padding: 3px; background: var(--inset); border-radius: 9px; border: 1px solid var(--line); }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; min-width: 860px; }
 th, td { padding: 10px 14px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; white-space: normal; }
 th { font-size: 11.5px; font-weight: 500; color: var(--muted); background: var(--raised); }
 th .th { display: inline-flex; align-items: center; gap: 4px; }
+tbody tr:last-child td { border-bottom: 0; }
 tr.group-row td {
   background: var(--inset); color: var(--text-2); font-size: 12px; padding: 7px 14px; text-align: left; font-weight: 600; letter-spacing: .03em;
 }
@@ -315,10 +306,26 @@ tr.is-current td { background: color-mix(in srgb, var(--accent-soft) 55%, transp
 .state.info { background: var(--inset); color: var(--text-2); }
 .empty-row { padding: 26px; text-align: center; color: var(--muted); }
 
-/* ---------- rules strip ---------- */
-.rules { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; padding: 12px 18px; font-size: 12.5px; color: var(--muted); }
-.rules b { color: var(--text-2); font-weight: 600; }
-.rules a { margin-left: auto; white-space: nowrap; }
+/* ---------- rules ---------- */
+details.rules { padding: 0; }
+details.rules > summary {
+  list-style: none; cursor: pointer; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+details.rules > summary::-webkit-details-marker { display: none; }
+details.rules > summary h2 { font-size: 15px; font-weight: 650; }
+details.rules > summary .chev { color: var(--muted); font-size: 12.5px; }
+details.rules[open] > summary { border-bottom: 1px solid var(--line); }
+.rule-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rule { padding: 16px 18px; display: grid; gap: 8px; align-content: start; border-left: 1px solid var(--line); }
+.rule:first-child { border-left: 0; }
+.rule h3 { font-size: 13.5px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
+.rule h3 i { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-style: normal; font-size: 12px; background: var(--inset); color: var(--text-2); }
+.rule p { font-size: 12.5px; color: var(--text-2); line-height: 1.65; }
+.rule ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.rule li { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
+.rule li b { color: var(--text); font-weight: 600; white-space: nowrap; }
+.rule a { font-size: 12px; }
+
 footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-align: center; }
 
 /* ---------- tooltip ---------- */
@@ -337,27 +344,31 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
 #tip-pop a { display: inline-block; margin-top: 6px; font-size: 12px; }
 
 /* ---------- responsive ---------- */
-@media (max-width: 1040px) {
-  .route { grid-template-columns: 1fr; }
-  .route-side { border-right: 0; border-bottom: 1px solid var(--line); }
-  .hero { grid-template-columns: 1fr; }
-  .facts { grid-template-columns: repeat(4, auto); justify-content: start; }
+@media (max-width: 980px) {
+  .routes { grid-template-columns: 1fr; }
+  .summary { grid-template-columns: 1fr 1fr; }
+  .summary > div:nth-child(3) { border-left: 0; }
+  .summary > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .rule-grid { grid-template-columns: 1fr 1fr; }
+  .rule:nth-child(3) { border-left: 0; }
+  .rule:nth-child(n+3) { border-top: 1px solid var(--line); }
 }
 @media (max-width: 720px) {
   .wrap { padding-inline: 16px; }
   .topbar .wrap { flex-wrap: wrap; gap: 8px 14px; padding-block: 10px; }
   .nav { order: 3; flex-basis: 100%; }
-  .live-chip { margin-left: auto; }
-  .hero { padding: 18px; }
-  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .live { margin-left: auto; }
+  .live-meta { display: none; }
   .metrics { grid-template-columns: 1fr 1fr; }
-  .plot { height: 180px; }
-  .site-list { grid-template-columns: 1fr; }
-  .site:nth-child(n) { background: transparent; }
-  .site:nth-child(odd) { background: var(--raised); }
+  .summary { grid-template-columns: 1fr; }
+  .summary > div { border-left: 0 !important; border-top: 1px solid var(--line); }
+  .summary > div:first-child { border-top: 0; }
+  .rule-grid { grid-template-columns: 1fr; }
+  .rule { border-left: 0 !important; border-top: 1px solid var(--line); }
+  .rule:first-child { border-top: 0; }
   .site { grid-template-columns: minmax(0, 1fr) auto; }
   .site .since, .site .bytes { display: none; }
-  .rules a { margin-left: 0; }
+  /* node table becomes cards */
   table { min-width: 0; }
   thead { display: none; }
   tbody tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
@@ -371,7 +382,7 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
   tr.is-current td { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .live-dot::after, .map .wire.live { animation: none; }
+  .live-dot::after { animation: none; }
   * { transition: none !important; }
 }
 </style>
@@ -393,25 +404,14 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
       <a href="/guide">使用说明</a>
       <a href="/changelog">更新日志</a>
     </nav>
-    <span class="live-chip" id="live-chip" data-sev="warn"><span class="live-dot"></span><span id="live-title">连接中</span></span>
+    <div class="live">
+      <span class="live-meta" id="live-meta">正在读取本机状态</span>
+      <span class="live-chip" id="live-chip" data-sev="warn"><span class="live-dot"></span><span id="live-title">连接中</span></span>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
-  <section class="hero" aria-live="polite">
-    <div>
-      <div class="hero-kicker"><span id="hero-meta">正在读取本机状态</span></div>
-      <h1 id="hero-title">正在连接稳航…</h1>
-      <div class="hero-lines" id="hero-lines"></div>
-    </div>
-    <div class="facts">
-      <div class="fact"><span>24 小时故障切换</span><b id="f-failovers">—</b></div>
-      <div class="fact"><span>24 小时回优</span><b id="f-optimize">—</b></div>
-      <div class="fact"><span>内存占用 <button class="tip" type="button" data-tip="memory" aria-label="说明：内存占用">?</button></span><b id="f-memory">—</b></div>
-      <div class="fact"><span>累计检测</span><b id="f-cycles">—</b></div>
-    </div>
-  </section>
-
   <div class="section-head">
     <div>
       <h2>线路</h2>
@@ -423,7 +423,30 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
       <button type="button" data-range="1800" aria-pressed="false">30 分钟</button>
     </div>
   </div>
-  <section class="routes" id="routes"></section>
+  <section class="routes" id="routes" aria-live="polite"></section>
+
+  <section class="card summary" aria-label="运行概况">
+    <div>
+      <span class="s-label">系统状态</span>
+      <span class="s-value" id="sys-title">—</span>
+      <span class="s-note" id="sys-note">等待首轮数据</span>
+    </div>
+    <div>
+      <span class="s-label">节点 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span>
+      <div class="stack" id="node-stack"></div>
+      <div class="stack-legend" id="node-stack-legend"></div>
+    </div>
+    <div>
+      <span class="s-label">内存占用 <button class="tip" type="button" data-tip="memory" aria-label="说明：内存占用">?</button></span>
+      <span class="s-value" id="mem-value">—</span>
+      <span class="s-note" id="mem-note">当前进程生命周期</span>
+    </div>
+    <div>
+      <span class="s-label">累计检测</span>
+      <span class="s-value" id="cycles">—</span>
+      <span class="s-note" id="cycles-note">每 20 秒一轮完整检测</span>
+    </div>
+  </section>
 
   <section class="card" aria-label="节点状态">
     <div class="nodes-head">
@@ -456,7 +479,10 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
     </div>
   </section>
 
-  <section class="card rules" id="rules" aria-label="选路规则速览"></section>
+  <details class="card rules" id="rules">
+    <summary><h2>选路规则</h2><span class="chev">展开 / 收起</span></summary>
+    <div class="rule-grid" id="rule-grid"></div>
+  </details>
 </main>
 
 <footer class="wrap" id="footer">仅监听本机 127.0.0.1 · 页面每 2 秒刷新 · Mac 睡眠时暂停</footer>
@@ -505,7 +531,7 @@ const openConnections = new Set();
 const charts = new Map();      // group name -> chart (see the chart section)
 
 /* ====================================================================
-   Explanations for the "?" buttons.
+   Explanations for the "?" buttons. Each returns {title, text, value}.
    ==================================================================== */
 const TIPS = {
   availability: (ctx) => ({
@@ -534,21 +560,21 @@ const TIPS = {
   }),
   connections: (ctx) => ({
     title: '活跃连接',
-    text: '当前经过这条线路的连接数。主动换到更快的节点时旧连接不会断开，会留在原节点直到自然结束；故障切换时旧节点上的连接会被断开，应用会自动重连到新节点。',
+    text: '当前经过这条线路的连接数，点击查看是哪些网站。主动换到更快的节点时旧连接不会断开，会留在原节点直到自然结束。',
     value: ctx && ctx.group ? `当前 ${ctx.group.active_connections} 个` : null,
     anchor: 'connections',
   }),
-  map: () => ({
-    title: '线路图',
-    text: '从左到右是本机 → 线路 → 节点。流动的实线是当前正在使用的节点；虚线是热备，当前节点一旦确认故障会立刻切到它；点线是刚换下来的旧节点，上面还有连接时会一直显示，直到连接自然结束。',
-    value: null,
-    anchor: 'map',
-  }),
   chart: () => ({
     title: '实时延迟曲线',
-    text: '实线是当前节点，每 5 秒测一次；虚线是热备，每 20 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
+    text: '实线是当前节点，每 5 秒测一次；虚线是热备，每 20 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比上方“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
     value: null,
     anchor: 'chart',
+  }),
+  standby: (ctx) => ({
+    title: '热备节点',
+    text: '当前节点一旦确认故障，会立刻切到它。它和当前节点在同一地区，图中虚线是它的实时延迟（每 20 秒测一次）。',
+    value: null,
+    anchor: 'failover',
   }),
   lifecycle: () => ({
     title: '节点状态',
@@ -572,26 +598,15 @@ const TIPS = {
   }),
 };
 
-/* Decisions that are part of normal, lossless operation: shown calmly, never as a warning. */
-const BENIGN = {
-  candidate_confirming: '正在确认更快的节点',
-  handover_pending: '正在无损回优',
-  handover_grace: '正在无损回优，旧连接自然结束中',
-  recovery_observing: '正在观察新节点',
-  cooldown: '刚完成回优，冷却中',
-  manual_hold: '按你的手动选择运行',
-};
-
 /* ====================================================================
-   Top bar and hero
+   Top bar
    ==================================================================== */
-function resumeNote(s) {
-  if (!s.last_resume_at) return '';
-  const m = Math.max(1, Math.round((s.last_sleep_gap_seconds || 0) / 60));
-  return `上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${m} 分钟）`;
+function memText(s) {
+  const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
+  return cur == null ? `峰值内存 ${peak.toFixed(1)} MB` : `内存 ${cur.toFixed(1)} MB（峰值 ${peak.toFixed(1)} MB）`;
 }
 
-function renderTop(d) {
+function renderTopbar(d) {
   const now = nowSeconds(), s = d.service;
   const seen = s.last_probe_at ?? s.updated_at;
   const a = seen == null ? null : Math.max(0, Math.round(now - seen));
@@ -602,78 +617,38 @@ function renderTop(d) {
   chip.dataset.sev = severity === 'ok' ? 'ok' : severity === 'critical' ? 'bad' : 'warn';
   chip.title = stale ? s.stale_detail : s.state_detail;
   setText($('#live-title'), title);
-
-  const bits = [a == null ? '等待首轮检测' : `最近检测 ${age(a)}`];
-  if (s.version) bits.push(`v${s.version}`);
-  const resume = resumeNote(s);
-  if (resume) bits.push(resume);
-  setText($('#hero-meta'), bits.join(' · '));
-
-  // One sentence: the whole page in a glance. Planned, lossless activity is not a problem.
-  const troubled = d.groups.filter(g => g.decision_severity && g.decision_severity !== 'ok' && !BENIGN[g.decision_code]);
-  const busy = d.groups.filter(g => BENIGN[g.decision_code]);
-  const allOk = d.groups.length === 2 ? '两条线路都正常' : '所有线路都正常';
-  let headline, sev = 'ok';
-  if (stale) { headline = `${s.stale_title}：${s.stale_detail}`; sev = 'warn'; }
-  else if (s.state_code && s.state_code !== 'running') { headline = `${s.state_title}：${s.state_detail}`; sev = s.state_severity === 'critical' ? 'bad' : 'warn'; }
-  else if (troubled.length) {
-    const g = troubled[0];
-    headline = `${regionName(g.region)}线路：${g.decision}`;
-    sev = sevClass(g.decision_severity) === 'bad' ? 'bad' : 'warn';
-  } else if (busy.length) {
-    headline = `${allOk} · ${regionName(busy[0].region)}${BENIGN[busy[0].decision_code]}`;
-    sev = 'info';
-  } else headline = allOk;
-  const h1 = $('#hero-title');
-  setText(h1, headline);
-  h1.dataset.sev = sev;
-
-  patch($('#hero-lines'), d.groups.map(g => {
-    const n = d.nodes[g.current] || {};
-    return `<span class="hero-line"><span class="rg">${regionName(g.region)}</span><b title="${esc(g.current)}">${esc(g.current || '等待 Clash')}</b><span class="lat">${ms(n.latency)}</span></span>`;
-  }).join(''));
-
-  const fo = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).failovers_24h || 0), 0);
-  const op = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).performance_switches_24h || 0), 0);
-  patch($('#f-failovers'), `${fo}<small>次</small>`);
-  patch($('#f-optimize'), `${op}<small>次</small>`);
-  const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
-  patch($('#f-memory'), cur == null ? `${peak.toFixed(1)}<small>MB 峰值</small>` : `${cur.toFixed(1)}<small>MB · 峰值 ${peak.toFixed(1)}</small>`);
-  $('#f-memory').title = cur == null ? '' : `峰值 ${peak.toFixed(1)} MB · 当前进程生命周期`;
-  patch($('#f-cycles'), `${(s.cycle_count || 0).toLocaleString('zh-CN')}<small>轮</small>`);
+  setText($('#live-meta'), a == null ? s.state_detail : `最近检测 ${age(a)}${s.version ? ' · v' + s.version : ''}`);
 }
 
 /* ====================================================================
-   Route rows
+   Route cards
    ==================================================================== */
 function routeSkeleton(g) {
   const key = esc(g.name);
   return `<article class="card route" data-group="${key}">
-    <div class="route-side">
-      <div class="route-top">
-        <div class="route-title">
-          <span class="region"><i></i><span data-f="region"></span></span>
-          <h2>${key}</h2>
-        </div>
-        <span class="pill" data-f="decision"></span>
+    <div class="route-top">
+      <div class="route-title">
+        <span class="region"><i></i><span data-f="region"></span></span>
+        <h2>${key}</h2>
       </div>
-      <div>
-        <span class="now-label">当前节点</span>
-        <span class="now-name" data-f="current"></span>
-      </div>
-      <div>
-        <span class="now-label">线路图 <button class="tip" type="button" data-tip="map" aria-label="说明：线路图">?</button></span>
-        <div data-f="map"></div>
-      </div>
-      <div class="metrics">
-        <div class="metric"><span class="m-label">24h 可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span><span class="m-value" data-f="availability">—</span></div>
-        <div class="metric"><span class="m-label">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></span><span class="m-value" data-f="latency">—</span></div>
-        <div class="metric"><span class="m-label">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span><span class="m-value" data-f="quality">—</span></div>
-        <div class="metric"><span class="m-label">连接 <button class="tip" type="button" data-tip="connections" aria-label="说明：活跃连接">?</button></span><span class="m-value" data-f="connections">—</span></div>
-      </div>
-      <div data-f="handover"></div>
+      <span class="pill" data-f="decision"></span>
     </div>
-    <div class="route-main">
+    <div class="now">
+      <span class="now-label">当前节点</span>
+      <span class="now-name" data-f="current"></span>
+      <span class="now-standby" data-f="standby"></span>
+    </div>
+    <div class="metrics">
+      <div class="metric"><span class="m-label">近 24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span><span class="m-value" data-f="availability">—</span></div>
+      <div class="metric"><span class="m-label">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></span><span class="m-value" data-f="latency">—</span></div>
+      <div class="metric"><span class="m-label">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span><span class="m-value" data-f="quality">—</span></div>
+      <div class="metric conn">
+        <span class="m-label">活跃连接 <button class="tip" type="button" data-tip="connections" aria-label="说明：活跃连接">?</button></span>
+        <button class="m-value m-toggle" type="button" data-f="conn-toggle" aria-expanded="false"><span data-f="connections">—</span></button>
+      </div>
+    </div>
+    <div data-f="handover"></div>
+    <div class="chart">
       <div class="chart-head">
         <div class="legend">
           <span><i class="sw"></i>当前节点</span>
@@ -682,12 +657,11 @@ function routeSkeleton(g) {
           <span><i class="sw switch-fail"></i>故障切换</span>
           <span><i class="sw switch-opt"></i>回优</span>
         </div>
-        <span class="chart-now"><span data-f="last"></span><button class="tip" type="button" data-tip="chart" aria-label="说明：实时延迟曲线">?</button></span>
+        <span class="chart-now"><span data-f="last"></span> <button class="tip" type="button" data-tip="chart" aria-label="说明：实时延迟曲线">?</button></span>
       </div>
       <div class="plot" data-f="plot"></div>
-      <p class="reason" data-f="reason"></p>
-      <div class="sites" data-f="sites"></div>
     </div>
+    <p class="reason" data-f="reason"></p>
     <div class="conns" data-f="conns" hidden></div>
   </article>`;
 }
@@ -701,8 +675,8 @@ function ensureRoutes(d) {
     charts.clear();
     $$('.route', box).forEach(card => {
       const group = card.dataset.group;
-      card.addEventListener('click', event => {
-        if (!event.target.closest('.chip-more')) return;
+      const toggle = $('[data-f="conn-toggle"]', card);
+      toggle.addEventListener('click', () => {
         if (openConnections.has(group)) openConnections.delete(group); else openConnections.add(group);
         if (snapshot) renderRoutes(snapshot);
       });
@@ -719,76 +693,45 @@ function renderRoutes(d) {
     if (!card) return;
     const f = name => card.querySelector(`[data-f="${name}"]`);
     const node = d.nodes[g.current] || {};
-    const conns = g.connections || { total: g.active_connections, by_node: {}, sites: [] };
+    const standby = g.hot_standby ? d.nodes[g.hot_standby] : null;
 
     setText(f('region'), `${regionName(g.region)} · ${g.region === 'TW' ? 'AI 出口' : '备援出口'}`);
     const pill = f('decision');
-    const pillClass = `pill ${sevClass(g.decision_severity)}`;
-    if (pill.className !== pillClass) pill.className = pillClass;
+    pill.className = `pill ${sevClass(g.decision_severity)}`;
     setText(pill, g.decision);
     pill.title = g.decision;
     setText(f('current'), g.current || '等待 Clash');
-    patch(f('map'), routeMap(g, d, conns));
+    patch(f('standby'), g.hot_standby
+      ? `<i class="dash" aria-hidden="true"></i>热备 <b>${esc(g.hot_standby)}</b>${standby && standby.latency != null ? ` · ${ms(standby.latency)}` : ''}
+         <button class="tip" type="button" data-tip="standby" aria-label="说明：热备节点">?</button>`
+      : '暂无成熟热备 · 故障时将保持当前选择并继续检测');
 
     patch(f('availability'), esc(pct(node.long_availability ?? node.availability)));
     patch(f('latency'), node.latency == null ? '—' : `${Math.round(node.latency)}<small>ms</small>`);
     patch(f('quality'), node.quality == null ? '—' : `${node.quality}<small>/100</small>`);
-    patch(f('connections'), `${g.active_connections}<small>个</small>`);
+    const conns = g.connections || { total: g.active_connections, by_node: {}, sites: [] };
+    const open = openConnections.has(g.name);
+    patch(f('connections'), `${g.active_connections}<small>${open ? '收起' : '查看'}</small>`);
+    f('conn-toggle').setAttribute('aria-expanded', String(open));
+
     patch(f('handover'), handoverHtml(g, conns));
 
     const next = g.next_action && g.next_action !== g.decision_detail ? ` <span class="next">下一步：${esc(g.next_action)}</span>` : '';
     patch(f('reason'), esc(g.decision_detail || g.decision) + next);
 
-    const open = openConnections.has(g.name);
-    patch(f('sites'), sitesHtml(g, conns, open));
     const panel = f('conns');
     panel.hidden = !open;
     if (open) patch(panel, connectionsHtml(g, conns));
-
     const chart = charts.get(g.name);
     if (chart) chart.setData(g, card);
   });
 }
 
-/* ---------- route map: this Mac -> route -> current / hot standby / old node ---------- */
+/* ====================================================================
+   Handover: an optimize keeps old connections on the old node until they end
+   ==================================================================== */
 function oldNodes(g, conns) {
   return Object.entries(conns.by_node || {}).filter(([name, count]) => name && name !== g.current && count > 0);
-}
-
-function routeMap(g, d, conns) {
-  const cur = d.nodes[g.current] || {};
-  const sb = g.hot_standby ? d.nodes[g.hot_standby] || {} : null;
-  const olds = oldNodes(g, conns);
-  const rows = [];
-  if (olds.length) rows.push({ kind: 'old', name: olds[0][0], label: `旧节点 · ${olds.reduce((s, [, c]) => s + c, 0)} 个连接未结束`, sub: '' });
-  rows.push({ kind: 'cur', name: g.current || '等待 Clash', label: '当前', sub: ms(cur.latency) });
-  if (g.hot_standby) rows.push({ kind: 'sb', name: g.hot_standby, label: '热备', sub: ms(sb && sb.latency) });
-
-  const W = 360, rowH = 46, H = rows.length * rowH + 6;
-  const srcX = 20, jx = 98, boxX = 146, boxW = W - boxX - 2;
-  const midY = rows.findIndex(r => r.kind === 'cur') * rowH + rowH / 2 + 3;
-  const look = {
-    cur: { stroke: 'var(--accent)', fill: 'var(--accent-soft)', name: 'var(--text)', dash: '', live: true, op: 1 },
-    sb: { stroke: 'var(--standby)', fill: 'var(--raised)', name: 'var(--text-2)', dash: '5 4', live: false, op: 1 },
-    old: { stroke: 'var(--standby)', fill: 'var(--inset)', name: 'var(--muted)', dash: '1.5 4', live: false, op: .8 },
-  };
-  let out = `<svg class="map" viewBox="0 0 ${W} ${H}" role="img" aria-label="线路图：本机经过${esc(g.name)}到当前节点${esc(g.current)}">`;
-  out += `<path class="wire live" d="M${srcX + 7},${midY} L${jx},${midY}" style="stroke:var(--accent)"></path>`;
-  out += `<circle cx="${srcX}" cy="${midY}" r="7" style="fill:var(--surface);stroke:var(--accent)" stroke-width="2"></circle>`;
-  out += `<text class="src-text" x="${srcX}" y="${midY + 22}" text-anchor="middle" style="fill:var(--muted)">本机</text>`;
-  out += `<circle cx="${jx}" cy="${midY}" r="4" style="fill:var(--accent)"></circle>`;
-  rows.forEach((r, i) => {
-    const s = look[r.kind], y = i * rowH + 3, cy = y + rowH / 2;
-    const wire = `M${jx},${midY} C${jx + 26},${midY} ${boxX - 26},${cy} ${boxX},${cy}`;
-    out += `<g style="opacity:${s.op}">`;
-    out += `<path class="wire${s.live ? ' live' : ''}" d="${wire}" style="stroke:${s.stroke}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}></path>`;
-    out += `<rect x="${boxX}" y="${y + 4}" width="${boxW}" height="${rowH - 8}" rx="9" style="fill:${s.fill};stroke:${s.stroke}" stroke-width="${r.kind === 'cur' ? 1.5 : 1}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}></rect>`;
-    out += `<text class="box-text" x="${boxX + 11}" y="${cy - 3}" style="fill:var(--muted)">${esc(r.label)}</text>`;
-    out += `<text class="box-text" x="${boxX + 11}" y="${cy + 12}" style="fill:${s.name};font-weight:${r.kind === 'cur' ? 600 : 500}">${esc(shorten(r.name, r.sub ? 14 : 17))}<title>${esc(r.name)}</title></text>`;
-    if (r.sub) out += `<text class="box-sub" x="${boxX + boxW - 10}" y="${cy + 12}" text-anchor="end" style="fill:${r.kind === 'cur' ? 'var(--accent)' : 'var(--muted)'}">${esc(r.sub)}</text>`;
-    out += `</g>`;
-  });
-  return out + '</svg>';
 }
 
 function handoverHtml(g, conns) {
@@ -805,40 +748,37 @@ function handoverHtml(g, conns) {
   </div>`;
 }
 
-/* ---------- connections: chips always visible, full list on demand ---------- */
-function sitesHtml(g, c, open) {
-  if (!c.total) return '<span class="sites-label">当前没有经过这条线路的连接</span>';
-  const chips = (c.sites || []).slice(0, 5).map(site => {
-    const onOld = Object.entries(site.nodes || {}).filter(([name]) => name !== g.current).reduce((sum, [, n]) => sum + n, 0);
-    const cls = onOld && onOld === site.count ? 'chip old' : 'chip';
-    return `<span class="${cls}" title="${esc(site.host)}${onOld ? ` · ${onOld} 个在旧节点` : ''}"><b>${esc(site.host)}</b>×${site.count}</span>`;
-  }).join('');
-  return `<span class="sites-label">连接去向</span>${chips}<button class="chip-more" type="button" aria-expanded="${open}">${open ? '收起明细' : `全部 ${c.total} 个连接 →`}</button>`;
-}
-
+/* ====================================================================
+   Active connections
+   ==================================================================== */
 function connectionsHtml(g, c) {
   const now = nowSeconds();
+  const nodes = Object.entries(c.by_node || {}).sort((a, b) => b[1] - a[1]);
+  const total = c.total || 0;
+  const colorFor = name => name === g.current ? 'var(--accent)' : 'var(--standby)';
+  const split = nodes.map(([name, count]) => `<i style="width:${(count / Math.max(1, total) * 100).toFixed(1)}%;background:${colorFor(name)}"></i>`).join('');
+  const legend = nodes.map(([name, count]) => `<span><em style="background:${colorFor(name)}"></em>${esc(name)} · ${count} 个${name === g.current ? '' : '（旧节点，保留到自然结束）'}</span>`).join('');
   const sites = (c.sites || []).map(site => {
     const onOld = Object.entries(site.nodes || {}).filter(([name]) => name !== g.current).reduce((sum, [, n]) => sum + n, 0);
     return `<div class="site">
-      <span class="site-host"><b>${esc(site.host)}</b><small>${esc(site.process || '未知应用')}${onOld ? ` · ${onOld} 个在旧节点` : ''}</small></span>
+      <span class="site-host"><b>${esc(site.host)}</b><small>${esc(site.process || '未知应用')}${onOld ? ` · <span class="old">${onOld} 个在旧节点</span>` : ''}</small></span>
       <span class="since">${site.since ? '已 ' + duration(Math.max(0, now - site.since)) : ''}</span>
       <span class="bytes">↓ ${bytes(site.download || 0)} · ↑ ${bytes(site.upload || 0)}</span>
       <span class="count">${site.count}</span>
     </div>`;
   }).join('');
   const observed = c.observed_at ? `约 ${Math.max(0, Math.round(now - c.observed_at))} 秒前更新` : '';
-  return `<div class="conns-head"><span>${c.total || 0} 个连接 · ${(c.sites || []).length + (c.more_sites || 0)} 个网站</span><span>${observed}</span></div>
-    <div class="site-list">${sites}</div>
+  return `<div class="conns-head"><span>${total} 个连接 · ${(c.sites || []).length + (c.more_sites || 0)} 个网站</span><span>${observed}</span></div>
+    ${total ? `<div class="split">${split}</div><div class="split-legend">${legend}</div>` : ''}
+    ${sites ? `<div class="site-list">${sites}</div>` : '<p class="conns-note">当前没有经过这条线路的连接。</p>'}
     ${c.more_sites ? `<p class="conns-note">另有 ${c.more_sites} 个网站未列出。</p>` : ''}
     <p class="conns-note">只显示网站域名，不显示 IP 和完整网址；只在本机页面显示，不保存。每 20 秒随完整检测更新。</p>`;
 }
 
 /* ====================================================================
-   Latency chart. The drawing is built in time coordinates only when data,
-   range or scale change; every animation frame just slides it left, so the
-   motion is continuous instead of jumping once per second.
+   Latency chart
    ==================================================================== */
+/* Switch markers: colour, line style and words all differ, so no one relies on colour alone. */
 const SWITCH_KINDS = {
   failover: { label: '故障切换', color: 'var(--bad)', dash: false },
   optimize: { label: '回优', color: 'var(--good)', dash: true },
@@ -1019,7 +959,38 @@ function animate() {
 }
 
 /* ====================================================================
-   Node table, grouped by region
+   Summary strip
+   ==================================================================== */
+function resumeNote(s) {
+  if (!s.last_resume_at) return '';
+  const m = Math.max(1, Math.round((s.last_sleep_gap_seconds || 0) / 60));
+  return ` · 上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${m} 分钟）`;
+}
+
+function renderSummary(d) {
+  const s = d.service;
+  setText($('#sys-title'), s.state_title);
+  setText($('#sys-note'), s.state_detail + resumeNote(s));
+
+  const nodes = Object.values(d.nodes);
+  const count = codes => nodes.filter(n => codes.includes(n.lifecycle)).length;
+  const healthy = count(['healthy']);
+  const watching = count(['discovered', 'warming', 'half_open']);
+  const down = count(['degraded', 'quarantined', 'retired']);
+  const total = Math.max(1, nodes.length);
+  patch($('#node-stack'), `<i style="width:${healthy / total * 100}%;background:var(--good)"></i><i style="width:${watching / total * 100}%;background:var(--standby)"></i><i style="width:${down / total * 100}%;background:var(--bad)"></i>`);
+  patch($('#node-stack-legend'), `<span><b>${healthy}</b> 稳定</span><span><b>${watching}</b> 观察中</span><span><b>${down}</b> 不可用</span>`);
+
+  const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
+  patch($('#mem-value'), `${(cur ?? peak).toFixed(1)}<small>MB</small>`);
+  setText($('#mem-note'), cur == null ? '峰值 · 当前进程生命周期' : `峰值 ${peak.toFixed(1)} MB · 当前进程生命周期`);
+
+  patch($('#cycles'), `${(s.cycle_count || 0).toLocaleString('zh-CN')}<small>轮</small>`);
+  setText($('#cycles-note'), `每 ${s.probe_interval_seconds} 秒一轮完整检测 · 当前线路每 ${s.fast_probe_interval_seconds || 5} 秒`);
+}
+
+/* ====================================================================
+   Node table
    ==================================================================== */
 function allRows(d) {
   const current = new Set(d.groups.map(g => g.current));
@@ -1095,19 +1066,28 @@ function renderNodes(d) {
 }
 
 /* ====================================================================
-   Rules, one line with live numbers; the full rules live on the guide page
+   Rules, in plain words with live numbers
    ==================================================================== */
 function renderRules(d) {
   const p = d.policy, s = d.service;
   const fast = s.fast_probe_interval_seconds || s.probe_interval_seconds;
-  const confirm = p.confirm_probes ? `同一轮 ${p.confirm_probes} 次连续失败` : `${p.failures_before_switch} 轮失败`;
-  patch($('#rules'), `
-    <span>检测 <b>每 ${fast} 秒</b></span>
-    <span>故障确认 <b>${confirm}</b></span>
-    <span>回优门槛 <b>快 ${p.absolute_gain_ms} ms 且 ${Math.round(p.relative_gain * 100)}%，连续 ${p.confirmations} 轮</b></span>
-    <span>回优冷却 <b>${Math.round(p.cooldown_seconds / 60)} 分钟</b></span>
-    <span>隔离 <b>${Math.round(p.quarantine_window_seconds / 60)} 分钟失败 ${p.quarantine_failures} 次 → ${Math.round(p.quarantine_seconds / 60)} 分钟</b></span>
-    <a href="/guide#rules">完整选路规则 →</a>`);
+  const confirm = p.confirm_probes ? `${p.confirm_probes} 次连续失败` : `${p.failures_before_switch} 轮失败`;
+  const items = [
+    ['1', '怎么检测', `当前线路每 ${fast} 秒测一次；每 ${s.probe_interval_seconds} 秒一轮完整检测，同时测热备和轮询备用节点；每 ${p.business_probe_interval_seconds} 秒测一次 AI 网站能否打开。`,
+      [['当前线路', `${fast} 秒`], ['完整检测', `${s.probe_interval_seconds} 秒`], ['AI 网站', `${p.business_probe_interval_seconds} 秒`]], 'detection'],
+    ['2', '什么时候判定故障', `当前节点探测失败后，同一轮内马上再测 2 次，并检查本机网络。${confirm}才判定故障，立刻切到同地区热备，只断开旧节点上的连接。本机断网或刚从休眠醒来时不判定。`,
+      [['确认', confirm], ['切换目标', '同地区热备']], 'failover'],
+    ['3', '什么时候换更快的', `节点没坏、只是有更快的时，要求至少快 ${p.absolute_gain_ms} ms 且快 ${Math.round(p.relative_gain * 100)}%，连续 ${p.confirmations} 轮都更快才换；两次之间至少隔 ${Math.round(p.cooldown_seconds / 60)} 分钟。换的时候旧连接不断，新请求走新节点。`,
+      [['最少快', `${p.absolute_gain_ms} ms 且 ${Math.round(p.relative_gain * 100)}%`], ['确认', `${p.confirmations} 轮`], ['冷却', `${Math.round(p.cooldown_seconds / 60)} 分钟`]], 'optimize'],
+    ['4', '坏节点怎么处理', `${Math.round(p.quarantine_window_seconds / 60)} 分钟内失败 ${p.quarantine_failures} 次就隔离 ${Math.round(p.quarantine_seconds / 60)} 分钟，期间不会被选中；到期后要连续成功 ${p.quarantine_recovery_successes} 次才恢复。近 24 小时可用率低于 ${Math.round(p.min_availability * 100)}% 的节点不会被主动换上。`,
+      [['触发', `${p.quarantine_failures} 次 / ${Math.round(p.quarantine_window_seconds / 60)} 分钟`], ['隔离', `${Math.round(p.quarantine_seconds / 60)} 分钟`], ['恢复', `连续成功 ${p.quarantine_recovery_successes} 次`]], 'quarantine'],
+  ];
+  patch($('#rule-grid'), items.map(([n, title, text, kv, anchor]) => `<div class="rule">
+    <h3><i>${n}</i>${title}</h3>
+    <p>${text}</p>
+    <ul>${kv.map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('')}</ul>
+    <a href="/guide#${anchor}">详细说明 →</a>
+  </div>`).join(''));
   setText($('#footer'), `仅监听本机 127.0.0.1 · 页面每 2 秒刷新 · Mac 睡眠时暂停${s.version ? ' · 稳航 v' + s.version : ''}`);
 }
 
@@ -1120,11 +1100,14 @@ let tipOwner = null, tipPinned = false;
 function tipContext(button) {
   if (!snapshot) return {};
   const card = button.closest('.route');
+  const row = button.closest('tr');
   const ctx = { service: snapshot.service };
   if (card) {
     const g = snapshot.groups.find(item => item.name === card.dataset.group);
     ctx.group = g;
     ctx.node = g ? snapshot.nodes[g.current] : null;
+  } else if (row) {
+    ctx.node = null;
   }
   return ctx;
 }
@@ -1136,7 +1119,7 @@ function openTip(button, pinned) {
   pop.innerHTML = `<h4>${esc(t.title)}</h4><p>${esc(t.text)}</p>${t.value ? `<p class="val">${esc(t.value)}</p>` : ''}<a href="/guide#${t.anchor || ''}">详细说明 →</a>`;
   pop.hidden = false;
   const r = button.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
-  const left = Math.min(Math.max(12, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 12);
+  let left = Math.min(Math.max(12, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 12);
   let top = r.bottom + 8;
   if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 8);
   pop.style.left = `${left}px`;
@@ -1175,7 +1158,9 @@ document.addEventListener('click', event => {
 }, true);
 document.addEventListener('focusin', event => { const b = event.target.closest && event.target.closest('.tip'); if (b && !tipPinned) openTip(b, false); });
 document.addEventListener('focusout', event => { if (event.target.closest && event.target.closest('.tip') && !tipPinned) closeTip(); });
-document.addEventListener('keydown', event => { if (event.key === 'Escape') closeTip(); });
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeTip();
+});
 window.addEventListener('scroll', () => { if (!tipPinned) closeTip(); }, { passive: true });
 
 /* ====================================================================
@@ -1203,8 +1188,9 @@ try {
 
 function render(d) {
   snapshot = d;
-  renderTop(d);
+  renderTopbar(d);
   renderRoutes(d);
+  renderSummary(d);
   renderNodes(d);
   renderRules(d);
   if (tipOwner && !pop.hidden) openTip(tipOwner, tipPinned);
@@ -1216,16 +1202,17 @@ async function refresh() {
     if (!r.ok) throw Error(r.status);
     render(await r.json());
   } catch (e) {
-    $('#live-chip').dataset.sev = 'bad';
+    const chip = $('#live-chip');
+    chip.dataset.sev = 'bad';
     setText($('#live-title'), '暂时无法连接');
-    setText($('#hero-meta'), '请稍后刷新，稳航会自动恢复');
+    setText($('#live-meta'), '请稍后刷新，稳航会自动恢复');
   }
 }
 
 refresh();
 setInterval(refresh, 2000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-setInterval(() => { if (snapshot) { renderTop(snapshot); renderRoutes(snapshot); } }, 1000);
+setInterval(() => { if (snapshot) { renderTopbar(snapshot); renderRoutes(snapshot); } }, 1000);
 requestAnimationFrame(animate);
 </script>
 </body>
