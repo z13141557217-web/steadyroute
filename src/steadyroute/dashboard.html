@@ -5,392 +5,457 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>稳航 SteadyRoute</title>
 <style>
-/* ------------------------------------------------------------------
-   Tokens. Light is the base; dark follows the system or data-theme.
-   Status colours (good / warn / bad) are only used for status.
-   ------------------------------------------------------------------ */
+/* ==================================================================
+   稳航 · design tokens
+   Instrument-calm: ink on paper by day, a lit chart table by night.
+   One accent (sea-chart blue). Status colours are only for status.
+   ================================================================== */
 :root {
   color-scheme: light;
-  --bg: #f3f5f8;
+  --page: #f4f6f9;
+  --page-glow: rgba(14, 116, 163, .07);
   --surface: #ffffff;
-  --raised: #f7f9fb;
-  --inset: #eef1f5;
-  --line: #e2e7ee;
-  --line-strong: #cdd5df;
-  --text: #0f1722;
-  --text-2: #364252;
-  --muted: #677385;
-  --accent: #0a7ca6;
-  --accent-soft: #e3f2f8;
-  --standby: #8a94a6;
-  --good: #16804a;
-  --good-soft: #e3f4ea;
-  --warn: #a45f06;
-  --warn-soft: #fbefdc;
-  --bad: #c0343f;
-  --bad-soft: #fbe6e8;
-  --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 20px rgba(16, 24, 40, .05);
-  --radius: 14px;
+  --surface-2: #f8fafc;
+  --sunken: #eef2f6;
+  --hair: rgba(15, 30, 50, .08);
+  --hair-2: rgba(15, 30, 50, .14);
+  --ink: #0b1522;
+  --ink-2: #334155;
+  --ink-3: #64748b;
+  --ink-4: #94a3b8;
+  --accent: #0e74a3;
+  --accent-2: #0b5f86;
+  --accent-soft: rgba(14, 116, 163, .09);
+  --accent-line: rgba(14, 116, 163, .35);
+  --standby: #94a3b8;
+  --good: #15803d;
+  --good-soft: rgba(21, 128, 61, .09);
+  --warn: #b45309;
+  --warn-soft: rgba(180, 83, 9, .10);
+  --bad: #c2303a;
+  --bad-soft: rgba(194, 48, 58, .09);
+  --shadow-1: 0 1px 2px rgba(15, 30, 50, .05);
+  --shadow-2: 0 1px 2px rgba(15, 30, 50, .04), 0 12px 32px -12px rgba(15, 30, 50, .14);
+  --pop: 0 18px 48px -12px rgba(15, 30, 50, .28);
+  --r-lg: 20px;
+  --r-md: 12px;
+  --r-sm: 8px;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #0a0e13;
-    --surface: #11161d;
-    --raised: #151b23;
-    --inset: #0d1218;
-    --line: #1e2732;
-    --line-strong: #2b3644;
-    --text: #e7ecf2;
-    --text-2: #b9c3cf;
-    --muted: #7f8b9b;
-    --accent: #4fc3e4;
-    --accent-soft: #0f2831;
-    --standby: #7e8a9b;
-    --good: #4bc98b;
-    --good-soft: #0f271b;
-    --warn: #e7a93f;
-    --warn-soft: #2b2010;
-    --bad: #f06a74;
-    --bad-soft: #2d1418;
-    --shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 8px 24px rgba(0, 0, 0, .28);
+    --page: #080c12;
+    --page-glow: rgba(56, 189, 248, .07);
+    --surface: #0f151d;
+    --surface-2: #121a23;
+    --sunken: #0b1118;
+    --hair: rgba(226, 236, 248, .07);
+    --hair-2: rgba(226, 236, 248, .13);
+    --ink: #e9eef5;
+    --ink-2: #c3ccd8;
+    --ink-3: #8593a6;
+    --ink-4: #5d6b7e;
+    --accent: #5cc8ea;
+    --accent-2: #8ad8f1;
+    --accent-soft: rgba(92, 200, 234, .10);
+    --accent-line: rgba(92, 200, 234, .40);
+    --standby: #6b7a8f;
+    --good: #4ccf8f;
+    --good-soft: rgba(76, 207, 143, .11);
+    --warn: #eab04d;
+    --warn-soft: rgba(234, 176, 77, .12);
+    --bad: #f2737d;
+    --bad-soft: rgba(242, 115, 125, .12);
+    --shadow-1: 0 1px 0 rgba(255, 255, 255, .03);
+    --shadow-2: 0 1px 0 rgba(255, 255, 255, .03), 0 18px 40px -18px rgba(0, 0, 0, .7);
+    --pop: 0 18px 48px -12px rgba(0, 0, 0, .7);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0a0e13;
-  --surface: #11161d;
-  --raised: #151b23;
-  --inset: #0d1218;
-  --line: #1e2732;
-  --line-strong: #2b3644;
-  --text: #e7ecf2;
-  --text-2: #b9c3cf;
-  --muted: #7f8b9b;
-  --accent: #4fc3e4;
-  --accent-soft: #0f2831;
-  --standby: #7e8a9b;
-  --good: #4bc98b;
-  --good-soft: #0f271b;
-  --warn: #e7a93f;
-  --warn-soft: #2b2010;
-  --bad: #f06a74;
-  --bad-soft: #2d1418;
-  --shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 8px 24px rgba(0, 0, 0, .28);
+  --page: #080c12;
+  --page-glow: rgba(56, 189, 248, .07);
+  --surface: #0f151d;
+  --surface-2: #121a23;
+  --sunken: #0b1118;
+  --hair: rgba(226, 236, 248, .07);
+  --hair-2: rgba(226, 236, 248, .13);
+  --ink: #e9eef5;
+  --ink-2: #c3ccd8;
+  --ink-3: #8593a6;
+  --ink-4: #5d6b7e;
+  --accent: #5cc8ea;
+  --accent-2: #8ad8f1;
+  --accent-soft: rgba(92, 200, 234, .10);
+  --accent-line: rgba(92, 200, 234, .40);
+  --standby: #6b7a8f;
+  --good: #4ccf8f;
+  --good-soft: rgba(76, 207, 143, .11);
+  --warn: #eab04d;
+  --warn-soft: rgba(234, 176, 77, .12);
+  --bad: #f2737d;
+  --bad-soft: rgba(242, 115, 125, .12);
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, .03);
+  --shadow-2: 0 1px 0 rgba(255, 255, 255, .03), 0 18px 40px -18px rgba(0, 0, 0, .7);
+  --pop: 0 18px 48px -12px rgba(0, 0, 0, .7);
 }
 
+/* ------------------------------------------------------------------ base */
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+html { background: var(--page); }
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 420px at 50% -120px, var(--page-glow), transparent 70%),
+    var(--page);
+  color: var(--ink);
+  font: 14px/1.55 var(--sans);
   -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
+  letter-spacing: .005em;
 }
-h1, h2, h3, p, dl, dd { margin: 0; }
+h1, h2, h3, p { margin: 0; }
 button { font: inherit; color: inherit; }
 a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a:hover { color: var(--accent-2); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
-.wrap { width: min(1180px, 100%); margin: 0 auto; padding-inline: 20px; }
-.muted { color: var(--muted); }
-.num { font-variant-numeric: tabular-nums; }
+.wrap { width: min(1200px, 100%); margin: 0 auto; padding-inline: 24px; }
+.eyebrow { font-size: 12px; color: var(--ink-3); letter-spacing: .02em; }
+.num { font-family: var(--display); font-feature-settings: "tnum"; }
 
-/* ---------- top bar ---------- */
+/* ------------------------------------------------------------------ top bar */
 .topbar {
-  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  backdrop-filter: saturate(160%) blur(12px);
-  -webkit-backdrop-filter: saturate(160%) blur(12px);
-  border-bottom: 1px solid var(--line);
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30;
+  background: color-mix(in srgb, var(--page) 78%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--hair);
 }
-.topbar .wrap { display: flex; align-items: center; gap: 22px; min-height: 60px; }
+.topbar .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
 .brand { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
-.brand svg { width: 26px; height: 26px; }
-.brand b { font-size: 17px; font-weight: 700; letter-spacing: .02em; }
-.brand span { color: var(--muted); font-size: 13px; }
-.nav { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.brand svg { width: 28px; height: 28px; display: block; }
+.brand-name { display: grid; line-height: 1.1; }
+.brand-name b { font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: .06em; }
+.brand-name span { font-size: 10.5px; color: var(--ink-3); letter-spacing: .14em; text-transform: uppercase; }
+.nav { display: flex; gap: 4px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .nav a {
-  padding: 7px 12px; border-radius: 8px; color: var(--muted); white-space: nowrap; font-size: 13.5px;
+  position: relative; padding: 8px 12px; border-radius: 9px; color: var(--ink-3); white-space: nowrap; font-size: 13.5px;
+  transition: color .15s, background .15s;
 }
-.nav a:hover { color: var(--text); background: var(--inset); text-decoration: none; }
-.nav a[aria-current="page"] { color: var(--text); background: var(--inset); font-weight: 600; }
-.live { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
-.live-chip {
-  display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px 5px 9px;
-  border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 600; font-size: 13px;
+.nav a:hover { color: var(--ink); background: var(--sunken); }
+.nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.nav a[aria-current="page"]::after {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: -11px; height: 2px; border-radius: 2px; background: var(--accent);
 }
-.live-chip[data-sev="warn"] { background: var(--warn-soft); color: var(--warn); }
-.live-chip[data-sev="bad"] { background: var(--bad-soft); color: var(--bad); }
-.live-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; position: relative; }
-.live-dot::after {
-  content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid currentColor; opacity: 0;
-  animation: ping 2.4s ease-out infinite;
+.status-pill {
+  display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 10px; flex: 0 0 auto;
+  border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--good-soft); color: var(--good);
 }
-@keyframes ping { 0% { transform: scale(.5); opacity: .55; } 80%, 100% { transform: scale(1.4); opacity: 0; } }
-.live-meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.status-pill[data-sev="warn"] { background: var(--warn-soft); color: var(--warn); }
+.status-pill[data-sev="bad"] { background: var(--bad-soft); color: var(--bad); }
+.beacon { position: relative; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.beacon::after {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%; background: currentColor; opacity: 0;
+  animation: beacon 2.4s cubic-bezier(.2, .6, .3, 1) infinite;
+}
+@keyframes beacon { 0% { transform: scale(.4); opacity: .45; } 100% { transform: scale(1.5); opacity: 0; } }
 
-main.wrap { padding-block: 22px 56px; display: grid; gap: 18px; }
+/* ------------------------------------------------------------------ header */
+main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+.head > * { min-width: 0; }
+.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px 40px; align-items: end; }
+.head h1 {
+  font-family: var(--display); font-size: clamp(30px, 4vw, 40px); font-weight: 700; letter-spacing: -.01em; line-height: 1.15; margin-top: 8px;
+  text-wrap: balance;
+}
+.head h1 em { font-style: normal; color: var(--ink-3); font-weight: 500; font-size: .62em; margin-left: 10px; letter-spacing: 0; }
+.head h1[data-sev="warn"] { color: var(--warn); }
+.head h1[data-sev="bad"] { color: var(--bad); }
+.head .sub { margin-top: 8px; color: var(--ink-3); font-size: 13.5px; }
+.kpis { display: flex; gap: 0; }
+.kpi { display: grid; gap: 4px; padding: 0 22px; border-left: 1px solid var(--hair); min-width: 0; }
+.kpi:first-child { border-left: 0; padding-left: 0; }
+.kpi .k { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.kpi .v { font-family: var(--display); font-size: 22px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; line-height: 1.1; }
+.kpi .v small { font-family: var(--sans); font-size: 12px; font-weight: 500; color: var(--ink-3); margin-left: 3px; }
+.kpi .note { font-size: 11.5px; color: var(--ink-4); white-space: nowrap; }
+.meter { display: flex; width: 100%; min-width: 96px; height: 4px; border-radius: 999px; overflow: hidden; background: var(--sunken); margin-top: 2px; }
+.meter i { display: block; height: 100%; }
 
-/* ---------- section heads ---------- */
-.section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.section-head h2 { font-size: 15px; font-weight: 650; }
-.section-head p { color: var(--muted); font-size: 12.5px; }
-.segmented { display: inline-flex; padding: 3px; gap: 2px; background: var(--inset); border-radius: 9px; border: 1px solid var(--line); }
-/* One selected style for every toggle group: tinted accent, visible in both themes, never glaring. */
-.segmented button, .filter {
-  border: 0; background: transparent; min-height: 30px; padding: 5px 12px; border-radius: 7px; color: var(--muted);
-  font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+/* ------------------------------------------------------------------ section heads & toggles */
+.section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: -12px; }
+.section-head h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
+.section-head p { color: var(--ink-3); font-size: 12.5px; margin-top: 2px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--sunken); border-radius: 11px; border: 1px solid var(--hair); }
+.seg button, .filter {
+  border: 0; background: transparent; height: 30px; padding: 0 13px; border-radius: 8px; color: var(--ink-3);
+  font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: color .15s, background .15s;
 }
-.segmented button:hover, .filter:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
-.segmented button[aria-pressed="true"], .filter[aria-pressed="true"] {
-  background: var(--accent-soft); color: var(--accent); font-weight: 600;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+.seg button:hover, .filter:hover { color: var(--ink); }
+.seg button[aria-pressed="true"], .filter[aria-pressed="true"] {
+  background: var(--surface); color: var(--accent); font-weight: 600;
+  box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-1);
 }
-.filter .count {
-  font-size: 11px; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center;
-  background: color-mix(in srgb, var(--text) 8%, transparent); color: inherit; font-weight: 600;
-}
-.filter[aria-pressed="true"] .count { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.filter .count { font-size: 11px; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center; background: var(--hair); color: inherit; font-weight: 600; }
+.filter[aria-pressed="true"] .count { background: var(--accent-soft); }
 
-/* ---------- cards ---------- */
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+/* ------------------------------------------------------------------ cards */
+.card { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
 
-/* ---------- route cards ---------- */
-.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
-/* Both cards share one set of rows, so title, node, metrics, chart and text line up side by side
-   and the cards stay the same height even when only one of them shows a handover. */
-.routes { grid-template-rows: repeat(7, auto); }
-.route { grid-row: span 7; grid-template-rows: subgrid; row-gap: 14px; align-content: start; padding: 18px 18px 16px; display: grid; gap: 14px; min-width: 0; }
-.route-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.route-title { display: grid; gap: 3px; min-width: 0; }
-.region {
-  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); letter-spacing: .04em;
+/* ------------------------------------------------------------------ route cards (aligned row by row) */
+.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(7, auto); gap: 0 20px; }
+.route {
+  grid-row: span 7; display: grid; grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
 }
-.region i { width: 6px; height: 6px; border-radius: 2px; background: var(--accent); }
-.route-title h2 { font-size: 15.5px; font-weight: 650; }
-.pill {
-  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px;
-  font-weight: 600; white-space: nowrap; background: var(--accent-soft); color: var(--accent); max-width: 60%;
-  overflow: hidden; text-overflow: ellipsis;
+.route::before {       /* a hairline of the route's status colour along the top edge */
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--route-tone, var(--good)); opacity: .85;
 }
-.pill.good { background: var(--good-soft); color: var(--good); }
-.pill.warn { background: var(--warn-soft); color: var(--warn); }
-.pill.bad { background: var(--bad-soft); color: var(--bad); }
-.now { display: grid; gap: 4px; padding: 12px 14px; border-radius: 11px; background: var(--raised); border: 1px solid var(--line); }
-.now-label { font-size: 11.5px; color: var(--muted); letter-spacing: .05em; }
-.now-name { font-size: 19px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
-.now-standby { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.now-standby .dash { width: 14px; border-top: 2px dashed var(--standby); display: inline-block; }
-.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.metric { padding: 10px 11px; border-radius: 10px; background: var(--inset); min-width: 0; display: grid; gap: 2px; align-content: start; border: 1px solid transparent; }
-.m-label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.m-value { font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
-.m-value small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 3px; }
-.m-toggle { border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; display: inline-flex; align-items: baseline; }
-.m-toggle small { color: var(--accent) !important; text-decoration: underline; text-underline-offset: 3px; }
-.metric.conn:has(.m-toggle:hover) { border-color: var(--line-strong); }
-.metric.conn:has(.m-toggle[aria-expanded="true"]) { border-color: var(--accent); background: var(--accent-soft); }
+.route[data-tone="warn"] { --route-tone: var(--warn); }
+.route[data-tone="bad"] { --route-tone: var(--bad); }
+.route[data-tone="info"] { --route-tone: var(--accent); }
+.r-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 22px 24px 0; }
+.r-title { display: grid; gap: 4px; min-width: 0; }
+.r-title .eyebrow { display: flex; align-items: center; gap: 8px; }
+.region-code {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; padding: 2px 6px; border-radius: 5px;
+  color: var(--accent); background: var(--accent-soft);
+}
+.r-title h2 { font-size: 15px; font-weight: 600; color: var(--ink-2); }
+.decision {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 60%; padding: 5px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; background: var(--good-soft); color: var(--good); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.decision::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.decision.warn { background: var(--warn-soft); color: var(--warn); }
+.decision.bad { background: var(--bad-soft); color: var(--bad); }
+.decision.info { background: var(--accent-soft); color: var(--accent); }
 
-.handover {
-  display: grid; gap: 7px; padding: 10px 12px; border-radius: 11px;
-  background: color-mix(in srgb, var(--good-soft) 70%, transparent); border: 1px dashed color-mix(in srgb, var(--good) 45%, transparent);
-  font-size: 12.5px; color: var(--text-2);
-}
-.handover b { color: var(--text); font-weight: 600; }
-.handover-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; color: var(--good); font-size: 12.5px; }
+.r-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: end; padding: 18px 24px 20px; }
+.r-node .label { font-size: 11.5px; color: var(--ink-3); letter-spacing: .04em; }
+.r-node .name { font-family: var(--display); font-size: 22px; font-weight: 650; line-height: 1.25; margin-top: 4px; overflow-wrap: anywhere; }
+.r-node .standby { margin-top: 8px; font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.r-node .standby b { color: var(--ink-2); font-weight: 550; }
+.dash { width: 16px; height: 0; border-top: 2px dashed var(--standby); display: inline-block; }
+.readout { text-align: right; }
+.readout .big { font-family: var(--display); font-size: 46px; font-weight: 600; letter-spacing: -.03em; line-height: 1; color: var(--ink); }
+.readout .big small { font-family: var(--sans); font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--ink-3); margin-left: 4px; }
+.readout .cap { font-size: 11.5px; color: var(--ink-3); margin-top: 6px; display: inline-flex; gap: 4px; align-items: center; }
 
-/* ---------- chart ---------- */
-.chart { display: grid; gap: 6px; }
-.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; gap: 5px; }
-.legend .sw { width: 14px; height: 0; border-top: 2px solid var(--accent); }
-.legend .sw.standby { border-top: 2px dashed var(--standby); }
-.legend .sw.fail { width: 8px; height: 8px; border: 0; border-radius: 2px; background: var(--bad); }
-.legend .sw.switch-fail { width: 0; height: 11px; border-top: 0; border-left: 2px solid var(--bad); }
-.legend .sw.switch-opt { width: 0; height: 11px; border-top: 0; border-left: 2px dashed var(--good); }
-.chart-now { font-size: 12px; color: var(--muted); }
-.chart-now b { font-size: 16px; color: var(--text); font-weight: 650; font-family: var(--mono); }
-.plot { position: relative; height: 158px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line); touch-action: pan-y; }
-.plot { overflow: hidden; }
-.plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; }
-.plot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12.5px; }
-.axis { fill: var(--muted); font-size: 10.5px; font-family: var(--mono); }
-.grid { stroke: var(--line); stroke-width: 1; }
-.flag { font-size: 10.5px; font-weight: 600; paint-order: stroke; stroke: var(--raised); stroke-width: 3px; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+.stat { padding: 13px 24px; display: grid; gap: 3px; border-left: 1px solid var(--hair); min-width: 0; }
+.stat:first-child { border-left: 0; }
+.stat .k { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.stat .v { font-family: var(--display); font-size: 17px; font-weight: 600; white-space: nowrap; }
+.stat .v small { font-family: var(--sans); font-size: 12px; font-weight: 500; color: var(--ink-3); margin-left: 2px; }
+.stat button.v { border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; }
+.stat button.v small { color: var(--accent); }
+.stat button.v:hover small { text-decoration: underline; text-underline-offset: 3px; }
+
+.r-chart { padding: 18px 24px 6px; display: grid; gap: 10px; }
+.chart-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; }
+.lg-cur { width: 14px; height: 3px; border-radius: 2px; background: var(--accent); }
+.lg-sb { width: 14px; border-top: 2px dashed var(--standby); }
+.lg-fail { width: 7px; height: 7px; border-radius: 2px; background: var(--bad); }
+.lg-fo { width: 2px; height: 11px; background: var(--bad); }
+.lg-op { width: 0; height: 11px; border-left: 2px dashed var(--good); }
+.live { font-size: 12px; color: var(--ink-3); display: inline-flex; align-items: baseline; gap: 6px; }
+.live b { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--ink); }
+.plot { position: relative; height: 190px; touch-action: pan-y; overflow: hidden; border-radius: var(--r-md); }
+.plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.plot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); font-size: 12.5px; }
+.axis { fill: var(--ink-4); font-size: 10.5px; font-family: var(--mono); }
+.grid { stroke: var(--hair); stroke-width: 1; stroke-dasharray: 2 4; }
+.baseline { stroke: var(--hair-2); stroke-width: 1; }
+.flag-text { font-size: 10.5px; font-weight: 600; }
+.pulse { transform-box: fill-box; transform-origin: center; animation: pulse 2s cubic-bezier(.2, .6, .3, 1) infinite; }
+@keyframes pulse { 0% { transform: scale(1); opacity: .5; } 100% { transform: scale(3.2); opacity: 0; } }
 .plot-tip {
-  position: absolute; pointer-events: none; z-index: 3; min-width: 150px; padding: 8px 10px; border-radius: 9px;
-  background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow); font-size: 12px; line-height: 1.5;
+  position: absolute; pointer-events: none; z-index: 3; min-width: 164px; padding: 9px 11px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--hair-2); box-shadow: var(--pop); font-size: 12px; line-height: 1.55;
 }
-.plot-tip .t { color: var(--muted); font-family: var(--mono); font-size: 11px; }
-.plot-tip .row { display: flex; justify-content: space-between; gap: 12px; }
+.plot-tip .t { color: var(--ink-3); font-family: var(--mono); font-size: 11px; }
+.plot-tip .row { display: flex; justify-content: space-between; gap: 14px; }
 .plot-tip .row b { font-family: var(--mono); font-weight: 600; }
-.reason { font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
-.reason .next { color: var(--muted); }
 
-/* ---------- connections ---------- */
-.conns { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
-.conns-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
-.split { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--inset); }
+.r-reason { padding: 6px 24px 20px; font-size: 13px; color: var(--ink-2); line-height: 1.65; }
+.r-reason .next { color: var(--ink-3); }
+.r-extra { padding: 0 24px; }
+.r-extra:not(:empty) { padding-bottom: 20px; }
+.handover {
+  display: grid; gap: 9px; padding: 13px 15px; border-radius: var(--r-md);
+  background: var(--good-soft); border: 1px dashed color-mix(in srgb, var(--good) 40%, transparent);
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.6;
+}
+.handover b { color: var(--ink); font-weight: 600; }
+.handover-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; color: var(--good); }
+.split { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--sunken); }
 .split i { display: block; height: 100%; transition: width .6s ease; }
-.split-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2); }
+.conns { grid-column: 1 / -1; border-top: 1px solid var(--hair); background: var(--surface-2); padding: 16px 24px 18px; display: grid; gap: 10px; }
+.conns-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); }
+.split-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-2); }
 .split-legend span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .split-legend em { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
-.site-list { display: grid; gap: 2px; }
-.site {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 12px; align-items: center;
-  padding: 7px 8px; border-radius: 8px; font-size: 12.5px;
-}
-.site:nth-child(odd) { background: var(--raised); }
+.site-list { display: grid; }
+.site { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 34px; gap: 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--hair); font-size: 12.5px; }
+.site:first-child { border-top: 0; }
 .site-host { min-width: 0; display: grid; }
 .site-host b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site-host small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site .count { font-weight: 650; min-width: 34px; text-align: right; }
-.site .since, .site .bytes { color: var(--muted); white-space: nowrap; font-size: 12px; }
-.site .old { color: var(--text-2); }
-.conns-note { font-size: 11.5px; color: var(--muted); }
+.site-host small { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site .count { font-family: var(--display); font-weight: 650; text-align: right; }
+.site .since, .site .bytes { color: var(--ink-3); white-space: nowrap; font-size: 12px; }
+.note-sm { font-size: 11.5px; color: var(--ink-4); }
 
-/* ---------- summary strip ---------- */
-.summary { display: grid; grid-template-columns: 1.5fr 1.3fr 1fr 1fr; }
-.summary > div { padding: 15px 18px; border-left: 1px solid var(--line); min-width: 0; display: grid; gap: 4px; align-content: start; }
-.summary > div:first-child { border-left: 0; }
-.s-label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 4px; letter-spacing: .03em; }
-.s-value { font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
-.s-value small { font-size: 12.5px; font-weight: 500; color: var(--muted); margin-left: 3px; }
-.s-note { font-size: 12px; color: var(--muted); line-height: 1.5; }
-.stack { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--inset); margin-top: 4px; }
-.stack i { display: block; height: 100%; }
-.stack-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
-.stack-legend b { font-weight: 650; }
-
-/* ---------- nodes ---------- */
-.nodes-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.nodes-head h2 { font-size: 15px; font-weight: 650; }
-.nodes-head p { font-size: 12.5px; color: var(--muted); }
-.filters { display: inline-flex; gap: 2px; padding: 3px; background: var(--inset); border-radius: 9px; border: 1px solid var(--line); }
+/* ------------------------------------------------------------------ nodes */
+.nodes-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 18px 24px; flex-wrap: wrap; }
+.nodes-head h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
+.nodes-head p { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
 .table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; min-width: 860px; }
-th, td { padding: 10px 14px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
-th:first-child, td:first-child { text-align: left; white-space: normal; }
-th { font-size: 11.5px; font-weight: 500; color: var(--muted); background: var(--raised); }
+table { width: 100%; border-collapse: collapse; min-width: 880px; }
+th, td { padding: 12px 18px; text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; padding-left: 24px; }
+th:last-child, td:last-child { padding-right: 24px; }
+th { font-size: 11.5px; font-weight: 500; color: var(--ink-3); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); background: var(--surface-2); }
 th .th { display: inline-flex; align-items: center; gap: 4px; }
+tbody td { border-bottom: 1px solid var(--hair); }
 tbody tr:last-child td { border-bottom: 0; }
+tbody tr:not(.group-row):hover td { background: var(--surface-2); }
 tr.group-row td {
-  background: var(--inset); color: var(--text-2); font-size: 12px; padding: 7px 14px; text-align: left; font-weight: 600; letter-spacing: .03em;
+  padding: 16px 24px 8px; text-align: left; font-size: 12px; font-weight: 650; color: var(--ink-2); letter-spacing: .06em; border-bottom: 1px solid var(--hair);
 }
-tr.group-row td span { color: var(--muted); font-weight: 500; margin-left: 8px; letter-spacing: 0; }
-tr.is-current td { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
-.nm { display: flex; align-items: center; gap: 10px; min-width: 300px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: 0 0 auto; }
-.dot.warn { background: var(--warn); }
-.dot.bad { background: var(--bad); }
-.dot.info { background: var(--standby); }
-.nm-copy { display: grid; min-width: 0; }
-.nm-copy b { font-weight: 550; overflow-wrap: anywhere; }
-.nm-copy small { color: var(--muted); font-size: 12px; }
-.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 5px; margin-left: 4px; vertical-align: 1px; }
-.tag.cur { background: var(--accent-soft); color: var(--accent); }
-.tag.hot { background: var(--inset); color: var(--text-2); border: 1px dashed var(--line-strong); }
-.avail { display: inline-flex; align-items: center; gap: 8px; }
-.bar { width: 64px; height: 5px; border-radius: 999px; background: var(--inset); overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--good); }
+tr.group-row td span { color: var(--ink-3); font-weight: 500; margin-left: 10px; letter-spacing: 0; }
+tr.is-current td { background: var(--accent-soft); }
+tr.is-current:hover td { background: var(--accent-soft) !important; }
+.nm { display: flex; align-items: center; gap: 12px; min-width: 300px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: 0 0 auto; box-shadow: 0 0 0 3px var(--good-soft); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.dot.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+.dot.info { background: var(--standby); box-shadow: 0 0 0 3px var(--sunken); }
+.nm-copy { display: grid; min-width: 0; gap: 1px; }
+.nm-copy b { font-weight: 560; overflow-wrap: anywhere; }
+.nm-copy small { color: var(--ink-3); font-size: 12px; }
+.tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px; margin-left: 6px; vertical-align: 1px; letter-spacing: .02em; }
+.tag.cur { background: var(--accent); color: var(--surface); }
+.tag.hot { color: var(--ink-2); border: 1px dashed var(--hair-2); }
+.avail { display: inline-flex; align-items: center; gap: 10px; }
+.bar { width: 60px; height: 4px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--good); border-radius: 999px; }
 .bar i.warn { background: var(--warn); }
 .bar i.bad { background: var(--bad); }
-.q { font-weight: 650; }
+.q { font-family: var(--display); font-weight: 650; }
 .q.warn { color: var(--warn); }
 .q.bad { color: var(--bad); }
-.state { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 600; }
+.state { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 600; }
 .state.warn { background: var(--warn-soft); color: var(--warn); }
 .state.bad { background: var(--bad-soft); color: var(--bad); }
-.state.info { background: var(--inset); color: var(--text-2); }
-.empty-row { padding: 26px; text-align: center; color: var(--muted); }
+.state.info { background: var(--sunken); color: var(--ink-2); }
+.empty-row { padding: 30px; text-align: center; color: var(--ink-3); }
 
-/* ---------- rules ---------- */
-details.rules { padding: 0; }
+/* ------------------------------------------------------------------ rules */
 details.rules > summary {
-  list-style: none; cursor: pointer; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  list-style: none; cursor: pointer; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
 }
 details.rules > summary::-webkit-details-marker { display: none; }
-details.rules > summary h2 { font-size: 15px; font-weight: 650; }
-details.rules > summary .chev { color: var(--muted); font-size: 12.5px; }
-details.rules[open] > summary { border-bottom: 1px solid var(--line); }
-.rule-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.rule { padding: 16px 18px; display: grid; gap: 8px; align-content: start; border-left: 1px solid var(--line); }
+details.rules > summary h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
+details.rules > summary p { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+.chev { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--ink-3); background: var(--sunken); transition: transform .2s; }
+details.rules[open] .chev { transform: rotate(180deg); }
+.rule-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); }
+.rule { padding: 20px 24px 22px; display: grid; gap: 10px; align-content: start; border-left: 1px solid var(--hair); }
 .rule:first-child { border-left: 0; }
-.rule h3 { font-size: 13.5px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
-.rule h3 i { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-style: normal; font-size: 12px; background: var(--inset); color: var(--text-2); }
-.rule p { font-size: 12.5px; color: var(--text-2); line-height: 1.65; }
-.rule ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
-.rule li { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
-.rule li b { color: var(--text); font-weight: 600; white-space: nowrap; }
-.rule a { font-size: 12px; }
+.rule .n { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .08em; }
+.rule h3 { font-size: 14px; font-weight: 650; }
+.rule p { font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
+.rule dl { margin: 0; display: grid; gap: 6px; }
+.rule dl div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ink-3); }
+.rule dd { margin: 0; color: var(--ink); font-weight: 600; white-space: nowrap; }
+.rule a { font-size: 12px; font-weight: 500; }
 
-footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-align: center; }
+footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
-/* ---------- tooltip ---------- */
+/* ------------------------------------------------------------------ tooltip */
 .tip {
-  width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--line-strong); background: transparent; color: var(--muted);
-  font-size: 10.5px; line-height: 1; display: inline-grid; place-items: center; cursor: help; padding: 0; flex: 0 0 auto;
+  width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--hair-2); background: transparent; color: var(--ink-4);
+  font-size: 10px; font-weight: 600; line-height: 1; display: inline-grid; place-items: center; cursor: help; padding: 0; flex: 0 0 auto;
+  transition: color .15s, border-color .15s;
 }
 .tip:hover, .tip[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
 #tip-pop {
-  position: fixed; z-index: 50; width: min(300px, calc(100vw - 24px)); padding: 11px 13px; border-radius: 11px;
-  background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 12px 32px rgba(0,0,0,.18); font-size: 12.5px; line-height: 1.6;
+  position: fixed; z-index: 60; width: min(304px, calc(100vw - 24px)); padding: 13px 15px; border-radius: 13px;
+  background: var(--surface); border: 1px solid var(--hair-2); box-shadow: var(--pop); font-size: 12.5px; line-height: 1.65;
 }
-#tip-pop h4 { margin: 0 0 4px; font-size: 13px; }
-#tip-pop p { color: var(--text-2); }
-#tip-pop .val { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); color: var(--text); }
-#tip-pop a { display: inline-block; margin-top: 6px; font-size: 12px; }
+#tip-pop h4 { margin: 0 0 4px; font-size: 13.5px; }
+#tip-pop p { color: var(--ink-2); }
+#tip-pop .val { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hair); color: var(--ink); font-weight: 600; }
+#tip-pop a { display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 500; }
 
-/* ---------- responsive ---------- */
-@supports not (grid-template-rows: subgrid) {
-  .routes { grid-template-rows: none; row-gap: 16px; }
-  .route { grid-row: auto; grid-template-rows: none; }
+/* ------------------------------------------------------------------ first-load shimmer */
+.skeleton { background: linear-gradient(90deg, var(--sunken) 0%, var(--surface-2) 50%, var(--sunken) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: 6px; color: transparent !important; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ------------------------------------------------------------------ responsive */
+@media (max-width: 1060px) {
+  .head { grid-template-columns: 1fr; }
+  .kpis { flex-wrap: wrap; row-gap: 14px; }
 }
 @media (max-width: 980px) {
-  .routes { grid-template-columns: 1fr; grid-template-rows: none; row-gap: 16px; }
+  .routes { grid-template-columns: 1fr; grid-template-rows: none; row-gap: 20px; }
   .route { grid-row: auto; grid-template-rows: none; }
-  .summary { grid-template-columns: 1fr 1fr; }
-  .summary > div:nth-child(3) { border-left: 0; }
-  .summary > div:nth-child(n+3) { border-top: 1px solid var(--line); }
   .rule-grid { grid-template-columns: 1fr 1fr; }
   .rule:nth-child(3) { border-left: 0; }
-  .rule:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .rule:nth-child(n+3) { border-top: 1px solid var(--hair); }
+}
+@supports not (grid-template-rows: subgrid) {
+  .routes { grid-template-rows: none; row-gap: 20px; }
+  .route { grid-row: auto; grid-template-rows: none; }
 }
 @media (max-width: 720px) {
   .wrap { padding-inline: 16px; }
-  .topbar .wrap { flex-wrap: wrap; gap: 8px 14px; padding-block: 10px; }
-  .nav { order: 3; flex-basis: 100%; }
-  .live { margin-left: auto; }
-  .live-meta { display: none; }
-  .metrics { grid-template-columns: 1fr 1fr; }
-  .summary { grid-template-columns: 1fr; }
-  .summary > div { border-left: 0 !important; border-top: 1px solid var(--line); }
-  .summary > div:first-child { border-top: 0; }
-  .rule-grid { grid-template-columns: 1fr; }
-  .rule { border-left: 0 !important; border-top: 1px solid var(--line); }
-  .rule:first-child { border-top: 0; }
-  .site { grid-template-columns: minmax(0, 1fr) auto; }
+  .topbar .wrap { height: auto; flex-wrap: wrap; gap: 6px 14px; padding-block: 10px; }
+  .nav { order: 3; flex-basis: 100%; margin-inline: -8px; }
+  .nav a[aria-current="page"]::after { bottom: -1px; }
+  .status-pill { margin-left: auto; }
+  main.wrap { padding-block: 22px 36px; gap: 22px; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 0; }
+  .kpi { padding: 0 16px; min-width: 0; }
+  .kpi .note, .kpi .k { white-space: normal; }
+  .kpi:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .r-head, .r-hero, .r-chart, .r-reason, .r-extra { padding-inline: 18px; }
+  .r-hero { grid-template-columns: 1fr; }
+  .readout { text-align: left; }
+  .readout .big { font-size: 38px; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stat { padding: 12px 18px; }
+  .stat:nth-child(3) { border-left: 0; }
+  .stat:nth-child(n+3) { border-top: 1px solid var(--hair); }
+  .plot { height: 170px; }
+  .conns { padding-inline: 18px; }
+  .site { grid-template-columns: minmax(0, 1fr) 30px; }
   .site .since, .site .bytes { display: none; }
-  /* node table becomes cards */
+  .rule-grid { grid-template-columns: 1fr; }
+  .rule { border-left: 0 !important; border-top: 1px solid var(--hair); }
+  .rule:first-child { border-top: 0; }
   table { min-width: 0; }
   thead { display: none; }
-  tbody tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  tbody tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 12px; padding: 14px 18px; border-bottom: 1px solid var(--hair); }
   tbody tr.group-row { display: block; padding: 0; }
-  tbody tr.group-row td { display: block; }
-  tbody td { border: 0; padding: 0; text-align: left; white-space: normal; }
+  tbody tr.group-row td { display: block; padding: 14px 18px 8px; }
+  tbody td { border: 0 !important; padding: 0 !important; text-align: left; white-space: normal; }
   tbody td:first-child { grid-column: 1 / -1; }
-  tbody td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--muted); }
+  tbody td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--ink-3); margin-bottom: 1px; }
   .nm { min-width: 0; }
-  tr.is-current { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
-  tr.is-current td { background: transparent; }
+  tr.is-current { background: var(--accent-soft); }
+  tr.is-current td { background: transparent !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .live-dot::after { animation: none; }
+  .beacon::after, .pulse, .skeleton { animation: none; }
   * { transition: none !important; }
 }
 </style>
@@ -400,11 +465,18 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
   <div class="wrap">
     <div class="brand">
       <svg viewBox="0 0 32 32" aria-hidden="true">
-        <rect x="1" y="1" width="30" height="30" rx="9" style="fill:var(--accent-soft);stroke:var(--line)"></rect>
-        <path d="M6 20c4 0 5-8 10-8s6 8 10 8" fill="none" style="stroke:var(--accent)" stroke-width="2.4" stroke-linecap="round"></path>
-        <circle cx="16" cy="12" r="2.4" style="fill:var(--accent)"></circle>
+        <defs>
+          <linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" style="stop-color:var(--accent)"></stop>
+            <stop offset="1" style="stop-color:var(--accent-2)"></stop>
+          </linearGradient>
+        </defs>
+        <rect x="0" y="0" width="32" height="32" rx="9" fill="url(#brand-g)"></rect>
+        <path d="M7 21.5c3.2 0 4.4-4.2 7.4-6.8 2.4-2.1 5.3-2.4 7.6-2.4" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".95"></path>
+        <circle cx="22.6" cy="12.3" r="2.6" fill="#fff"></circle>
+        <circle cx="7" cy="21.5" r="1.6" fill="#fff" opacity=".7"></circle>
       </svg>
-      <b>稳航</b><span>SteadyRoute</span>
+      <span class="brand-name"><b>稳航</b><span>SteadyRoute</span></span>
     </div>
     <nav class="nav" aria-label="页面">
       <a href="/" aria-current="page">看板</a>
@@ -412,49 +484,53 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
       <a href="/guide">使用说明</a>
       <a href="/changelog">更新日志</a>
     </nav>
-    <div class="live">
-      <span class="live-meta" id="live-meta">正在读取本机状态</span>
-      <span class="live-chip" id="live-chip" data-sev="warn"><span class="live-dot"></span><span id="live-title">连接中</span></span>
-    </div>
+    <span class="status-pill" id="status-pill" data-sev="warn"><span class="beacon"></span><span id="status-title">连接中</span></span>
   </div>
 </header>
 
 <main class="wrap">
+  <section class="head" aria-live="polite">
+    <div>
+      <p class="eyebrow" id="head-meta">正在读取本机状态</p>
+      <h1 id="head-title">正在连接稳航…</h1>
+      <p class="sub" id="head-sub">&nbsp;</p>
+    </div>
+    <div class="kpis">
+      <div class="kpi">
+        <span class="k">节点 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span>
+        <span class="v" id="k-nodes">—</span>
+        <span class="meter" id="k-meter"></span>
+      </div>
+      <div class="kpi">
+        <span class="k">24 小时切换</span>
+        <span class="v" id="k-switch">—</span>
+        <span class="note" id="k-switch-note">故障 · 回优</span>
+      </div>
+      <div class="kpi">
+        <span class="k">内存占用 <button class="tip" type="button" data-tip="memory" aria-label="说明：内存占用">?</button></span>
+        <span class="v" id="k-memory">—</span>
+        <span class="note" id="k-memory-note">当前进程生命周期</span>
+      </div>
+      <div class="kpi">
+        <span class="k">累计检测</span>
+        <span class="v" id="k-cycles">—</span>
+        <span class="note" id="k-cycles-note">每 20 秒一轮</span>
+      </div>
+    </div>
+  </section>
+
   <div class="section-head">
     <div>
       <h2>线路</h2>
       <p>台湾只切台湾家宽，香港只切香港家宽</p>
     </div>
-    <div class="segmented" role="group" aria-label="曲线时间范围">
+    <div class="seg" role="group" aria-label="曲线时间范围">
       <button type="button" data-range="300" aria-pressed="true">5 分钟</button>
       <button type="button" data-range="900" aria-pressed="false">15 分钟</button>
       <button type="button" data-range="1800" aria-pressed="false">30 分钟</button>
     </div>
   </div>
-  <section class="routes" id="routes" aria-live="polite"></section>
-
-  <section class="card summary" aria-label="运行概况">
-    <div>
-      <span class="s-label">系统状态</span>
-      <span class="s-value" id="sys-title">—</span>
-      <span class="s-note" id="sys-note">等待首轮数据</span>
-    </div>
-    <div>
-      <span class="s-label">节点 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span>
-      <div class="stack" id="node-stack"></div>
-      <div class="stack-legend" id="node-stack-legend"></div>
-    </div>
-    <div>
-      <span class="s-label">内存占用 <button class="tip" type="button" data-tip="memory" aria-label="说明：内存占用">?</button></span>
-      <span class="s-value" id="mem-value">—</span>
-      <span class="s-note" id="mem-note">当前进程生命周期</span>
-    </div>
-    <div>
-      <span class="s-label">累计检测</span>
-      <span class="s-value" id="cycles">—</span>
-      <span class="s-note" id="cycles-note">每 20 秒一轮完整检测</span>
-    </div>
-  </section>
+  <section class="routes" id="routes"></section>
 
   <section class="card" aria-label="节点状态">
     <div class="nodes-head">
@@ -462,7 +538,7 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
         <h2>节点状态</h2>
         <p id="node-summary">按地区分组，当前线路和热备排在最前</p>
       </div>
-      <div class="filters" role="group" aria-label="节点筛选">
+      <div class="seg filters" role="group" aria-label="节点筛选">
         <button class="filter active" data-filter="focus" type="button" aria-pressed="true" title="当前线路、热备和异常节点">需关注<span class="count" data-count="focus"></span></button>
         <button class="filter" data-filter="all" type="button" aria-pressed="false">全部<span class="count" data-count="all"></span></button>
         <button class="filter" data-filter="tw" type="button" aria-pressed="false">台湾<span class="count" data-count="tw"></span></button>
@@ -488,12 +564,15 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
   </section>
 
   <details class="card rules" id="rules">
-    <summary><h2>选路规则</h2><span class="chev">展开 / 收起</span></summary>
+    <summary>
+      <div><h2>选路规则</h2><p>稳航什么时候检测、什么时候切换、怎么处理坏节点</p></div>
+      <span class="chev" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4.5 6 8l4-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+    </summary>
     <div class="rule-grid" id="rule-grid"></div>
   </details>
 </main>
 
-<footer class="wrap" id="footer">仅监听本机 127.0.0.1 · 页面每 2 秒刷新 · Mac 睡眠时暂停</footer>
+<footer class="wrap" id="footer"><span>仅监听本机 127.0.0.1 · 页面每 2 秒刷新 · Mac 睡眠时暂停</span><span id="footer-version"></span></footer>
 
 <div id="tip-pop" role="tooltip" hidden></div>
 
@@ -519,6 +598,7 @@ const ms = v => v == null ? '—' : `${Math.round(v)} ms`;
 const sevClass = severity => severity === 'critical' ? 'bad' : severity === 'warning' ? 'warn' : severity === 'info' ? 'info' : 'good';
 const regionName = code => code === 'TW' ? '台湾' : code === 'HK' ? '香港' : '其他';
 const shorten = (text, n) => { const s = [...String(text || '')]; return s.length > n ? s.slice(0, n - 1).join('') + '…' : s.join(''); };
+const textWidth = (text, size) => [...String(text)].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? size : size * .58), 0);
 const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* Only touch the DOM when the markup actually changed: no flicker, no lost selection. */
@@ -536,10 +616,21 @@ let snapshot = null;
 let activeFilter = 'focus';
 let rangeSeconds = 300;
 const openConnections = new Set();
-const charts = new Map();      // group name -> chart (see the chart section)
+const charts = new Map();      // group name -> chart
+const readouts = new Map();    // group name -> {el, shown, target}
+
+/* Decisions that are part of normal, lossless operation: calm, never a warning. */
+const BENIGN = {
+  candidate_confirming: '正在确认更快的节点',
+  handover_pending: '正在无损回优',
+  handover_grace: '正在无损回优',
+  recovery_observing: '正在观察新节点',
+  cooldown: '刚完成回优',
+  manual_hold: '按你的手动选择运行',
+};
 
 /* ====================================================================
-   Explanations for the "?" buttons. Each returns {title, text, value}.
+   Explanations for the "?" buttons
    ==================================================================== */
 const TIPS = {
   availability: (ctx) => ({
@@ -568,21 +659,21 @@ const TIPS = {
   }),
   connections: (ctx) => ({
     title: '活跃连接',
-    text: '当前经过这条线路的连接数，点击查看是哪些网站。主动换到更快的节点时旧连接不会断开，会留在原节点直到自然结束。',
+    text: '当前经过这条线路的连接数，点击查看是哪些网站。主动换到更快的节点时旧连接不会断开，会留在原节点直到自然结束；故障切换时旧节点上的连接会被断开，应用会自动重连到新节点。',
     value: ctx && ctx.group ? `当前 ${ctx.group.active_connections} 个` : null,
     anchor: 'connections',
   }),
-  chart: () => ({
-    title: '实时延迟曲线',
-    text: '实线是当前节点，每 5 秒测一次；虚线是热备，每 20 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比上方“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
-    value: null,
-    anchor: 'chart',
-  }),
-  standby: (ctx) => ({
+  standby: () => ({
     title: '热备节点',
     text: '当前节点一旦确认故障，会立刻切到它。它和当前节点在同一地区，图中虚线是它的实时延迟（每 20 秒测一次）。',
     value: null,
     anchor: 'failover',
+  }),
+  chart: () => ({
+    title: '实时延迟曲线',
+    text: '实线是当前节点，每 5 秒测一次；虚线是热备，每 20 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
+    value: null,
+    anchor: 'chart',
   }),
   lifecycle: () => ({
     title: '节点状态',
@@ -607,25 +698,69 @@ const TIPS = {
 };
 
 /* ====================================================================
-   Top bar
+   Header: one calm sentence plus four facts
    ==================================================================== */
-function memText(s) {
-  const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
-  return cur == null ? `峰值内存 ${peak.toFixed(1)} MB` : `内存 ${cur.toFixed(1)} MB（峰值 ${peak.toFixed(1)} MB）`;
+function resumeNote(s) {
+  if (!s.last_resume_at) return '';
+  const m = Math.max(1, Math.round((s.last_sleep_gap_seconds || 0) / 60));
+  return `上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${m} 分钟）`;
 }
 
-function renderTopbar(d) {
+function renderHead(d) {
   const now = nowSeconds(), s = d.service;
   const seen = s.last_probe_at ?? s.updated_at;
   const a = seen == null ? null : Math.max(0, Math.round(now - seen));
   const stale = s.stale_at != null && now >= s.stale_at;
   const title = stale ? s.stale_title : s.state_title;
   const severity = stale ? 'warning' : s.state_severity;
-  const chip = $('#live-chip');
-  chip.dataset.sev = severity === 'ok' ? 'ok' : severity === 'critical' ? 'bad' : 'warn';
-  chip.title = stale ? s.stale_detail : s.state_detail;
-  setText($('#live-title'), title);
-  setText($('#live-meta'), a == null ? s.state_detail : `最近检测 ${age(a)}${s.version ? ' · v' + s.version : ''}`);
+  const pill = $('#status-pill');
+  pill.dataset.sev = severity === 'ok' ? 'ok' : severity === 'critical' ? 'bad' : 'warn';
+  pill.title = stale ? s.stale_detail : s.state_detail;
+  setText($('#status-title'), title);
+
+  const bits = [a == null ? '等待首轮检测' : `最近检测 ${age(a)}`];
+  const resume = resumeNote(s);
+  if (resume) bits.push(resume);
+  setText($('#head-meta'), bits.join(' · '));
+
+  const troubled = d.groups.filter(g => g.decision_severity && g.decision_severity !== 'ok' && !BENIGN[g.decision_code]);
+  const busy = d.groups.filter(g => BENIGN[g.decision_code]);
+  let head = '航线平稳', note = '', sev = 'ok', sub;
+  if (stale) { head = s.stale_title; sev = 'warn'; sub = s.stale_detail; }
+  else if (s.state_code && s.state_code !== 'running') { head = s.state_title; sev = s.state_severity === 'critical' ? 'bad' : 'warn'; sub = s.state_detail; }
+  else if (troubled.length) {
+    const g = troubled[0];
+    head = `${regionName(g.region)}线路${g.decision_severity === 'critical' ? '故障' : '需要留意'}`;
+    sev = sevClass(g.decision_severity) === 'bad' ? 'bad' : 'warn';
+    sub = g.decision_detail || g.decision;
+  } else {
+    if (busy.length) note = `${regionName(busy[0].region)}${BENIGN[busy[0].decision_code]}`;
+    sub = d.groups.map(g => { const n = d.nodes[g.current] || {}; return `${regionName(g.region)}线路 ${ms(n.latency)}`; }).join('　·　') + '　·　同地区家宽，自动守护';
+  }
+  const h1 = $('#head-title');
+  patch(h1, esc(head) + (note ? `<em>${esc(note)}</em>` : ''));
+  h1.dataset.sev = sev;
+  setText($('#head-sub'), sub || '');
+
+  const nodes = Object.values(d.nodes);
+  const count = codes => nodes.filter(n => codes.includes(n.lifecycle)).length;
+  const healthy = count(['healthy']), watching = count(['discovered', 'warming', 'half_open']);
+  const total = Math.max(1, nodes.length), down = nodes.length - healthy - watching;
+  patch($('#k-nodes'), `${healthy}<small>/ ${nodes.length} 稳定</small>`);
+  patch($('#k-meter'), `<i style="width:${healthy / total * 100}%;background:var(--good)"></i><i style="width:${watching / total * 100}%;background:var(--standby)"></i><i style="width:${down / total * 100}%;background:var(--bad)"></i>`);
+  $('#k-meter').title = `${healthy} 稳定 · ${watching} 观察中 · ${down} 不可用`;
+
+  const fo = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).failovers_24h || 0), 0);
+  const op = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).performance_switches_24h || 0), 0);
+  patch($('#k-switch'), `${fo + op}<small>次</small>`);
+  setText($('#k-switch-note'), `故障 ${fo} · 回优 ${op}`);
+
+  const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
+  patch($('#k-memory'), `${(cur ?? peak).toFixed(1)}<small>MB</small>`);
+  setText($('#k-memory-note'), cur == null ? '峰值 · 当前进程生命周期' : `峰值 ${peak.toFixed(1)} MB`);
+  patch($('#k-cycles'), `${(s.cycle_count || 0).toLocaleString('zh-CN')}<small>轮</small>`);
+  setText($('#k-cycles-note'), `每 ${s.probe_interval_seconds} 秒一轮`);
+  setText($('#footer-version'), s.version ? `稳航 v${s.version}` : '');
 }
 
 /* ====================================================================
@@ -634,42 +769,45 @@ function renderTopbar(d) {
 function routeSkeleton(g) {
   const key = esc(g.name);
   return `<article class="card route" data-group="${key}">
-    <div class="route-top">
-      <div class="route-title">
-        <span class="region"><i></i><span data-f="region"></span></span>
+    <div class="r-head">
+      <div class="r-title">
+        <span class="eyebrow"><span class="region-code">${g.region === 'TW' ? 'TW' : g.region === 'HK' ? 'HK' : '··'}</span><span data-f="region"></span></span>
         <h2>${key}</h2>
       </div>
-      <span class="pill" data-f="decision"></span>
+      <span class="decision" data-f="decision"></span>
     </div>
-    <div class="now">
-      <span class="now-label">当前节点</span>
-      <span class="now-name" data-f="current"></span>
-      <span class="now-standby" data-f="standby"></span>
-    </div>
-    <div class="metrics">
-      <div class="metric"><span class="m-label">24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span><span class="m-value" data-f="availability">—</span></div>
-      <div class="metric"><span class="m-label">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></span><span class="m-value" data-f="latency">—</span></div>
-      <div class="metric"><span class="m-label">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span><span class="m-value" data-f="quality">—</span></div>
-      <div class="metric conn">
-        <span class="m-label">活跃连接 <button class="tip" type="button" data-tip="connections" aria-label="说明：活跃连接">?</button></span>
-        <button class="m-value m-toggle" type="button" data-f="conn-toggle" aria-expanded="false"><span data-f="connections">—</span></button>
+    <div class="r-hero">
+      <div class="r-node">
+        <div class="label">当前节点</div>
+        <div class="name" data-f="current"></div>
+        <div class="standby" data-f="standby"></div>
+      </div>
+      <div class="readout">
+        <div class="big num" data-f="readout">—</div>
+        <div class="cap">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></div>
       </div>
     </div>
-    <div class="chart">
+    <div class="stats">
+      <div class="stat"><span class="k">24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span><span class="v" data-f="availability">—</span></div>
+      <div class="stat"><span class="k">抖动 <button class="tip" type="button" data-tip="jitter" aria-label="说明：抖动">?</button></span><span class="v" data-f="jitter">—</span></div>
+      <div class="stat"><span class="k">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span><span class="v" data-f="quality">—</span></div>
+      <div class="stat"><span class="k">活跃连接 <button class="tip" type="button" data-tip="connections" aria-label="说明：活跃连接">?</button></span><button class="v" type="button" data-f="conn-toggle" aria-expanded="false"><span data-f="connections">—</span></button></div>
+    </div>
+    <div class="r-chart">
       <div class="chart-head">
         <div class="legend">
-          <span><i class="sw"></i>当前节点</span>
-          <span><i class="sw standby"></i>热备</span>
-          <span><i class="sw fail"></i>探测失败</span>
-          <span><i class="sw switch-fail"></i>故障切换</span>
-          <span><i class="sw switch-opt"></i>回优</span>
+          <span><i class="lg-cur"></i>当前</span>
+          <span><i class="lg-sb"></i>热备</span>
+          <span><i class="lg-fail"></i>失败</span>
+          <span><i class="lg-fo"></i>故障切换</span>
+          <span><i class="lg-op"></i>回优</span>
         </div>
-        <span class="chart-now"><span data-f="last"></span> <button class="tip" type="button" data-tip="chart" aria-label="说明：实时延迟曲线">?</button></span>
+        <span class="live"><span data-f="last"></span><button class="tip" type="button" data-tip="chart" aria-label="说明：实时延迟曲线">?</button></span>
       </div>
       <div class="plot" data-f="plot"></div>
     </div>
-    <p class="reason" data-f="reason"></p>
-    <div data-f="handover"></div>
+    <p class="r-reason" data-f="reason"></p>
+    <div class="r-extra" data-f="handover"></div>
     <div class="conns" data-f="conns" hidden></div>
   </article>`;
 }
@@ -681,14 +819,15 @@ function ensureRoutes(d) {
     box.innerHTML = d.groups.map(routeSkeleton).join('');
     box.__names = names;
     charts.clear();
+    readouts.clear();
     $$('.route', box).forEach(card => {
       const group = card.dataset.group;
-      const toggle = $('[data-f="conn-toggle"]', card);
-      toggle.addEventListener('click', () => {
+      $('[data-f="conn-toggle"]', card).addEventListener('click', () => {
         if (openConnections.has(group)) openConnections.delete(group); else openConnections.add(group);
         if (snapshot) renderRoutes(snapshot);
       });
       charts.set(group, makeChart(card.querySelector('[data-f="plot"]')));
+      readouts.set(group, { el: card.querySelector('[data-f="readout"]'), shown: null, target: null });
     });
   }
   return box;
@@ -702,36 +841,54 @@ function renderRoutes(d) {
     const f = name => card.querySelector(`[data-f="${name}"]`);
     const node = d.nodes[g.current] || {};
     const standby = g.hot_standby ? d.nodes[g.hot_standby] : null;
+    const conns = g.connections || { total: g.active_connections, by_node: {}, sites: [] };
+    const tone = BENIGN[g.decision_code] ? 'info' : sevClass(g.decision_severity);
 
+    if (card.dataset.tone !== tone) card.dataset.tone = tone;
     setText(f('region'), `${regionName(g.region)} · ${g.region === 'TW' ? 'AI 出口' : '备援出口'}`);
     const pill = f('decision');
-    pill.className = `pill ${sevClass(g.decision_severity)}`;
+    const pillClass = `decision ${tone}`;
+    if (pill.className !== pillClass) pill.className = pillClass;
     setText(pill, g.decision);
     pill.title = g.decision;
     setText(f('current'), g.current || '等待 Clash');
     patch(f('standby'), g.hot_standby
-      ? `<i class="dash" aria-hidden="true"></i>热备 <b>${esc(g.hot_standby)}</b>${standby && standby.latency != null ? ` · ${ms(standby.latency)}` : ''}
+      ? `<i class="dash" aria-hidden="true"></i>热备 <b>${esc(g.hot_standby)}</b><span>${standby && standby.latency != null ? ms(standby.latency) : ''}</span>
          <button class="tip" type="button" data-tip="standby" aria-label="说明：热备节点">?</button>`
-      : '暂无成熟热备 · 故障时将保持当前选择并继续检测');
+      : '暂无成熟热备 · 故障时保持当前选择并继续检测');
+
+    const r = readouts.get(g.name);
+    if (r) r.target = node.latency == null ? null : Math.round(node.latency);
 
     patch(f('availability'), esc(pct(node.long_availability ?? node.availability)));
-    patch(f('latency'), node.latency == null ? '—' : `${Math.round(node.latency)}<small>ms</small>`);
+    patch(f('jitter'), node.jitter == null ? '—' : `${Math.round(node.jitter)}<small>ms</small>`);
     patch(f('quality'), node.quality == null ? '—' : `${node.quality}<small>/100</small>`);
-    const conns = g.connections || { total: g.active_connections, by_node: {}, sites: [] };
     const open = openConnections.has(g.name);
-    patch(f('connections'), `${g.active_connections}<small>${open ? '收起' : '查看'}</small>`);
+    patch(f('connections'), `${g.active_connections}<small>${open ? '收起' : '查看 ›'}</small>`);
     f('conn-toggle').setAttribute('aria-expanded', String(open));
-
-    patch(f('handover'), handoverHtml(g, conns));
 
     const next = g.next_action && g.next_action !== g.decision_detail ? ` <span class="next">下一步：${esc(g.next_action)}</span>` : '';
     patch(f('reason'), esc(g.decision_detail || g.decision) + next);
+    patch(f('handover'), handoverHtml(g, conns));
 
     const panel = f('conns');
     panel.hidden = !open;
     if (open) patch(panel, connectionsHtml(g, conns));
+
     const chart = charts.get(g.name);
     if (chart) chart.setData(g, card);
+  });
+}
+
+/* Latency readout eases between values like an instrument needle. */
+function tickReadouts() {
+  readouts.forEach(r => {
+    if (r.target == null) { if (r.el.textContent !== '—') { r.el.textContent = '—'; r.shown = null; } return; }
+    if (r.shown == null || reduceMotion) r.shown = r.target;
+    else r.shown += (r.target - r.shown) * 0.12;
+    if (Math.abs(r.shown - r.target) < 0.5) r.shown = r.target;
+    const html = `${Math.round(r.shown)}<small>ms</small>`;
+    if (r.el.__html !== html) { r.el.innerHTML = html; r.el.__html = html; }
   });
 }
 
@@ -769,7 +926,7 @@ function connectionsHtml(g, c) {
   const sites = (c.sites || []).map(site => {
     const onOld = Object.entries(site.nodes || {}).filter(([name]) => name !== g.current).reduce((sum, [, n]) => sum + n, 0);
     return `<div class="site">
-      <span class="site-host"><b>${esc(site.host)}</b><small>${esc(site.process || '未知应用')}${onOld ? ` · <span class="old">${onOld} 个在旧节点</span>` : ''}</small></span>
+      <span class="site-host"><b>${esc(site.host)}</b><small>${esc(site.process || '未知应用')}${onOld ? ` · ${onOld} 个在旧节点` : ''}</small></span>
       <span class="since">${site.since ? '已 ' + duration(Math.max(0, now - site.since)) : ''}</span>
       <span class="bytes">↓ ${bytes(site.download || 0)} · ↑ ${bytes(site.upload || 0)}</span>
       <span class="count">${site.count}</span>
@@ -778,15 +935,16 @@ function connectionsHtml(g, c) {
   const observed = c.observed_at ? `约 ${Math.max(0, Math.round(now - c.observed_at))} 秒前更新` : '';
   return `<div class="conns-head"><span>${total} 个连接 · ${(c.sites || []).length + (c.more_sites || 0)} 个网站</span><span>${observed}</span></div>
     ${total ? `<div class="split">${split}</div><div class="split-legend">${legend}</div>` : ''}
-    ${sites ? `<div class="site-list">${sites}</div>` : '<p class="conns-note">当前没有经过这条线路的连接。</p>'}
-    ${c.more_sites ? `<p class="conns-note">另有 ${c.more_sites} 个网站未列出。</p>` : ''}
-    <p class="conns-note">只显示网站域名，不显示 IP 和完整网址；只在本机页面显示，不保存。每 20 秒随完整检测更新。</p>`;
+    ${sites ? `<div class="site-list">${sites}</div>` : '<p class="note-sm">当前没有经过这条线路的连接。</p>'}
+    ${c.more_sites ? `<p class="note-sm">另有 ${c.more_sites} 个网站未列出。</p>` : ''}
+    <p class="note-sm">只显示网站域名，不显示 IP 和完整网址；只在本机页面显示，不保存。每 20 秒随完整检测更新。</p>`;
 }
 
 /* ====================================================================
-   Latency chart
+   Latency chart. Built in time coordinates when data, range or scale
+   change; each animation frame only slides it, so motion is continuous.
+   Lines use monotone cubic curves: smooth, never overshooting a sample.
    ==================================================================== */
-/* Switch markers: colour, line style and words all differ, so no one relies on colour alone. */
 const SWITCH_KINDS = {
   failover: { label: '故障切换', color: 'var(--bad)', dash: false },
   optimize: { label: '回优', color: 'var(--good)', dash: true },
@@ -804,15 +962,37 @@ function nearest(points, t, within) {
   return best;
 }
 
+/* Fritsch–Carlson monotone cubic through screen points [[x, y], ...]. */
+function monotone(pts) {
+  const n = pts.length;
+  if (n === 0) return '';
+  if (n === 1) return `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  const dx = [], dy = [], m = [], t = [];
+  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; dy[i] = pts[i + 1][1] - pts[i][1]; m[i] = dx[i] ? dy[i] / dx[i] : 0; }
+  t[0] = m[0]; t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+    const a = t[i] / m[i], b = t[i + 1] / m[i], h = a * a + b * b;
+    if (h > 9) { const k = 3 / Math.sqrt(h); t[i] = k * a * m[i]; t[i + 1] = k * b * m[i]; }
+  }
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += `C${(pts[i][0] + h).toFixed(1)},${(pts[i][1] + h * t[i]).toFixed(1)} ${(pts[i + 1][0] - h).toFixed(1)},${(pts[i + 1][1] - h * t[i + 1]).toFixed(1)} ${pts[i + 1][0].toFixed(1)},${pts[i + 1][1].toFixed(1)}`;
+  }
+  return d;
+}
+
 let chartSeq = 0;
 function makeChart(plot) {
-  const L = 50, R = 12, T = 14, B = 24;
+  const L = 44, R = 18, T = 22, B = 22;
   const id = `c${++chartSeq}`;
   const st = { points: null, dataKey: '', top: 100, targetTop: 100, w: 0, h: 0, drawnKey: '', base: null, hoverX: null, pinned: false };
   plot.innerHTML = `<svg role="img" aria-label="实时延迟曲线"><defs>
       <clipPath id="clip-${id}"><rect></rect></clipPath>
       <linearGradient id="grad-${id}" x1="0" x2="0" y1="0" y2="1">
-        <stop offset="0" style="stop-color:var(--accent)" stop-opacity=".22"></stop>
+        <stop offset="0" style="stop-color:var(--accent)" stop-opacity=".20"></stop>
         <stop offset="1" style="stop-color:var(--accent)" stop-opacity="0"></stop>
       </linearGradient></defs>
       <g class="yaxis"></g>
@@ -823,11 +1003,11 @@ function makeChart(plot) {
   const empty = plot.querySelector('.empty');
 
   function geometry() {
-    const w = Math.max(240, plot.clientWidth || 600), h = plot.clientHeight || 212;
+    const w = Math.max(240, plot.clientWidth || 600), h = plot.clientHeight || 190;
     if (w !== st.w || h !== st.h) {
       st.w = w; st.h = h; st.drawnKey = '';
       svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-      clip.setAttribute('x', L); clip.setAttribute('y', 0); clip.setAttribute('width', w - L - R); clip.setAttribute('height', h);
+      clip.setAttribute('x', L); clip.setAttribute('y', 0); clip.setAttribute('width', w - L); clip.setAttribute('height', h);
     }
     return { w, h, iw: w - L - R, ih: h - T - B };
   }
@@ -835,58 +1015,59 @@ function makeChart(plot) {
   function draw() {
     const pts = st.points || [];
     const { w, iw, ih } = geometry();
-    const pps = iw / rangeSeconds;                       // pixels per second
-    const base = st.base = nowSeconds();                  // time at the right edge when drawn
+    const pps = iw / rangeSeconds;
+    const base = st.base = nowSeconds();
     const X = t => L + iw - (base - t) * pps;
     const top = st.top;
     const Y = v => T + ih - Math.min(v, top) / top * ih;
     const probes = pts.filter(p => p[2] === 'probe'), standby = pts.filter(p => p[2] === 'standby'), switches = pts.filter(p => p[2] === 'switch');
 
     let yhtml = '';
-    for (let i = 0; i <= 3; i++) {
+    for (let i = 1; i <= 3; i++) {
       const v = top / 3 * i, y = Y(v);
       yhtml += `<line class="grid" x1="${L}" x2="${w - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line>`;
-      yhtml += `<text class="axis" x="${L - 6}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${Math.round(v)}${i === 3 ? ' ms' : ''}</text>`;
+      yhtml += `<text class="axis" x="${L - 8}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${Math.round(v)}</text>`;
     }
+    yhtml += `<line class="baseline" x1="${L}" x2="${w - R}" y1="${(T + ih).toFixed(1)}" y2="${(T + ih).toFixed(1)}"></line>`;
+    yhtml += `<text class="axis" x="${L - 8}" y="${(T + ih + 3.5).toFixed(1)}" text-anchor="end">0</text>`;
+    yhtml += `<text class="axis" x="${L - 8}" y="${T - 9}" text-anchor="end">ms</text>`;
     yaxis.innerHTML = yhtml;
 
-    const line = (points, bridge) => {
-      let path = '', pen = false;
+    const runs = (points, bridge) => {
+      const out = []; let run = [];
       (bridge ? points.filter(p => p[1] != null) : points).forEach(p => {
-        if (p[1] == null) { pen = false; return; }
-        path += `${pen ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`; pen = true;
+        if (p[1] == null) { if (run.length) out.push(run); run = []; return; }
+        run.push([X(p[0]), Y(p[1])]);
       });
-      return path;
-    };
-    const area = points => {
-      let out = '', run = [];
-      const flush = () => {
-        if (run.length > 1) out += `M${X(run[0][0]).toFixed(1)},${(T + ih).toFixed(1)}` + run.map(p => `L${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('') + `L${X(run[run.length - 1][0]).toFixed(1)},${(T + ih).toFixed(1)}Z`;
-        run = [];
-      };
-      points.forEach(p => { if (p[1] == null) flush(); else run.push(p); });
-      flush();
+      if (run.length) out.push(run);
       return out;
     };
+    const curRuns = runs(probes), sbRuns = runs(standby, true);
+    const lineD = curRuns.map(monotone).join('');
+    const areaD = curRuns.filter(r => r.length > 1).map(r => monotone(r) + `L${r[r.length - 1][0].toFixed(1)},${(T + ih).toFixed(1)}L${r[0][0].toFixed(1)},${(T + ih).toFixed(1)}Z`).join('');
     const tickEvery = rangeSeconds <= 300 ? 60 : rangeSeconds <= 900 ? 180 : 300;
     let ticks = '';
     for (let t = Math.ceil((base - rangeSeconds - 120) / tickEvery) * tickEvery; t <= base + 120; t += tickEvery) {
       ticks += `<text class="axis" x="${X(t).toFixed(1)}" y="${T + ih + 16}" text-anchor="middle">${clock(t)}</text>`;
     }
-    const fails = probes.filter(p => p[1] == null).map(p => `<rect x="${(X(p[0]) - 2.5).toFixed(1)}" y="${(T + ih - 9).toFixed(1)}" width="5" height="9" rx="1.5" style="fill:var(--bad)"></rect>`).join('');
-    const sbFails = standby.filter(p => p[1] == null).map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${(T + ih - 4).toFixed(1)}" r="3" fill="none" style="stroke:var(--standby)" stroke-width="1.5"></circle>`).join('');
+    const fails = probes.filter(p => p[1] == null).map(p => `<rect x="${(X(p[0]) - 2).toFixed(1)}" y="${(T + ih - 10).toFixed(1)}" width="4" height="10" rx="1.5" style="fill:var(--bad)"></rect>`).join('');
+    const sbFails = standby.filter(p => p[1] == null).map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${(T + ih - 4).toFixed(1)}" r="2.8" fill="none" style="stroke:var(--standby)" stroke-width="1.4"></circle>`).join('');
     const sw = switches.map(p => {
       const x = X(p[0]), k = SWITCH_KINDS[p[4]] || SWITCH_KINDS.optimize;
-      return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${T + ih}" style="stroke:${k.color}" stroke-width="${k.dash ? 1.6 : 2}"${k.dash ? ' stroke-dasharray="4 3"' : ''}></line>
-        <text class="flag" x="${(x - 5).toFixed(1)}" y="${T + 10}" text-anchor="end" style="fill:${k.color}">${k.label} → ${esc(shorten(p[3], 12))}</text>`;
+      const label = `${k.label} → ${shorten(p[3], 11)}`, tw = textWidth(label, 10.5) + 14;
+      return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T - 2}" y2="${T + ih}" style="stroke:${k.color}" stroke-width="${k.dash ? 1.5 : 1.8}"${k.dash ? ' stroke-dasharray="4 3"' : ''}></line>
+        <g transform="translate(${(x - tw).toFixed(1)},${T - 18})"><rect width="${tw.toFixed(1)}" height="17" rx="8.5" style="fill:var(--surface);stroke:${k.color}" stroke-width="1"></rect>
+        <text class="flag-text" x="${(tw / 2).toFixed(1)}" y="12" text-anchor="middle" style="fill:${k.color}">${esc(label)}</text></g>`;
     }).join('');
     const last = probes[probes.length - 1];
-    const lastDot = last && last[1] != null ? `<circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="3.5" style="fill:var(--accent)"></circle>` : '';
+    const lastDot = last && last[1] != null
+      ? `<circle class="pulse" cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="4" style="fill:var(--accent)"></circle><circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="4" stroke-width="2" style="fill:var(--accent);stroke:var(--surface)"></circle>`
+      : '';
     slide.innerHTML = `${ticks}
-      <path d="${area(probes)}" fill="url(#grad-${id})"></path>
-      <path d="${line(standby, true)}" fill="none" style="stroke:var(--standby)" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round"></path>
-      <path d="${line(probes)}" fill="none" style="stroke:var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
-      ${sw}${fails}${sbFails}${lastDot}`;
+      <path d="${areaD}" fill="url(#grad-${id})"></path>
+      <path d="${sbRuns.map(monotone).join('')}" fill="none" style="stroke:var(--standby)" stroke-width="1.5" stroke-dasharray="5 4" stroke-linecap="round"></path>
+      <path d="${lineD}" fill="none" style="stroke:var(--accent)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></path>
+      ${fails}${sbFails}${sw}${lastDot}`;
     Object.assign(st, { pps, X, Y, probes, standby, switches });
     empty.hidden = probes.length > 0;
   }
@@ -901,8 +1082,8 @@ function makeChart(plot) {
     const p = nearest(st.probes, t, Math.max(6, 8 / st.pps));
     if (!p) { hoverG.innerHTML = ''; tip.hidden = true; return; }
     const x = st.X(p[0]) + dx;
-    hoverG.innerHTML = `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${st.h - B}" style="stroke:var(--line-strong)"></line>` +
-      (p[1] != null ? `<circle cx="${x.toFixed(1)}" cy="${st.Y(p[1]).toFixed(1)}" r="4" stroke-width="2" style="fill:var(--surface);stroke:var(--accent)"></circle>` : '');
+    hoverG.innerHTML = `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T}" y2="${st.h - B}" style="stroke:var(--hair-2)"></line>` +
+      (p[1] != null ? `<circle cx="${x.toFixed(1)}" cy="${st.Y(p[1]).toFixed(1)}" r="4.5" stroke-width="2" style="fill:var(--surface);stroke:var(--accent)"></circle>` : '');
     const sb = nearest(st.standby, p[0], 25), sw = nearest(st.switches, p[0], 8);
     const k = sw ? SWITCH_KINDS[sw[4]] || SWITCH_KINDS.optimize : null;
     const html = `<div class="t">${clock(p[0], true)}</div>
@@ -914,13 +1095,12 @@ function makeChart(plot) {
     tip.hidden = false;
     const tw = tip.offsetWidth || 170;
     tip.style.left = `${x + 14 + tw > st.w - 4 ? Math.max(4, x - tw - 14) : x + 14}px`;
-    tip.style.top = '10px';
+    tip.style.top = '8px';
   }
 
   function frame() {
     if (!st.points) return;
     geometry();
-    // Ease the vertical scale towards its target instead of jumping.
     if (Math.abs(st.top - st.targetTop) > 0.5 && !reduceMotion) st.top += (st.targetTop - st.top) * 0.18;
     else st.top = st.targetTop;
     const now = nowSeconds();
@@ -956,49 +1136,19 @@ function makeChart(plot) {
       st.targetTop = niceMax(Math.max(40, ...values) * 1.15);
       if (st.base == null) st.top = st.targetTop;
       const last = pts.filter(p => p[2] === 'probe').pop();
-      patch(card.querySelector('[data-f="last"]'), !last ? '' : last[1] == null ? '最新 <b style="color:var(--bad)">失败</b>' : `最新 <b>${last[1]}</b> ms`);
+      patch(card.querySelector('[data-f="last"]'), !last ? '' : last[1] == null ? '实时 <b style="color:var(--bad)">失败</b>' : `实时 <b>${last[1]}</b> ms`);
     },
   };
 }
 
 function animate() {
   charts.forEach(chart => chart.frame());
+  tickReadouts();
   requestAnimationFrame(animate);
 }
 
 /* ====================================================================
-   Summary strip
-   ==================================================================== */
-function resumeNote(s) {
-  if (!s.last_resume_at) return '';
-  const m = Math.max(1, Math.round((s.last_sleep_gap_seconds || 0) / 60));
-  return ` · 上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${m} 分钟）`;
-}
-
-function renderSummary(d) {
-  const s = d.service;
-  setText($('#sys-title'), s.state_title);
-  setText($('#sys-note'), s.state_detail + resumeNote(s));
-
-  const nodes = Object.values(d.nodes);
-  const count = codes => nodes.filter(n => codes.includes(n.lifecycle)).length;
-  const healthy = count(['healthy']);
-  const watching = count(['discovered', 'warming', 'half_open']);
-  const down = count(['degraded', 'quarantined', 'retired']);
-  const total = Math.max(1, nodes.length);
-  patch($('#node-stack'), `<i style="width:${healthy / total * 100}%;background:var(--good)"></i><i style="width:${watching / total * 100}%;background:var(--standby)"></i><i style="width:${down / total * 100}%;background:var(--bad)"></i>`);
-  patch($('#node-stack-legend'), `<span><b>${healthy}</b> 稳定</span><span><b>${watching}</b> 观察中</span><span><b>${down}</b> 不可用</span>`);
-
-  const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
-  patch($('#mem-value'), `${(cur ?? peak).toFixed(1)}<small>MB</small>`);
-  setText($('#mem-note'), cur == null ? '峰值 · 当前进程生命周期' : `峰值 ${peak.toFixed(1)} MB · 当前进程生命周期`);
-
-  patch($('#cycles'), `${(s.cycle_count || 0).toLocaleString('zh-CN')}<small>轮</small>`);
-  setText($('#cycles-note'), `每 ${s.probe_interval_seconds} 秒一轮完整检测 · 当前线路每 ${s.fast_probe_interval_seconds || 5} 秒`);
-}
-
-/* ====================================================================
-   Node table
+   Node table, grouped by region
    ==================================================================== */
 function allRows(d) {
   const current = new Set(d.groups.map(g => g.current));
@@ -1070,33 +1220,33 @@ function renderNodes(d) {
     patch(tr, html);
     if (body.children[index] !== tr) body.insertBefore(tr, body.children[index] || null);
   });
-  setText($('#node-summary'), `累计检测 ${(d.service.cycle_count || 0).toLocaleString('zh-CN')} 轮 · 显示 ${rows.length}/${all.length} 个节点 · 按地区分组，当前和热备在前`);
+  setText($('#node-summary'), `累计检测 ${(d.service.cycle_count || 0).toLocaleString('zh-CN')} 轮 · 显示 ${rows.length}/${all.length} 个节点 · 当前和热备排在前面`);
 }
 
 /* ====================================================================
-   Rules, in plain words with live numbers
+   Rules in plain words, with live numbers
    ==================================================================== */
 function renderRules(d) {
   const p = d.policy, s = d.service;
   const fast = s.fast_probe_interval_seconds || s.probe_interval_seconds;
   const confirm = p.confirm_probes ? `${p.confirm_probes} 次连续失败` : `${p.failures_before_switch} 轮失败`;
   const items = [
-    ['1', '怎么检测', `当前线路每 ${fast} 秒测一次；每 ${s.probe_interval_seconds} 秒一轮完整检测，同时测热备和轮询备用节点；每 ${p.business_probe_interval_seconds} 秒测一次 AI 网站能否打开。`,
+    ['01', '怎么检测', `当前线路每 ${fast} 秒测一次；每 ${s.probe_interval_seconds} 秒一轮完整检测，同时测热备和轮询备用节点；每 ${p.business_probe_interval_seconds} 秒测一次 AI 网站能否打开。`,
       [['当前线路', `${fast} 秒`], ['完整检测', `${s.probe_interval_seconds} 秒`], ['AI 网站', `${p.business_probe_interval_seconds} 秒`]], 'detection'],
-    ['2', '什么时候判定故障', `当前节点探测失败后，同一轮内马上再测 2 次，并检查本机网络。${confirm}才判定故障，立刻切到同地区热备，只断开旧节点上的连接。本机断网或刚从休眠醒来时不判定。`,
+    ['02', '什么时候判定故障', `当前节点探测失败后，同一轮内马上再测 2 次，并检查本机网络。${confirm}才判定故障，立刻切到同地区热备，只断开旧节点上的连接。本机断网或刚从休眠醒来时不判定。`,
       [['确认', confirm], ['切换目标', '同地区热备']], 'failover'],
-    ['3', '什么时候换更快的', `节点没坏、只是有更快的时，要求至少快 ${p.absolute_gain_ms} ms 且快 ${Math.round(p.relative_gain * 100)}%，连续 ${p.confirmations} 轮都更快才换；两次之间至少隔 ${Math.round(p.cooldown_seconds / 60)} 分钟。换的时候旧连接不断，新请求走新节点。`,
+    ['03', '什么时候换更快的', `节点没坏、只是有更快的时，要求至少快 ${p.absolute_gain_ms} ms 且快 ${Math.round(p.relative_gain * 100)}%，连续 ${p.confirmations} 轮都更快才换；两次之间至少隔 ${Math.round(p.cooldown_seconds / 60)} 分钟。换的时候旧连接不断，新请求走新节点。`,
       [['最少快', `${p.absolute_gain_ms} ms 且 ${Math.round(p.relative_gain * 100)}%`], ['确认', `${p.confirmations} 轮`], ['冷却', `${Math.round(p.cooldown_seconds / 60)} 分钟`]], 'optimize'],
-    ['4', '坏节点怎么处理', `${Math.round(p.quarantine_window_seconds / 60)} 分钟内失败 ${p.quarantine_failures} 次就隔离 ${Math.round(p.quarantine_seconds / 60)} 分钟，期间不会被选中；到期后要连续成功 ${p.quarantine_recovery_successes} 次才恢复。近 24 小时可用率低于 ${Math.round(p.min_availability * 100)}% 的节点不会被主动换上。`,
+    ['04', '坏节点怎么处理', `${Math.round(p.quarantine_window_seconds / 60)} 分钟内失败 ${p.quarantine_failures} 次就隔离 ${Math.round(p.quarantine_seconds / 60)} 分钟，期间不会被选中；到期后要连续成功 ${p.quarantine_recovery_successes} 次才恢复。近 24 小时可用率低于 ${Math.round(p.min_availability * 100)}% 的节点不会被主动换上。`,
       [['触发', `${p.quarantine_failures} 次 / ${Math.round(p.quarantine_window_seconds / 60)} 分钟`], ['隔离', `${Math.round(p.quarantine_seconds / 60)} 分钟`], ['恢复', `连续成功 ${p.quarantine_recovery_successes} 次`]], 'quarantine'],
   ];
   patch($('#rule-grid'), items.map(([n, title, text, kv, anchor]) => `<div class="rule">
-    <h3><i>${n}</i>${title}</h3>
+    <span class="n">${n}</span>
+    <h3>${title}</h3>
     <p>${text}</p>
-    <ul>${kv.map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('')}</ul>
+    <dl>${kv.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
     <a href="/guide#${anchor}">详细说明 →</a>
   </div>`).join(''));
-  setText($('#footer'), `仅监听本机 127.0.0.1 · 页面每 2 秒刷新 · Mac 睡眠时暂停${s.version ? ' · 稳航 v' + s.version : ''}`);
 }
 
 /* ====================================================================
@@ -1108,14 +1258,11 @@ let tipOwner = null, tipPinned = false;
 function tipContext(button) {
   if (!snapshot) return {};
   const card = button.closest('.route');
-  const row = button.closest('tr');
   const ctx = { service: snapshot.service };
   if (card) {
     const g = snapshot.groups.find(item => item.name === card.dataset.group);
     ctx.group = g;
     ctx.node = g ? snapshot.nodes[g.current] : null;
-  } else if (row) {
-    ctx.node = null;
   }
   return ctx;
 }
@@ -1127,7 +1274,7 @@ function openTip(button, pinned) {
   pop.innerHTML = `<h4>${esc(t.title)}</h4><p>${esc(t.text)}</p>${t.value ? `<p class="val">${esc(t.value)}</p>` : ''}<a href="/guide#${t.anchor || ''}">详细说明 →</a>`;
   pop.hidden = false;
   const r = button.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
-  let left = Math.min(Math.max(12, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 12);
+  const left = Math.min(Math.max(12, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 12);
   let top = r.bottom + 8;
   if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 8);
   pop.style.left = `${left}px`;
@@ -1166,9 +1313,7 @@ document.addEventListener('click', event => {
 }, true);
 document.addEventListener('focusin', event => { const b = event.target.closest && event.target.closest('.tip'); if (b && !tipPinned) openTip(b, false); });
 document.addEventListener('focusout', event => { if (event.target.closest && event.target.closest('.tip') && !tipPinned) closeTip(); });
-document.addEventListener('keydown', event => {
-  if (event.key === 'Escape') closeTip();
-});
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeTip(); });
 window.addEventListener('scroll', () => { if (!tipPinned) closeTip(); }, { passive: true });
 
 /* ====================================================================
@@ -1181,11 +1326,11 @@ $$('.filter').forEach(b => b.addEventListener('click', () => {
 }));
 function setRange(value) {
   rangeSeconds = value;
-  $$('.segmented button').forEach(i => i.setAttribute('aria-pressed', String(Number(i.dataset.range) === value)));
+  $$('.seg[aria-label="曲线时间范围"] button').forEach(i => i.setAttribute('aria-pressed', String(Number(i.dataset.range) === value)));
   charts.forEach(chart => chart.reset());
   if (snapshot) renderRoutes(snapshot);
 }
-$$('.segmented button').forEach(b => b.addEventListener('click', () => {
+$$('.seg[aria-label="曲线时间范围"] button').forEach(b => b.addEventListener('click', () => {
   setRange(Number(b.dataset.range));
   try { localStorage.setItem('steadyroute.range', String(rangeSeconds)); } catch (e) { /* storage unavailable */ }
 }));
@@ -1196,9 +1341,8 @@ try {
 
 function render(d) {
   snapshot = d;
-  renderTopbar(d);
+  renderHead(d);
   renderRoutes(d);
-  renderSummary(d);
   renderNodes(d);
   renderRules(d);
   if (tipOwner && !pop.hidden) openTip(tipOwner, tipPinned);
@@ -1210,17 +1354,16 @@ async function refresh() {
     if (!r.ok) throw Error(r.status);
     render(await r.json());
   } catch (e) {
-    const chip = $('#live-chip');
-    chip.dataset.sev = 'bad';
-    setText($('#live-title'), '暂时无法连接');
-    setText($('#live-meta'), '请稍后刷新，稳航会自动恢复');
+    $('#status-pill').dataset.sev = 'bad';
+    setText($('#status-title'), '暂时无法连接');
+    setText($('#head-meta'), '请稍后刷新，稳航会自动恢复');
   }
 }
 
 refresh();
 setInterval(refresh, 2000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-setInterval(() => { if (snapshot) { renderTopbar(snapshot); renderRoutes(snapshot); } }, 1000);
+setInterval(() => { if (snapshot) { renderHead(snapshot); renderRoutes(snapshot); } }, 1000);
 requestAnimationFrame(animate);
 </script>
 </body>
