@@ -87,7 +87,7 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 /* kind: add 新增 · imp 改进 · fix 修复 · safe 安全 */
 const RELEASES = [
-  { version: '0.4.6', date: null, title: '安全加固',
+  { version: '0.4.6', date: '2026-09-27', title: '安全加固',
     items: [
       ['safe', '看板只接受本机地址的访问，别的网页即使把自己的域名指向本机，也读不到你正在访问哪些网站。'],
       ['safe', '所有页面统一加上安全防护，不能被嵌进别的网页。'],
