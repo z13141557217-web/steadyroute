@@ -214,6 +214,7 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 /* ------------------------------------------------------------------ route cards (aligned row by row) */
 .routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(6, auto); gap: 0 20px; }
 .route {
+  container-type: inline-size; container-name: route;
   grid-row: span 6; display: grid; grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
 }
 .route::before {       /* a hairline of the route's status colour along the top edge */
@@ -254,7 +255,7 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
 .stat { padding: 13px 24px; display: grid; gap: 3px; border-left: 1px solid var(--hair); min-width: 0; }
 .stat:first-child { border-left: 0; }
-.stat .k { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.stat .k { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; line-height: 1.4; }
 .stat .v { font-family: var(--display); font-size: 17px; font-weight: 600; white-space: nowrap; }
 .stat .v small { font-family: var(--sans); font-size: 12px; font-weight: 500; color: var(--ink-3); margin-left: 2px; }
 .stat button.v { border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; }
@@ -323,44 +324,53 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 .nodes-head h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
 .nodes-head p { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
 .table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; min-width: 880px; }
-th, td { padding: 12px 18px; text-align: right; white-space: nowrap; }
+table { width: 100%; border-collapse: collapse; min-width: 900px; }
+table { table-layout: fixed; }
+th, td { padding: 13px 18px; text-align: right; white-space: nowrap; vertical-align: middle; }
 th:first-child, td:first-child { text-align: left; white-space: normal; padding-left: 24px; }
 th:last-child, td:last-child { padding-right: 24px; }
+th.left, td.left { text-align: left; }
 th { font-size: 11.5px; font-weight: 500; color: var(--ink-3); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); background: var(--surface-2); }
 th .th { display: inline-flex; align-items: center; gap: 4px; }
-tbody td { border-bottom: 1px solid var(--hair); }
+tbody td { border-bottom: 1px solid var(--hair); font-family: var(--display); font-size: 14px; color: var(--ink-2); }
 tbody tr:last-child td { border-bottom: 0; }
-tbody tr:not(.group-row):hover td { background: var(--surface-2); }
+tbody tr:not(.group-row):hover td { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
 tr.group-row td {
-  padding: 16px 24px 8px; text-align: left; font-size: 12px; font-weight: 650; color: var(--ink-2); letter-spacing: .06em; border-bottom: 1px solid var(--hair);
+  padding: 18px 24px 8px; text-align: left; font-family: var(--sans); font-size: 12px; font-weight: 650; color: var(--ink); letter-spacing: .06em;
+  border-bottom: 1px solid var(--hair); background: transparent !important;
 }
 tr.group-row td span { color: var(--ink-3); font-weight: 500; margin-left: 10px; letter-spacing: 0; }
-tr.is-current td { background: var(--accent-soft); }
-tr.is-current:hover td { background: var(--accent-soft) !important; }
-.nm { display: flex; align-items: center; gap: 12px; min-width: 300px; }
+/* the node in use: a slim accent rule on the left, a whisper of tint */
+tr.is-current td { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.nm { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: 0 0 auto; box-shadow: 0 0 0 3px var(--good-soft); }
 .dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 .dot.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
 .dot.info { background: var(--standby); box-shadow: 0 0 0 3px var(--sunken); }
 .nm-copy { display: grid; min-width: 0; gap: 1px; }
-.nm-copy b { font-weight: 560; overflow-wrap: anywhere; }
-.nm-copy small { color: var(--ink-3); font-size: 12px; }
+.nm-copy b { font-family: var(--sans); font-weight: 560; color: var(--ink); overflow-wrap: anywhere; }
+.nm-copy small { font-family: var(--sans); color: var(--ink-3); font-size: 12px; }
 .tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px; margin-left: 6px; vertical-align: 1px; letter-spacing: .02em; }
 .tag.cur { background: var(--accent); color: var(--surface); }
 .tag.hot { color: var(--ink-2); border: 1px dashed var(--hair-2); }
-.avail { display: inline-flex; align-items: center; gap: 10px; }
-.bar { width: 60px; height: 4px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+.avail { display: inline-flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.avail .pctv { min-width: 38px; }
+.bar { width: 56px; height: 4px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--good); border-radius: 999px; }
 .bar i.warn { background: var(--warn); }
 .bar i.bad { background: var(--bad); }
-.q { font-family: var(--display); font-weight: 650; }
-.q.warn { color: var(--warn); }
-.q.bad { color: var(--bad); }
-.state { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 600; }
+.q { font-weight: 600; color: var(--ink); }
+.q small { font-family: var(--sans); font-size: 11px; font-weight: 500; color: var(--ink-4); margin-left: 1px; }
+.state { display: inline-flex; align-items: center; font-family: var(--sans); font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 600; }
 .state.warn { background: var(--warn-soft); color: var(--warn); }
 .state.bad { background: var(--bad-soft); color: var(--bad); }
 .state.info { background: var(--sunken); color: var(--ink-2); }
+.streak { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.streak svg { width: 12px; height: 12px; flex: 0 0 auto; }
+.streak.ok svg { color: var(--good); }
+.streak.fail svg { color: var(--bad); }
+.streak.fail { color: var(--bad); }
 .empty-row { padding: 30px; text-align: center; color: var(--ink-3); }
 
 /* ------------------------------------------------------------------ rules */
@@ -406,6 +416,19 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 /* ------------------------------------------------------------------ responsive */
+/* A route card narrower than ~600px (half of a small window): metrics become 2 × 2. */
+@container route (max-width: 600px) {
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stat { padding: 12px 20px; }
+  .stat:nth-child(3) { border-left: 0; }
+  .stat:nth-child(n+3) { border-top: 1px solid var(--hair); }
+  .readout .big { font-size: 40px; }
+  .r-head, .r-hero, .r-chart, .r-reason { padding-inline: 20px; }
+}
+@container route (max-width: 420px) {
+  .r-hero { grid-template-columns: 1fr; }
+  .readout { text-align: left; padding-top: 0; }
+}
 @media (max-width: 1060px) {
   .head { grid-template-columns: 1fr; }
   .kpis { flex-wrap: wrap; row-gap: 14px; }
@@ -552,6 +575,9 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
     </div>
     <div class="table-wrap">
       <table>
+        <colgroup>
+          <col><col style="width:172px"><col style="width:112px"><col style="width:92px"><col style="width:116px"><col style="width:150px"><col style="width:96px">
+        </colgroup>
         <thead>
           <tr>
             <th>节点</th>
@@ -559,7 +585,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
             <th><span class="th">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></span></th>
             <th><span class="th">抖动 <button class="tip" type="button" data-tip="jitter" aria-label="说明：抖动">?</button></span></th>
             <th><span class="th">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span></th>
-            <th><span class="th">状态 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span></th>
+            <th class="left"><span class="th">状态 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span></th>
             <th><span class="th">连续 <button class="tip" type="button" data-tip="streak" aria-label="说明：连续次数">?</button></span></th>
           </tr>
         </thead>
@@ -1177,21 +1203,26 @@ function matches(r) {
     || activeFilter === 'focus' && (r.current || r.standby || r.cls !== 'good');
 }
 
+const ICON_OK = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.3 5 8.6l4.5-5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+const ICON_FAIL = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.2 3.2l5.6 5.6M8.8 3.2 3.2 8.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>';
+
 function rowHtml(r, d) {
   const n = r.node;
   const a = n.long_availability ?? n.availability;
   const aw = a == null ? 0 : Math.round(a * 100);
   const barCls = a == null ? '' : a >= 0.95 ? '' : a >= 0.8 ? 'warn' : 'bad';
-  const q = n.quality, qCls = q == null ? '' : q < 40 ? 'bad' : q < 70 ? 'warn' : '';
-  const streak = n.last_success ? `成功 ${n.success_streak}` : `<span style="color:var(--bad)">失败 ${n.failure_streak}</span>`;
+  const q = n.quality;
+  const streak = n.last_success
+    ? `<span class="streak ok" title="连续成功 ${n.success_streak} 次">${ICON_OK}${n.success_streak}</span>`
+    : `<span class="streak fail" title="连续失败 ${n.failure_streak} 次">${ICON_FAIL}${n.failure_streak}</span>`;
   const sampling = n.lifecycle === 'warming' ? ` · 采样 ${n.samples}/${d.policy.min_samples}` : '';
   const tags = (r.current ? '<span class="tag cur">当前</span>' : '') + (r.standby ? '<span class="tag hot">热备</span>' : '');
   return `<td><div class="nm"><span class="dot ${r.cls === 'good' ? '' : r.cls}"></span><span class="nm-copy"><b>${esc(r.name)}${tags}</b><small>${esc(n.lifecycle_title || '')}${sampling}</small></span></div></td>
-    <td data-label="可用率"><span class="avail">${pct(a)}<span class="bar"><i class="${barCls}" style="width:${aw}%"></i></span></span></td>
+    <td data-label="可用率"><span class="avail"><span class="pctv">${pct(a)}</span><span class="bar"><i class="${barCls}" style="width:${aw}%"></i></span></span></td>
     <td data-label="平均延迟">${ms(n.latency)}</td>
     <td data-label="抖动">${ms(n.jitter)}</td>
-    <td data-label="综合评分"><span class="q ${qCls}">${q == null ? '—' : q + '/100'}</span></td>
-    <td data-label="状态"><span class="state ${r.cls === 'good' ? '' : r.cls}" title="${esc(n.lifecycle_detail || '')}">${esc(n.lifecycle_title || '未知')}</span></td>
+    <td data-label="综合评分"><span class="q">${q == null ? '—' : `${q}<small>/100</small>`}</span></td>
+    <td class="left" data-label="状态"><span class="state ${r.cls === 'good' ? '' : r.cls}" title="${esc(n.lifecycle_detail || '')}">${esc(n.lifecycle_title || '未知')}</span></td>
     <td data-label="连续">${streak}</td>`;
 }
 
