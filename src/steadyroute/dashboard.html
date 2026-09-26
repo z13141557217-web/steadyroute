@@ -168,16 +168,32 @@ a:hover { color: var(--accent-2); }
 /* ------------------------------------------------------------------ header */
 main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
 .head > * { min-width: 0; }
-.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px 40px; align-items: end; }
-.head h1 {
-  font-family: var(--display); font-size: clamp(28px, 3.4vw, 36px); font-weight: 650; letter-spacing: .04em; line-height: 1.2; margin-top: 6px;
-  text-wrap: balance;
+/* the header is one quiet panel: a status mark and a plain sentence on the left, four facts on the right */
+.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px 40px; align-items: center; padding: 22px 26px; }
+.hs { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.hs-mark {
+  position: relative; flex: 0 0 auto; width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+  color: var(--good); background: var(--good-soft);
 }
+.hs-mark::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); }
+.hs-mark svg { width: 26px; height: 26px; }
+#head-sub { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.hs-mark .ring { transform-box: fill-box; transform-origin: center; animation: hs-ring 2.8s cubic-bezier(.2, .6, .3, 1) infinite; }
+@keyframes hs-ring { 0% { transform: scale(.55); opacity: .5; } 100% { transform: scale(1.25); opacity: 0; } }
+.hs-mark[data-sev="warn"] { color: var(--warn); background: var(--warn-soft); }
+.hs-mark[data-sev="bad"] { color: var(--bad); background: var(--bad-soft); }
+.hs-copy { display: grid; gap: 7px; min-width: 0; }
+.head h1 { font-family: var(--display); font-size: 19px; font-weight: 620; letter-spacing: .01em; line-height: 1.3; color: var(--ink); text-wrap: balance; }
 .head h1[data-sev="warn"] { color: var(--warn); }
 .head h1[data-sev="bad"] { color: var(--bad); }
-.head .sub { margin-top: 10px; color: var(--ink-3); font-size: 13.5px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.head .sub { color: var(--ink-3); font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.head .sub > span:empty { display: none; }
+.lane { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 4px; border-radius: 8px; background: var(--sunken); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
+.lane b { font-family: var(--display); font-size: 10.5px; font-weight: 700; letter-spacing: .04em; padding: 2px 5px; border-radius: 5px; background: var(--surface); color: var(--ink-2); box-shadow: 0 0 0 1px var(--hair); }
+.lane em { font-style: normal; font-family: var(--display); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.head-meta { font-size: 12px; color: var(--ink-4); }
 .activity {
-  display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border-radius: 8px;
   font-size: 12.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft);
 }
 .activity::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -445,6 +461,9 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .nav a[aria-current="page"]::after { bottom: -1px; }
   .status-pill { margin-left: auto; }
   main.wrap { padding-block: 22px 36px; gap: 22px; }
+  .head { padding: 18px; }
+  .hs { align-items: flex-start; }
+  .hs-mark { width: 40px; height: 40px; border-radius: 12px; }
   .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 0; }
   .kpi { padding: 0 16px; min-width: 0; }
   .kpi .note, .kpi .k { white-space: normal; }
@@ -478,7 +497,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   tr.is-current td { background: transparent !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .beacon::after, .pulse, .skeleton { animation: none; }
+  .beacon::after, .pulse, .skeleton, .hs-mark .ring { animation: none; }
   * { transition: none !important; }
 }
 </style>
@@ -512,11 +531,13 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 </header>
 
 <main class="wrap">
-  <section class="head" aria-live="polite">
-    <div>
-      <p class="eyebrow" id="head-meta">正在读取本机状态</p>
-      <h1 id="head-title">正在连接稳航…</h1>
-      <p class="sub"><span class="activity" id="head-activity" hidden></span><span id="head-sub">&nbsp;</span></p>
+  <section class="head card" aria-live="polite">
+    <div class="hs">
+      <span class="hs-mark" id="head-mark" data-sev="warn" aria-hidden="true"></span>
+      <div class="hs-copy">
+        <h1 id="head-title">正在连接稳航…</h1>
+        <p class="sub"><span id="head-sub"></span><span class="activity" id="head-activity" hidden></span><span class="head-meta" id="head-meta">正在读取本机状态</span></p>
+      </div>
     </div>
     <div class="kpis">
       <div class="kpi">
@@ -729,6 +750,12 @@ function resumeNote(s) {
   return `上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${m} 分钟）`;
 }
 
+const HEAD_MARK = {
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle class="ring" cx="12" cy="12" r="10" stroke-width="1.5"></circle><path d="M5.8 12.4l4.2 4.2 8.2-9" stroke-width="2.3"></path></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 7v6"></path><circle cx="12" cy="16.6" r=".6" fill="currentColor"></circle><circle cx="12" cy="12" r="9" stroke-width="1.6"></circle></svg>',
+  bad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 9l6 6M15 9l-6 6"></path><circle cx="12" cy="12" r="9" stroke-width="1.6"></circle></svg>',
+};
+
 function renderHead(d) {
   const now = nowSeconds(), s = d.service;
   const seen = s.last_probe_at ?? s.updated_at;
@@ -748,7 +775,7 @@ function renderHead(d) {
 
   const troubled = d.groups.filter(g => g.decision_severity && g.decision_severity !== 'ok' && !BENIGN[g.decision_code]);
   const busy = d.groups.filter(g => BENIGN[g.decision_code]);
-  let head = '航线平稳', note = '', sev = 'ok', sub;
+  let head = '所有线路运行正常', note = '', sev = 'ok', sub, lanes = false;
   if (stale) { head = s.stale_title; sev = 'warn'; sub = s.stale_detail; }
   else if (s.state_code && s.state_code !== 'running') { head = s.state_title; sev = s.state_severity === 'critical' ? 'bad' : 'warn'; sub = s.state_detail; }
   else if (troubled.length) {
@@ -758,7 +785,8 @@ function renderHead(d) {
     sub = g.decision_detail || g.decision;
   } else {
     if (busy.length) note = `${regionName(busy[0].region)}${BENIGN[busy[0].decision_code]}`;
-    sub = d.groups.map(g => { const n = d.nodes[g.current] || {}; return `${regionName(g.region)}线路 ${ms(n.latency)}`; }).join('　·　');
+    lanes = true;
+    sub = d.groups.map(g => { const n = d.nodes[g.current] || {}; return `<span class="lane" title="${esc(regionName(g.region))}线路当前延迟"><b>${esc(g.region || '··')}</b>${esc(regionName(g.region))}<em>${esc(ms(n.latency))}</em></span>`; }).join('');
   }
   const h1 = $('#head-title');
   setText(h1, head);
@@ -766,7 +794,9 @@ function renderHead(d) {
   const activity = $('#head-activity');
   activity.hidden = !note;
   setText(activity, note);
-  setText($('#head-sub'), sub || '');
+  if (lanes) patch($('#head-sub'), sub); else setText($('#head-sub'), sub || '');
+  const mark = $('#head-mark');
+  if (mark.dataset.sev !== sev || !mark.firstChild) { mark.dataset.sev = sev; mark.innerHTML = HEAD_MARK[sev] || HEAD_MARK.warn; }
 
   const nodes = Object.values(d.nodes);
   const count = codes => nodes.filter(n => codes.includes(n.lifecycle)).length;
