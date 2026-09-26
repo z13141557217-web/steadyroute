@@ -927,6 +927,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "last_switch_at": int(group_state.get("last_switch_at", 0)),
             "candidates": list(GROUPS[group["name"]]),
             "hot_standby": group_state.get("hot_standby"),
+            "metrics": group["metrics"],
             "connections": connection_summary(group["name"], connections, now),
             "timeline": public_timeline(group["name"], now),
         })
