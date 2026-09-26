@@ -200,6 +200,8 @@ git tag v$(cat VERSION) && git push origin v$(cat VERSION)
 ./scripts/deploy-local.sh        # 预演：只校验，不写入
 ./scripts/deploy-local.sh --apply
 ./scripts/status.sh              # 查看运行状态、最近决策和错误
+
+./scripts/publish-release.sh     # 部署成功后：在 GitHub 发布 Release（说明取自 docs/releases/）
 ```
 
 `--apply` 会依次执行：
