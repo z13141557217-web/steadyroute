@@ -160,8 +160,11 @@ main.wrap { padding-block: 22px 56px; display: grid; gap: 18px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 
 /* ---------- route cards ---------- */
-.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.route { padding: 18px 18px 16px; display: grid; gap: 14px; min-width: 0; }
+.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+/* Both cards share one set of rows, so title, node, metrics, chart and text line up side by side
+   and the cards stay the same height even when only one of them shows a handover. */
+.routes { grid-template-rows: repeat(7, auto); }
+.route { grid-row: span 7; grid-template-rows: subgrid; row-gap: 14px; align-content: start; padding: 18px 18px 16px; display: grid; gap: 14px; min-width: 0; }
 .route-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .route-title { display: grid; gap: 3px; min-width: 0; }
 .region {
@@ -344,8 +347,13 @@ footer.wrap { padding-block: 0 28px; color: var(--muted); font-size: 12px; text-
 #tip-pop a { display: inline-block; margin-top: 6px; font-size: 12px; }
 
 /* ---------- responsive ---------- */
+@supports not (grid-template-rows: subgrid) {
+  .routes { grid-template-rows: none; row-gap: 16px; }
+  .route { grid-row: auto; grid-template-rows: none; }
+}
 @media (max-width: 980px) {
-  .routes { grid-template-columns: 1fr; }
+  .routes { grid-template-columns: 1fr; grid-template-rows: none; row-gap: 16px; }
+  .route { grid-row: auto; grid-template-rows: none; }
   .summary { grid-template-columns: 1fr 1fr; }
   .summary > div:nth-child(3) { border-left: 0; }
   .summary > div:nth-child(n+3) { border-top: 1px solid var(--line); }
@@ -639,7 +647,7 @@ function routeSkeleton(g) {
       <span class="now-standby" data-f="standby"></span>
     </div>
     <div class="metrics">
-      <div class="metric"><span class="m-label">近 24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span><span class="m-value" data-f="availability">—</span></div>
+      <div class="metric"><span class="m-label">24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span><span class="m-value" data-f="availability">—</span></div>
       <div class="metric"><span class="m-label">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></span><span class="m-value" data-f="latency">—</span></div>
       <div class="metric"><span class="m-label">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span><span class="m-value" data-f="quality">—</span></div>
       <div class="metric conn">
@@ -647,7 +655,6 @@ function routeSkeleton(g) {
         <button class="m-value m-toggle" type="button" data-f="conn-toggle" aria-expanded="false"><span data-f="connections">—</span></button>
       </div>
     </div>
-    <div data-f="handover"></div>
     <div class="chart">
       <div class="chart-head">
         <div class="legend">
@@ -662,6 +669,7 @@ function routeSkeleton(g) {
       <div class="plot" data-f="plot"></div>
     </div>
     <p class="reason" data-f="reason"></p>
+    <div data-f="handover"></div>
     <div class="conns" data-f="conns" hidden></div>
   </article>`;
 }
