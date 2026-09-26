@@ -857,8 +857,9 @@ function renderHead(d) {
 
   const fo = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).failovers_24h || 0), 0);
   const op = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).performance_switches_24h || 0), 0);
-  patch($('#k-switch'), `${fo + op}<small>次</small>`);
-  setText($('#k-switch-note'), `故障 ${fo} · 回优 ${op}`);
+  const rm = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).removal_switches_24h || 0), 0);
+  patch($('#k-switch'), `${fo + op + rm}<small>次</small>`);
+  setText($('#k-switch-note'), `故障 ${fo} · 回优 ${op}${rm ? ` · 节点移除 ${rm}` : ''}`);
 
   const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
   patch($('#k-memory'), `${(cur ?? peak).toFixed(1)}<small>MB</small>`);

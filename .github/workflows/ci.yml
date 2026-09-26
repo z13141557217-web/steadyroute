@@ -6,11 +6,23 @@ on:
 
 jobs:
   test:
-    runs-on: macos-latest
+    # macOS on the Python the LaunchAgent really uses (catches macOS-only behaviour such as the
+    # memory-peak API); Linux on the oldest and newest supported Pythons for fast, broad coverage.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            python: '3.9'
+          - os: ubuntu-latest
+            python: '3.9'
+          - os: ubuntu-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: ${{ matrix.python }}
       - run: ./scripts/check.sh
-

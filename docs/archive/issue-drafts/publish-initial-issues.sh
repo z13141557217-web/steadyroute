@@ -3,7 +3,7 @@ set -eu
 
 REPO='z13141557217-web/steadyroute'
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-DRAFT_DIR="$PROJECT_DIR/.github/ISSUE_DRAFTS"
+DRAFT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 ensure_label() {
   name=$1

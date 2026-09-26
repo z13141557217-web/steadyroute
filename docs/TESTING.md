@@ -98,9 +98,9 @@
 `fixtures/status_contract_v2.json`。页面展示全部样例和声明的转换路径，不读取真实
 订阅、不调用控制器、不修改生产看板。它用于候选验收，不是第二个常驻进程。
 
-本轮资源与接口对比见 [v0.3.0 性能记录](PERFORMANCE_0.3.0.md)。
-动态候选影子对比见 [v0.4.0 性能记录](PERFORMANCE_0.4.0.md)。
-人工偏好与隐藏发现组对比见 [v0.4.2 性能记录](PERFORMANCE_0.4.2.md)。
+本轮资源与接口对比见 [v0.3.0 性能记录](archive/performance/PERFORMANCE_0.3.0.md)。
+动态候选影子对比见 [v0.4.0 性能记录](archive/performance/PERFORMANCE_0.4.0.md)。
+人工偏好与隐藏发现组对比见 [v0.4.2 性能记录](archive/performance/PERFORMANCE_0.4.2.md)。
 
 ## v0.4.0 筛选固定样本
 

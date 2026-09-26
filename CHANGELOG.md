@@ -4,6 +4,34 @@
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-09-27
+
+### Security
+
+- 看板只服务 Host 为 `127.0.0.1:17654` 或 `localhost:17654` 的请求，其他返回 421。此前任何
+  Host 都会得到完整数据，恶意网页可以用 DNS rebinding 读取 `/api/status`（其中有正在访问的
+  网站域名和进程名）。
+- 主看板 `/` 此前没有 CSP 等安全头。现在所有响应经同一个出口，统一带 CSP（含
+  `frame-ancestors 'none'`）、`nosniff`、`no-referrer`、`no-store`；接口为 `default-src 'none'`。
+- 密钥扫描改为纯标准库的 `scripts/leak-scan.py`。原先依赖 `rg`，机器上没有 ripgrep 时会
+  静默通过；现在无法运行时报错，报告不打印密钥值。
+
+### Fixed
+
+- 三种切换（故障切换、无损回优、当前节点从订阅消失）改由同一个 `apply_switch()` 记录。
+  “节点消失”的切换此前完全不计入 24 小时切换次数，现在单独计为 `removal_switches_24h`，
+  看板显示为“节点移除”；该切换也会清除指向已消失节点的手动偏好。
+- 切换历史改为保留最近 24 小时（原来只保留最近 10 条），一天切换超过 10 次时不再少算。
+
+### Changed
+
+- 生产目录与日志目录默认取当前用户的 `~/Library`，可用 `STEADYROUTE_BASE_DIR`、
+  `STEADYROUTE_LOG_DIR` 覆盖；版本号每个进程只读一次。
+- 检查脚本用 `compileall` 编译全部 Python 文件（原手写清单漏了 4 个脚本和模拟器）。
+- 测试不再真实等待 0.7 秒的确认间隔，全量测试从约 22 秒降到约 7 秒。
+- CI 增加 Ubuntu（Python 3.9、3.13），保留 macOS（Python 3.9，与生产一致）。
+- 一次性材料（issue 草稿、优化方案、旧性能记录）移到 `docs/archive/`。
+
 ## [0.4.5] - 2026-09-26
 
 ### Added

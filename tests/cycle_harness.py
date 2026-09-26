@@ -17,6 +17,8 @@ def load_router(name):
     spec = importlib.util.spec_from_file_location(name, str(MODULE_DIR / "weighted_router.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # Real pacing between confirmation probes (0.7 s) only slows tests down; no test measures it.
+    module.CONFIRM_STAGGER_SECONDS = 0
     return module
 
 
