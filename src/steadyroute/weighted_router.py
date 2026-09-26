@@ -58,7 +58,14 @@ STATIC_PAGES = {
     "/changelog": ("changelog.html", "text/html; charset=utf-8"),
     "/assets/pages.css": ("pages.css", "text/css; charset=utf-8"),
 }
-PAGE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+PAGE_CSP = (
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
+API_CSP = "default-src 'none'; frame-ancestors 'none'"
+# Only these Host headers are served. Listening on 127.0.0.1 alone does not stop DNS
+# rebinding: a web page can re-point its own name at 127.0.0.1 and read the API same-origin.
+LOCAL_HOSTNAMES = ("127.0.0.1", "localhost")
 DASHBOARD_HOST = "127.0.0.1"
 DASHBOARD_PORT = 17654
 SERVICE_NAME = "稳航 SteadyRoute"
@@ -1100,6 +1107,13 @@ class QuietHTTPServer(http.server.ThreadingHTTPServer):
         log_warning("dashboard request failed: %s" % error, exc_info=True)
 
 
+def host_allowed(host_header, port):
+    """True only for the exact local names the dashboard is served on (with the real port)."""
+    if not isinstance(host_header, str):
+        return False
+    return host_header.strip().lower() in {"%s:%d" % (name, port) for name in LOCAL_HOSTNAMES}
+
+
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
     timeout = 15
 
@@ -1109,57 +1123,42 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         except EXPECTED_DISCONNECTS:
             self.close_connection = True
 
+    def _reply(self, status, content_type, content, api=False):
+        """Every response goes through here, so no route can forget the security headers."""
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", API_CSP if api else PAGE_CSP)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self._send(content)
+
     def do_GET(self):
+        if not host_allowed(self.headers.get("Host"), self.server.server_address[1]):
+            self._reply(421, "text/plain; charset=utf-8", b"misdirected request", api=True)
+            return
         route = urlsplit(self.path).path
         if route in ("/", "/index.html"):
             try:
                 with open(DASHBOARD_PATH, "rb") as handle:
                     content = handle.read()
             except OSError:
-                self.send_error(404)
+                self._reply(404, "text/plain; charset=utf-8", b"not found")
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self._send(content)
+            self._reply(200, "text/html; charset=utf-8", content)
             return
         if route.startswith("/acceptance") or route.startswith("/candidate-acceptance"):
-            status, content_type, content = static_acceptance_response(route)
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self._send(content)
+            self._reply(*static_acceptance_response(route))
             return
         if (route.rstrip("/") or "/") in STATIC_PAGES:
-            status, content_type, content = static_page_response(route)
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Security-Policy", PAGE_CSP)
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self._send(content)
+            self._reply(*static_page_response(route))
             return
         if route in ("/api/status", "/api/v1/status", "/api/nodes"):
-            status, content_type, content = cached_api_response(route)
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self._send(content)
+            self._reply(*cached_api_response(route), api=True)
             return
-        self.send_error(404)
+        self._reply(404, "text/plain; charset=utf-8", b"not found")
 
     def log_message(self, _format, *_args):
         return
