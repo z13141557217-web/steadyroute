@@ -13,11 +13,14 @@
 
 ## 控制面
 
-- 看板只绑定 `127.0.0.1`。
+- 看板只绑定 `127.0.0.1`，且只服务 Host 为 `127.0.0.1:<端口>` 或 `localhost:<端口>`
+  的请求，其他（包括缺少 Host）返回 `421`，防 DNS rebinding（v0.4.6）。
 - 第一版只允许 GET。
 - 不提供网页端节点切换、服务停止或状态清空。
 - 不加载外部脚本、字体或 CDN。
-- 使用 CSP、`no-store`、`nosniff` 和 `no-referrer`。
+- 所有响应经同一个出口：页面 CSP 为 `default-src 'self'` 加 `base-uri`、`form-action`、
+  `frame-ancestors` 均为 `'none'`；接口 CSP 为 `default-src 'none'`；统一 `no-store`、
+  `nosniff`、`no-referrer`，不发送任何 CORS 放行头（v0.4.6）。
 - `/api/status`、`/api/v1/status`、固定 fixture 和结构化事件只允许字段白名单；禁止
   订阅 URL、令牌、凭据、密码和服务器地址，即使这些字段意外进入持久状态也不得投影。
 - 节点 UI ID 只使用代理组名与显示名称的 SHA-256 稳定摘要；改名生成新 ID，不继承旧历史。
@@ -36,7 +39,10 @@
 
 ## Git 安全
 
-- 提交前检查敏感 URL、令牌和密钥。
+- 提交前检查敏感 URL、令牌和密钥：`scripts/leak-scan.py` 经 git 列出文件，只用标准库，
+  无法运行时退出码为 2（不会静默通过），报告中不打印匹配到的值。
+- `.gitignore` 含 `*secret*`、`*credentials*` 等模式；测试会检查源码目录下没有被忽略的
+  非缓存文件，避免新文件因命名被悄悄漏提交。
 - 当前仓库默认仅本地，不自动推送任何远程。
 - 添加远程仓库前必须确认其可见性和历史中无敏感信息。
 
