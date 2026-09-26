@@ -27,12 +27,18 @@ class _TaskVMInfo(ctypes.Structure):
 
 
 class _TaskVMInfoRev3(ctypes.Structure):
-    # Same prefix, extended to rev3's ledger_phys_footprint_peak (macOS 10.15+).
+    # Same prefix, extended to rev3's ledger_phys_footprint_peak (macOS 10.15+), plus room for
+    # every later revision: recent kernels (seen on macOS 26) stop at rev2 unless the caller's
+    # buffer covers the whole current structure, so ask for more than any kernel returns.
     _pack_ = 4
     _fields_ = _TaskVMInfo._fields_ + [
         ("min_address", ctypes.c_uint64), ("max_address", ctypes.c_uint64),
         ("ledger_phys_footprint_peak", ctypes.c_int64),
+        ("_later_revisions", ctypes.c_uint32 * 212),
     ]
+
+
+_REV3_WORDS = (ctypes.sizeof(_TaskVMInfoRev3) - ctypes.sizeof(ctypes.c_uint32 * 212)) // 4
 
 
 _LIBC = None
@@ -45,8 +51,11 @@ def peak_rss_mb():
     return round(float(usage) / divisor, 1)
 
 
-def _task_vm_info(structure):
-    """Fill a task_vm_info structure; None unless the kernel returned every field we asked for."""
+def _task_vm_info(structure, needed=None):
+    """Fill a task_vm_info structure; None unless the kernel returned the fields we need.
+
+    `needed` is the number of 32-bit words that must be filled (default: the whole structure).
+    """
     global _LIBC
     if _LIBC is None:
         _LIBC = ctypes.CDLL(ctypes.util.find_library("c"))
@@ -55,7 +64,7 @@ def _task_vm_info(structure):
     wanted = ctypes.sizeof(info) // 4
     count = ctypes.c_uint(wanted)
     result = _LIBC.task_info(task, _TASK_VM_INFO, ctypes.byref(info), ctypes.byref(count))
-    if result != 0 or count.value < wanted:
+    if result != 0 or count.value < (wanted if needed is None else needed):
         return None
     return info
 
@@ -91,7 +100,7 @@ def peak_footprint_mb():
     """
     if sys.platform == "darwin":
         try:
-            info = _task_vm_info(_TaskVMInfoRev3)
+            info = _task_vm_info(_TaskVMInfoRev3, needed=_REV3_WORDS)
             if info is None or info.ledger_phys_footprint_peak <= 0:
                 return None
             return round(float(info.ledger_phys_footprint_peak) / 1024.0 / 1024.0, 1)
