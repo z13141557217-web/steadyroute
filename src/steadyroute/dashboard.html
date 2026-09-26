@@ -170,13 +170,17 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 .head > * { min-width: 0; }
 .head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px 40px; align-items: end; }
 .head h1 {
-  font-family: var(--display); font-size: clamp(30px, 4vw, 40px); font-weight: 700; letter-spacing: -.01em; line-height: 1.15; margin-top: 8px;
+  font-family: var(--display); font-size: clamp(28px, 3.4vw, 36px); font-weight: 650; letter-spacing: .04em; line-height: 1.2; margin-top: 6px;
   text-wrap: balance;
 }
-.head h1 em { font-style: normal; color: var(--ink-3); font-weight: 500; font-size: .62em; margin-left: 10px; letter-spacing: 0; }
 .head h1[data-sev="warn"] { color: var(--warn); }
 .head h1[data-sev="bad"] { color: var(--bad); }
-.head .sub { margin-top: 8px; color: var(--ink-3); font-size: 13.5px; }
+.head .sub { margin-top: 10px; color: var(--ink-3); font-size: 13.5px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.activity {
+  display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+}
+.activity::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .kpis { display: flex; gap: 0; }
 .kpi { display: grid; gap: 4px; padding: 0 22px; border-left: 1px solid var(--hair); min-width: 0; }
 .kpi:first-child { border-left: 0; padding-left: 0; }
@@ -208,9 +212,9 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 .card { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
 
 /* ------------------------------------------------------------------ route cards (aligned row by row) */
-.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(7, auto); gap: 0 20px; }
+.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(6, auto); gap: 0 20px; }
 .route {
-  grid-row: span 7; display: grid; grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
+  grid-row: span 6; display: grid; grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
 }
 .route::before {       /* a hairline of the route's status colour along the top edge */
   content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--route-tone, var(--good)); opacity: .85;
@@ -235,7 +239,8 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 .decision.bad { background: var(--bad-soft); color: var(--bad); }
 .decision.info { background: var(--accent-soft); color: var(--accent); }
 
-.r-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: end; padding: 18px 24px 20px; }
+.r-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; padding: 18px 24px 20px; }
+.readout { padding-top: 18px; }
 .r-node .label { font-size: 11.5px; color: var(--ink-3); letter-spacing: .04em; }
 .r-node .name { font-family: var(--display); font-size: 22px; font-weight: 650; line-height: 1.25; margin-top: 4px; overflow-wrap: anywhere; }
 .r-node .standby { margin-top: 8px; font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
@@ -287,15 +292,15 @@ main.wrap { padding-block: 34px 48px; display: grid; grid-template-columns: minm
 
 .r-reason { padding: 6px 24px 20px; font-size: 13px; color: var(--ink-2); line-height: 1.65; }
 .r-reason .next { color: var(--ink-3); }
-.r-extra { padding: 0 24px; }
-.r-extra:not(:empty) { padding-bottom: 20px; }
 .handover {
-  display: grid; gap: 9px; padding: 13px 15px; border-radius: var(--r-md);
-  background: var(--good-soft); border: 1px dashed color-mix(in srgb, var(--good) 40%, transparent);
-  font-size: 12.5px; color: var(--ink-2); line-height: 1.6;
+  margin-top: 8px; display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; cursor: help;
 }
-.handover b { color: var(--ink); font-weight: 600; }
-.handover-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; color: var(--good); }
+.handover span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.handover b { color: var(--ink-2); font-weight: 600; }
+.ho-bar { display: flex; flex: 0 0 38px; height: 5px; border-radius: 999px; overflow: hidden; background: var(--sunken); }
+.ho-bar i { display: block; height: 100%; transition: width .6s ease; }
+.ho-bar i:first-child { background: var(--standby); }
+.ho-bar i:last-child { background: var(--accent); }
 .split { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--sunken); }
 .split i { display: block; height: 100%; transition: width .6s ease; }
 .conns { grid-column: 1 / -1; border-top: 1px solid var(--hair); background: var(--surface-2); padding: 16px 24px 18px; display: grid; gap: 10px; }
@@ -427,7 +432,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .kpi { padding: 0 16px; min-width: 0; }
   .kpi .note, .kpi .k { white-space: normal; }
   .kpi:nth-child(odd) { border-left: 0; padding-left: 0; }
-  .r-head, .r-hero, .r-chart, .r-reason, .r-extra { padding-inline: 18px; }
+  .r-head, .r-hero, .r-chart, .r-reason { padding-inline: 18px; }
   .r-hero { grid-template-columns: 1fr; }
   .readout { text-align: left; }
   .readout .big { font-size: 38px; }
@@ -493,7 +498,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
     <div>
       <p class="eyebrow" id="head-meta">正在读取本机状态</p>
       <h1 id="head-title">正在连接稳航…</h1>
-      <p class="sub" id="head-sub">&nbsp;</p>
+      <p class="sub"><span class="activity" id="head-activity" hidden></span><span id="head-sub">&nbsp;</span></p>
     </div>
     <div class="kpis">
       <div class="kpi">
@@ -735,11 +740,14 @@ function renderHead(d) {
     sub = g.decision_detail || g.decision;
   } else {
     if (busy.length) note = `${regionName(busy[0].region)}${BENIGN[busy[0].decision_code]}`;
-    sub = d.groups.map(g => { const n = d.nodes[g.current] || {}; return `${regionName(g.region)}线路 ${ms(n.latency)}`; }).join('　·　') + '　·　同地区家宽，自动守护';
+    sub = d.groups.map(g => { const n = d.nodes[g.current] || {}; return `${regionName(g.region)}线路 ${ms(n.latency)}`; }).join('　·　');
   }
   const h1 = $('#head-title');
-  patch(h1, esc(head) + (note ? `<em>${esc(note)}</em>` : ''));
+  setText(h1, head);
   h1.dataset.sev = sev;
+  const activity = $('#head-activity');
+  activity.hidden = !note;
+  setText(activity, note);
   setText($('#head-sub'), sub || '');
 
   const nodes = Object.values(d.nodes);
@@ -781,6 +789,7 @@ function routeSkeleton(g) {
         <div class="label">当前节点</div>
         <div class="name" data-f="current"></div>
         <div class="standby" data-f="standby"></div>
+        <div data-f="handover"></div>
       </div>
       <div class="readout">
         <div class="big num" data-f="readout">—</div>
@@ -807,7 +816,6 @@ function routeSkeleton(g) {
       <div class="plot" data-f="plot"></div>
     </div>
     <p class="r-reason" data-f="reason"></p>
-    <div class="r-extra" data-f="handover"></div>
     <div class="conns" data-f="conns" hidden></div>
   </article>`;
 }
@@ -906,10 +914,10 @@ function handoverHtml(g, conns) {
   const onOld = olds.reduce((s, [, c]) => s + c, 0);
   const onNew = (conns.by_node || {})[g.current] || 0;
   const since = g.last_switch_at ? Math.max(0, nowSeconds() - g.last_switch_at) : null;
-  return `<div class="handover" role="status">
-    <div class="handover-title"><span>交接中 · 旧连接不中断</span><span>${since != null ? '切换后 ' + duration(since) : ''}</span></div>
-    <div class="split" aria-hidden="true"><i style="width:${(onOld / total * 100).toFixed(1)}%;background:var(--standby)"></i><i style="width:${(onNew / total * 100).toFixed(1)}%;background:var(--accent)"></i></div>
-    <div>旧节点 <b>${esc(shorten(olds[0][0], 18))}</b> 仍有 <b>${onOld}</b> 个连接，新请求已走 <b>${esc(shorten(g.current, 18))}</b>（${onNew} 个）。旧连接会自然结束，不会被主动断开。</div>
+  const title = `旧节点 ${olds[0][0]} 仍有 ${onOld} 个连接，新请求已走 ${g.current}（${onNew} 个）。旧连接会自然结束，不会被主动断开。`;
+  return `<div class="handover" role="status" title="${esc(title)}">
+    <span class="ho-bar" aria-hidden="true"><i style="width:${(onOld / total * 100).toFixed(1)}%"></i><i style="width:${(onNew / total * 100).toFixed(1)}%"></i></span>
+    <span>交接中 · 旧节点还剩 <b>${onOld}</b> 个连接，等其自然结束${since != null ? ` · ${duration(since)}前切换` : ''}</span>
   </div>`;
 }
 
