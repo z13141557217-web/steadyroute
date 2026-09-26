@@ -166,10 +166,10 @@ a:hover { color: var(--accent-2); }
 @keyframes beacon { 0% { transform: scale(.4); opacity: .45; } 100% { transform: scale(1.5); opacity: 0; } }
 
 /* ------------------------------------------------------------------ header */
-main.wrap { padding-block: 20px 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+main.wrap { padding-block: 18px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .head > * { min-width: 0; }
 /* the header is one quiet panel: a status mark and a plain sentence on the left, four facts on the right */
-.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 40px; align-items: center; padding: 16px 24px 16px 18px; }
+.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 40px; align-items: center; padding: 12px 24px 12px 14px; }
 .hs { display: flex; align-items: center; gap: 14px; min-width: 0; }
 /* the SteadyRoute mark, alive: light travels along the route and the destination breathes */
 .hs-mark {
@@ -230,9 +230,14 @@ main.wrap { padding-block: 20px 48px; display: grid; grid-template-columns: minm
 .meter i { display: block; height: 100%; }
 
 /* ------------------------------------------------------------------ section heads & toggles */
-.section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: -8px; }
+.range { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.range-label { font-size: 12px; color: var(--ink-3); }
+.range .seg button { height: 26px; padding: 0 10px; font-size: 12px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 2px 0 -4px; }
+.section-head > div { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.section-head .seg button { height: 26px; padding: 0 11px; }
 .section-head h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
-.section-head p { color: var(--ink-3); font-size: 12.5px; margin-top: 2px; }
+.section-head p { color: var(--ink-3); font-size: 12.5px; }
 .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--sunken); border-radius: 11px; border: 1px solid var(--hair); }
 .seg button, .filter {
   border: 0; background: transparent; height: 30px; padding: 0 13px; border-radius: 8px; color: var(--ink-3);
@@ -252,18 +257,18 @@ main.wrap { padding-block: 20px 48px; display: grid; grid-template-columns: minm
 /* ------------------------------------------------------------------ route cards (aligned row by row) */
 .routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); gap: 0 20px; }
 .route {
-  grid-row: span 5; display: grid; grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
+  grid-row: span 5; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
 }
-.r-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 22px 24px 0; }
-.r-title { display: grid; gap: 4px; min-width: 0; }
-.r-title .eyebrow { display: flex; align-items: center; gap: 8px; }
+.r-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 16px 22px 0; }
+.r-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.r-title .r-sub { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .region-code {
   font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; padding: 2px 6px; border-radius: 5px;
   color: var(--accent); background: var(--accent-soft);
 }
-.r-title h2 { font-size: 15px; font-weight: 600; color: var(--ink-2); }
+.r-title h2 { font-size: 14.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
 .decision {
-  display: inline-flex; align-items: center; gap: 7px; max-width: 60%; padding: 5px 11px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 11px; border-radius: 999px;
   font-size: 12px; font-weight: 600; background: var(--good-soft); color: var(--good); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .decision::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
@@ -271,20 +276,19 @@ main.wrap { padding-block: 20px 48px; display: grid; grid-template-columns: minm
 .decision.bad { background: var(--bad-soft); color: var(--bad); }
 .decision.info { background: var(--accent-soft); color: var(--accent); }
 
-.r-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; padding: 18px 24px 20px; }
-.readout { padding-top: 18px; }
-.r-node .label { font-size: 11.5px; color: var(--ink-3); letter-spacing: .04em; }
-.r-node .name { font-family: var(--display); font-size: 22px; font-weight: 650; line-height: 1.25; margin-top: 4px; overflow-wrap: anywhere; }
-.r-node .standby { margin-top: 8px; font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.r-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; padding: 10px 22px 12px; }
+.r-node .label { font-size: 11px; color: var(--ink-3); letter-spacing: .04em; }
+.r-node .name { font-family: var(--display); font-size: 21px; font-weight: 650; line-height: 1.25; margin-top: 2px; overflow-wrap: anywhere; }
+.r-node .standby { margin-top: 5px; font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .r-node .standby b { color: var(--ink-2); font-weight: 550; }
 .dash { width: 16px; height: 0; border-top: 2px dashed var(--standby); display: inline-block; }
 .readout { text-align: right; }
-.readout .big { font-family: var(--display); font-size: 46px; font-weight: 600; letter-spacing: -.03em; line-height: 1; color: var(--ink); }
+.readout .big { font-family: var(--display); font-size: 42px; font-weight: 600; letter-spacing: -.03em; line-height: 1; color: var(--ink); }
 .readout .big small { font-family: var(--sans); font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--ink-3); margin-left: 4px; }
-.readout .cap { font-size: 11.5px; color: var(--ink-3); margin-top: 6px; display: inline-flex; gap: 4px; align-items: center; }
+.readout .cap { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; display: inline-flex; gap: 4px; align-items: center; }
 
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
-.stat { padding: 13px 24px; display: grid; gap: 3px; border-left: 1px solid var(--hair); min-width: 0; }
+.stat { padding: 10px 22px; display: grid; gap: 3px; border-left: 1px solid var(--hair); min-width: 0; }
 .stat:first-child { border-left: 0; }
 .stat .k { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; line-height: 1.4; }
 .stat .v { font-family: var(--display); font-size: 17px; font-weight: 600; white-space: nowrap; }
@@ -293,7 +297,7 @@ main.wrap { padding-block: 20px 48px; display: grid; grid-template-columns: minm
 .stat button.v small { color: var(--accent); }
 .stat button.v:hover small { text-decoration: underline; text-underline-offset: 3px; }
 
-.r-chart { padding: 18px 24px 6px; display: grid; gap: 10px; }
+.r-chart { padding: 12px 22px 2px; display: grid; gap: 6px; }
 .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -305,7 +309,7 @@ main.wrap { padding-block: 20px 48px; display: grid; grid-template-columns: minm
 .lg-op { width: 0; height: 11px; border-left: 2px dashed var(--good); }
 .live { font-size: 12px; color: var(--ink-3); display: inline-flex; align-items: baseline; gap: 6px; }
 .live b { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--ink); }
-.plot { position: relative; height: 190px; touch-action: pan-y; overflow: hidden; border-radius: var(--r-md); }
+.plot { position: relative; height: 130px; touch-action: pan-y; overflow: hidden; border-radius: var(--r-md); }
 .plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .plot .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); font-size: 12.5px; }
 .axis { fill: var(--ink-4); font-size: 10.5px; font-family: var(--mono); }
@@ -322,10 +326,10 @@ main.wrap { padding-block: 20px 48px; display: grid; grid-template-columns: minm
 .plot-tip .row { display: flex; justify-content: space-between; gap: 14px; }
 .plot-tip .row b { font-family: var(--mono); font-weight: 600; }
 
-.r-reason { padding: 6px 24px 20px; font-size: 13px; color: var(--ink-2); line-height: 1.65; }
+.r-reason { padding: 2px 22px 12px; font-size: 12.5px; color: var(--ink-2); line-height: 1.6; }
 .r-reason .next { color: var(--ink-3); }
 .handover {
-  margin-top: 8px; display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; cursor: help;
+  margin-top: 6px; display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; cursor: help;
 }
 .handover span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .handover b { color: var(--ink-2); font-weight: 600; }
@@ -400,13 +404,13 @@ body.drawer-open .drawer { transform: none; visibility: visible; transition: tra
 .note-sm { font-size: 11.5px; color: var(--ink-4); }
 
 /* ------------------------------------------------------------------ nodes */
-.nodes-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 18px 24px; flex-wrap: wrap; }
+.nodes-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 24px; flex-wrap: wrap; }
 .nodes-head h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
 .nodes-head p { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; min-width: 760px; }
 /* data columns shrink to their content and sit centred; the node name takes the rest */
-th, td { width: 1%; padding: 13px 20px; text-align: center; white-space: nowrap; vertical-align: middle; }
+th, td { width: 1%; padding: 8px 20px; text-align: center; white-space: nowrap; vertical-align: middle; }
 th:first-child, td:first-child { width: auto; text-align: left; white-space: normal; padding-left: 24px; }
 th:last-child, td:last-child { padding-right: 24px; }
 th { font-size: 11.5px; font-weight: 500; color: var(--ink-3); border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); background: var(--surface-2); }
@@ -415,7 +419,7 @@ tbody td { border-bottom: 1px solid var(--hair); font-family: var(--display); fo
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:not(.group-row):hover td { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
 tr.group-row td {
-  padding: 18px 24px 8px; text-align: left; font-family: var(--sans); font-size: 12px; font-weight: 650; color: var(--ink); letter-spacing: .06em;
+  padding: 12px 24px 6px; text-align: left; font-family: var(--sans); font-size: 12px; font-weight: 650; color: var(--ink); letter-spacing: .06em;
   border-bottom: 1px solid var(--hair); background: transparent !important;
 }
 tr.group-row td span { color: var(--ink-3); font-weight: 500; margin-left: 10px; letter-spacing: 0; }
@@ -447,25 +451,6 @@ tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .streak.fail { color: var(--bad); font-weight: 600; }
 .empty-row { padding: 30px; text-align: center; color: var(--ink-3); }
 
-/* ------------------------------------------------------------------ rules */
-details.rules > summary {
-  list-style: none; cursor: pointer; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
-}
-details.rules > summary::-webkit-details-marker { display: none; }
-details.rules > summary h2 { font-family: var(--display); font-size: 17px; font-weight: 650; }
-details.rules > summary p { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
-.chev { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--ink-3); background: var(--sunken); transition: transform .2s; }
-details.rules[open] .chev { transform: rotate(180deg); }
-.rule-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); }
-.rule { padding: 20px 24px 22px; display: grid; gap: 10px; align-content: start; border-left: 1px solid var(--hair); }
-.rule:first-child { border-left: 0; }
-.rule .n { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: .08em; }
-.rule h3 { font-size: 14px; font-weight: 650; }
-.rule p { font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
-.rule dl { margin: 0; display: grid; gap: 6px; }
-.rule dl div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ink-3); }
-.rule dd { margin: 0; color: var(--ink); font-weight: 600; white-space: nowrap; }
-.rule a { font-size: 12px; font-weight: 500; }
 
 footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
@@ -498,8 +483,9 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 .route.w600 .stat .k { font-size: 11px; gap: 3px; }
 .route.w600 .stat:first-child { padding-left: 20px; }
 .route.w600 .stat .v { font-size: 16px; }
-.route.w600 .readout .big { font-size: 40px; }
-.route.w600 .r-head, .route.w600 .r-hero, .route.w600 .r-chart, .route.w600 .r-reason { padding-inline: 20px; }
+.route.w600 .readout .big { font-size: 38px; }
+.route.w600 .r-head, .route.w600 .r-hero, .route.w600 .r-chart, .route.w600 .r-reason { padding-inline: 18px; }
+.route.w600 .r-sub { display: none; }
 .route.w420 .r-hero { grid-template-columns: 1fr; }
 .route.w420 .readout { text-align: left; padding-top: 0; }
 .route.w380 .stats { grid-template-columns: 1fr 1fr; }
@@ -512,11 +498,8 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); padding-top: 14px; }
 }
 @media (max-width: 980px) {
-  .routes { grid-template-columns: 1fr; grid-template-rows: none; row-gap: 20px; }
+  .routes { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 14px; }
   .route { grid-row: auto; grid-template-rows: none; }
-  .rule-grid { grid-template-columns: 1fr 1fr; }
-  .rule:nth-child(3) { border-left: 0; }
-  .rule:nth-child(n+3) { border-top: 1px solid var(--hair); }
 }
 @supports not (grid-template-rows: subgrid) {
   .routes { grid-template-rows: none; row-gap: 20px; }
@@ -528,6 +511,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .nav { order: 3; flex-basis: 100%; margin-inline: -8px; }
   .nav a[aria-current="page"]::after { bottom: -1px; }
   .status-pill { margin-left: auto; }
+  .range { order: 4; flex-basis: 100%; }
   main.wrap { padding-block: 22px 36px; gap: 22px; }
   .head { padding: 18px; }
   .hs { align-items: flex-start; }
@@ -545,9 +529,6 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .dr-head { padding: 16px 18px 12px; }
   .dr-tabs { margin-inline: 18px; }
   .dr-body { padding: 14px 18px 26px; }
-  .rule-grid { grid-template-columns: 1fr; }
-  .rule { border-left: 0 !important; border-top: 1px solid var(--hair); }
-  .rule:first-child { border-top: 0; }
   table { min-width: 0; }
   thead { display: none; }
   tbody tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 12px; padding: 14px 18px; border-bottom: 1px solid var(--hair); }
@@ -592,6 +573,14 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
       <a href="/guide">使用说明</a>
       <a href="/changelog">更新日志</a>
     </nav>
+    <div class="range" role="group" aria-label="曲线时间范围">
+      <span class="range-label">曲线</span>
+      <span class="seg">
+        <button type="button" data-range="300" aria-pressed="true">5 分钟</button>
+        <button type="button" data-range="900" aria-pressed="false">15 分钟</button>
+        <button type="button" data-range="1800" aria-pressed="false">30 分钟</button>
+      </span>
+    </div>
     <span class="status-pill" id="status-pill" data-sev="warn"><span class="beacon"></span><span id="status-title">连接中</span></span>
   </div>
 </header>
@@ -637,17 +626,6 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
     </div>
   </section>
 
-  <div class="section-head">
-    <div>
-      <h2>线路</h2>
-      <p>台湾只切台湾家宽，香港只切香港家宽</p>
-    </div>
-    <div class="seg" role="group" aria-label="曲线时间范围">
-      <button type="button" data-range="300" aria-pressed="true">5 分钟</button>
-      <button type="button" data-range="900" aria-pressed="false">15 分钟</button>
-      <button type="button" data-range="1800" aria-pressed="false">30 分钟</button>
-    </div>
-  </div>
   <section class="routes" id="routes"></section>
 
   <section class="card" aria-label="节点状态">
@@ -681,13 +659,6 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
     </div>
   </section>
 
-  <details class="card rules" id="rules">
-    <summary>
-      <div><h2>选路规则</h2><p>稳航什么时候检测、什么时候切换、怎么处理坏节点</p></div>
-      <span class="chev" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4.5 6 8l4-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
-    </summary>
-    <div class="rule-grid" id="rule-grid"></div>
-  </details>
 </main>
 
 <footer class="wrap" id="footer"><span>仅监听本机 127.0.0.1 · 页面每 2 秒刷新 · Mac 睡眠时暂停</span><span id="footer-version"></span></footer>
@@ -791,9 +762,9 @@ const TIPS = {
     value: ctx && ctx.group ? `当前 ${ctx.group.active_connections} 个` : null,
     anchor: 'connections',
   }),
-  standby: () => ({
+  standby: (ctx) => ({
     title: '热备节点',
-    text: '当前节点一旦确认故障，会立刻切到它。它和当前节点在同一地区，图中虚线是它的实时延迟（每 20 秒测一次）。',
+    text: `当前节点${ctx && ctx.policy && ctx.policy.confirm_probes ? `连续 ${ctx.policy.confirm_probes} 次探测失败` : '确认故障'}后，会立刻切到它。它和当前节点在同一地区，图中虚线是它的实时延迟（每 20 秒测一次）。`,
     value: null,
     anchor: 'failover',
   }),
@@ -905,8 +876,9 @@ function routeSkeleton(g) {
   return `<article class="card route" data-group="${key}">
     <div class="r-head">
       <div class="r-title">
-        <span class="eyebrow"><span class="region-code">${g.region === 'TW' ? 'TW' : g.region === 'HK' ? 'HK' : '··'}</span><span data-f="region"></span></span>
+        <span class="region-code">${g.region === 'TW' ? 'TW' : g.region === 'HK' ? 'HK' : '··'}</span>
         <h2>${key}</h2>
+        <span class="r-sub" data-f="region"></span>
       </div>
       <span class="decision" data-f="decision"></span>
     </div>
@@ -983,7 +955,7 @@ function renderRoutes(d) {
     const tone = BENIGN[g.decision_code] ? 'info' : sevClass(g.decision_severity);
 
     if (card.dataset.tone !== tone) card.dataset.tone = tone;
-    setText(f('region'), `${regionName(g.region)} · ${g.region === 'TW' ? 'AI 出口' : '备援出口'}`);
+    setText(f('region'), `只切${regionName(g.region)}家宽`);
     const pill = f('decision');
     const pillClass = `decision ${tone}`;
     if (pill.className !== pillClass) pill.className = pillClass;
@@ -1421,32 +1393,6 @@ function renderNodes(d) {
 }
 
 /* ====================================================================
-   Rules in plain words, with live numbers
-   ==================================================================== */
-function renderRules(d) {
-  const p = d.policy, s = d.service;
-  const fast = s.fast_probe_interval_seconds || s.probe_interval_seconds;
-  const confirm = p.confirm_probes ? `${p.confirm_probes} 次连续失败` : `${p.failures_before_switch} 轮失败`;
-  const items = [
-    ['01', '怎么检测', `当前线路每 ${fast} 秒测一次；每 ${s.probe_interval_seconds} 秒一轮完整检测，同时测热备和轮询备用节点；每 ${p.business_probe_interval_seconds} 秒测一次 AI 网站能否打开。`,
-      [['当前线路', `${fast} 秒`], ['完整检测', `${s.probe_interval_seconds} 秒`], ['AI 网站', `${p.business_probe_interval_seconds} 秒`]], 'detection'],
-    ['02', '什么时候判定故障', `当前节点探测失败后，同一轮内马上再测 2 次，并检查本机网络。${confirm}才判定故障，立刻切到同地区热备，只断开旧节点上的连接。本机断网或刚从休眠醒来时不判定。`,
-      [['确认', confirm], ['切换目标', '同地区热备']], 'failover'],
-    ['03', '什么时候换更快的', `节点没坏、只是有更快的时，要求至少快 ${p.absolute_gain_ms} ms 且快 ${Math.round(p.relative_gain * 100)}%，连续 ${p.confirmations} 轮都更快才换；两次之间至少隔 ${Math.round(p.cooldown_seconds / 60)} 分钟。换的时候旧连接不断，新请求走新节点。`,
-      [['最少快', `${p.absolute_gain_ms} ms 且 ${Math.round(p.relative_gain * 100)}%`], ['确认', `${p.confirmations} 轮`], ['冷却', `${Math.round(p.cooldown_seconds / 60)} 分钟`]], 'optimize'],
-    ['04', '坏节点怎么处理', `${Math.round(p.quarantine_window_seconds / 60)} 分钟内失败 ${p.quarantine_failures} 次就隔离 ${Math.round(p.quarantine_seconds / 60)} 分钟，期间不会被选中；到期后要连续成功 ${p.quarantine_recovery_successes} 次才恢复。近 24 小时可用率低于 ${Math.round(p.min_availability * 100)}% 的节点不会被主动换上。`,
-      [['触发', `${p.quarantine_failures} 次 / ${Math.round(p.quarantine_window_seconds / 60)} 分钟`], ['隔离', `${Math.round(p.quarantine_seconds / 60)} 分钟`], ['恢复', `连续成功 ${p.quarantine_recovery_successes} 次`]], 'quarantine'],
-  ];
-  patch($('#rule-grid'), items.map(([n, title, text, kv, anchor]) => `<div class="rule">
-    <span class="n">${n}</span>
-    <h3>${title}</h3>
-    <p>${text}</p>
-    <dl>${kv.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
-    <a href="/guide#${anchor}">详细说明 →</a>
-  </div>`).join(''));
-}
-
-/* ====================================================================
    Tooltip popover: hover on a mouse, tap on touch, focus on keyboard
    ==================================================================== */
 const pop = $('#tip-pop');
@@ -1455,7 +1401,7 @@ let tipOwner = null, tipPinned = false;
 function tipContext(button) {
   if (!snapshot) return {};
   const card = button.closest('.route');
-  const ctx = { service: snapshot.service };
+  const ctx = { service: snapshot.service, policy: snapshot.policy };
   if (card) {
     const g = snapshot.groups.find(item => item.name === card.dataset.group);
     ctx.group = g;
@@ -1532,11 +1478,11 @@ $$('.filter').forEach(b => b.addEventListener('click', () => {
 }));
 function setRange(value) {
   rangeSeconds = value;
-  $$('.seg[aria-label="曲线时间范围"] button').forEach(i => i.setAttribute('aria-pressed', String(Number(i.dataset.range) === value)));
+  $$('.range button').forEach(i => i.setAttribute('aria-pressed', String(Number(i.dataset.range) === value)));
   charts.forEach(chart => chart.reset());
   if (snapshot) renderRoutes(snapshot);
 }
-$$('.seg[aria-label="曲线时间范围"] button').forEach(b => b.addEventListener('click', () => {
+$$('.range button').forEach(b => b.addEventListener('click', () => {
   setRange(Number(b.dataset.range));
   try { localStorage.setItem('steadyroute.range', String(rangeSeconds)); } catch (e) { /* storage unavailable */ }
 }));
@@ -1550,7 +1496,6 @@ function render(d) {
   renderHead(d);
   renderRoutes(d);
   renderNodes(d);
-  renderRules(d);
   if (tipOwner && !pop.hidden) openTip(tipOwner, tipPinned);
 }
 
