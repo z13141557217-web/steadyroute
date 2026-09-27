@@ -45,6 +45,31 @@ def detect_resume(prev_wall, prev_mono, wall_now, mono_now, interval,
     return slept, int(max(0.0, wall_gap))
 
 
+def merge_sleep_episode(episode, fell_asleep_at, woke_at, merge_awake_seconds=300):
+    """Fold short wake-ups into one sleep episode; return the updated episode.
+
+    With Power Nap, or a Bluetooth device nudging the Mac, a lid-closed hour is really
+    many sleeps separated by wake-ups of a few seconds to a couple of minutes, and the
+    daemon runs a cycle in each. Measuring only the last gap reported "slept 6 minutes"
+    after an hour away. A sleep that starts less than `merge_awake_seconds` after the
+    previous wake-up continues the same episode.
+
+    episode: {"start", "last_wake", "brief_wakes"} or None.
+    """
+    fell_asleep_at, woke_at = int(fell_asleep_at), int(woke_at)
+    if (
+        isinstance(episode, dict)
+        and episode.get("last_wake") is not None
+        and 0 <= fell_asleep_at - int(episode["last_wake"]) < int(merge_awake_seconds)
+    ):
+        return {
+            "start": int(episode.get("start", fell_asleep_at)),
+            "last_wake": woke_at,
+            "brief_wakes": int(episode.get("brief_wakes", 0)) + 1,
+        }
+    return {"start": fell_asleep_at, "last_wake": woke_at, "brief_wakes": 0}
+
+
 def count_recent(timestamps, now, window_seconds):
     """Count timestamps within the trailing window."""
     return sum(1 for value in timestamps or [] if float(now) - float(value) < float(window_seconds))

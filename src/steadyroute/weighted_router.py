@@ -978,6 +978,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "last_cycle_gap_seconds": int(state.get("last_cycle_gap_seconds", 0)),
             "last_resume_at": int(state.get("last_resume_at", 0)),
             "last_sleep_gap_seconds": int(state.get("last_sleep_gap_seconds", 0)),
+            "last_sleep_brief_wakes": int(state.get("last_sleep_brief_wakes", 0)),
             "cycle_count": int(state.get("cycle_count", 0)),
             "last_probe_at": RUNTIME.get("last_probe_at") or (int(last_cycle) if last_cycle is not None else None),
             "fast_probe_interval_seconds": FAST_PROBE_INTERVAL_SECONDS,
@@ -1870,10 +1871,17 @@ def detect_cycle_resume(state, cycle_started_at):
     if previous_update:
         state["last_cycle_gap_seconds"] = max(0, cycle_started_at - previous_update)
     if slept:
+        episode = health_model.merge_sleep_episode(
+            state.get("sleep_episode"), cycle_started_at - gap, cycle_started_at)
+        state["sleep_episode"] = episode
         state["last_resume_at"] = cycle_started_at
-        state["last_sleep_gap_seconds"] = gap
-        log("resume detected after %d seconds without probes" % gap)
-        logging_setup.write_event("resume", gap_seconds=gap)
+        # The whole episode, not just the time since the last brief wake-up.
+        state["last_sleep_gap_seconds"] = cycle_started_at - episode["start"]
+        state["last_sleep_brief_wakes"] = episode["brief_wakes"]
+        log("resume detected after %d seconds without probes (asleep since %s, %d brief wake-ups)" % (
+            gap, iso_timestamp(episode["start"]), episode["brief_wakes"]))
+        logging_setup.write_event("resume", gap_seconds=gap, episode_seconds=state["last_sleep_gap_seconds"],
+                                  brief_wakes=episode["brief_wakes"])
     return slept
 
 

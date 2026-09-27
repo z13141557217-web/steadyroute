@@ -801,8 +801,10 @@ const TIPS = {
    ==================================================================== */
 function resumeNote(s) {
   if (!s.last_resume_at) return '';
-  const m = Math.max(1, Math.round((s.last_sleep_gap_seconds || 0) / 60));
-  return `上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${m} 分钟）`;
+  const secs = s.last_sleep_gap_seconds || 0;
+  const span = secs >= 5400 ? `${(secs / 3600).toFixed(1).replace(/\.0$/, '')} 小时` : `${Math.max(1, Math.round(secs / 60))} 分钟`;
+  const brief = s.last_sleep_brief_wakes ? `，期间短暂唤醒 ${s.last_sleep_brief_wakes} 次` : '';
+  return `上次休眠恢复 ${clock(s.last_resume_at)}（休眠约 ${span}${brief}）`;
 }
 
 function renderHead(d) {
