@@ -1384,6 +1384,11 @@ def timeline_add(group_name, point):
     TIMELINE[group_name] = [item for item in items if float(item["t"]) >= cutoff][-TIMELINE_LIMIT:]
 
 
+def mark_manual_switch(group_name, node_name, now):
+    """Chart only: the user picked a node in Clash. Not a SteadyRoute switch, never counted."""
+    timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": node_name, "kind": "switch", "reason": "manual"})
+
+
 def record_health_window(node_state, success, delay, observed_at, quarantine=True):
     """quarantine=False: a failure the same cycle proved transient; it lowers availability
     but never counts toward the 3-failures-in-10-minutes quarantine."""
@@ -1753,6 +1758,7 @@ def adopt_residential(group_name, candidates, current, state, group_state, now, 
         group_state["manual_preference_expired_for"] = 0
         record_manual_preference_event(state, group_name, "MANUAL_PREFERENCE_STARTED",
                                        "manual_selection_detected", now)
+        mark_manual_switch(group_name, current, now)
         log("%s: manual pick of non-residential %s; kept for 60 minutes unless it fails" % (group_name, current))
     group_state["last_seen"] = current
     current_stats = state["nodes"].get(current, {})
@@ -1853,6 +1859,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             state, group_name, "MANUAL_PREFERENCE_STARTED",
             "manual_selection_detected", now,
         )
+        mark_manual_switch(group_name, current, now)
         log("%s: manual preference detected; performance optimization paused for 60 minutes; safety failover remains active" % group_name)
 
     current_stats = state["nodes"].get(current, {})

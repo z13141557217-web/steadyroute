@@ -224,6 +224,9 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(router.POLICY_BY_GROUP[GROUP]["region"], "JP")
         self.assertEqual(router.GROUPS[GROUP], JP_RES)
         self.assertEqual(router.AUTO_LOCK_STATUS[GROUP]["status"], "relocked")
+        marks = [p for p in router.TIMELINE.get(GROUP, []) if p.get("reason") == "manual"]
+        self.assertEqual(marks[-1]["node"], JP_RES[0], "the chart marks the user's own switch")
+        self.assertNotIn("failover_times", self.state["groups"][GROUP], "a manual switch is never a failover")
         self.net.down_nodes.add(JP_RES[0])
         self.cycle()
         self.assertEqual(self.net.puts, [(GROUP, JP_RES[1])])
