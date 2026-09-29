@@ -89,6 +89,18 @@ def prune_registry(state, policies):
         del records[policy_id]
 
 
+NODE_RETAIN_SECONDS = 86400
+
+
+def prune_nodes(state, proxy_data, now):
+    """Forget stats of nodes that left the subscription more than a day ago."""
+    nodes = state.get("nodes") or {}
+    for name in [name for name, stats in nodes.items()
+                 if name not in (proxy_data or {})
+                 and now - int((stats or {}).get("last_probe_at", 0)) > NODE_RETAIN_SECONDS]:
+        del nodes[name]
+
+
 def update_lock(locks, group_name, current, router_choice, now):
     """Return (lock, event) after looking at the node the group is on right now.
 
@@ -150,6 +162,7 @@ def build_policies(proxy_data, state, now, settings=None):
         same_country = [name for name in members if regions.region_of(name)[0] == lock["country"]]
         status = {
             "status": "relocked" if lock.get("reason") == "manual_change" else "locked",
+            "current": current,
             "country": lock["country"],
             "country_label": policy["region_label"],
             "locked_at": lock["locked_at"],

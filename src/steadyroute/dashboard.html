@@ -255,7 +255,18 @@ main.wrap { padding-block: 18px 40px; display: grid; grid-template-columns: minm
 .card { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
 
 /* ------------------------------------------------------------------ route cards (aligned row by row) */
-.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); gap: 0 20px; }
+.routes { display: grid; gap: 20px; }
+.routes-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); gap: 0 20px; }
+.routes-row.single { grid-template-columns: minmax(0, 1fr); }
+.region-filters { display: contents; }
+.filters { flex-wrap: wrap; }
+.idle { display: grid; gap: 0; padding: 4px 0; }
+.idle-row { display: flex; align-items: center; gap: 10px; padding: 12px 22px; border-top: 1px solid var(--hair); font-size: 13px; color: var(--ink-2); min-width: 0; }
+.idle-row:first-child { border-top: 0; }
+.idle-row b { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.idle-row .why { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.idle-row .tag { margin-left: auto; flex: 0 0 auto; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--sunken); color: var(--ink-3); }
+.idle-row .tag.warn { background: var(--warn-soft); color: var(--warn); }
 .route {
   grid-row: span 5; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; row-gap: 0; min-width: 0; overflow: hidden; position: relative;
 }
@@ -277,7 +288,7 @@ main.wrap { padding-block: 18px 40px; display: grid; grid-template-columns: minm
 .decision.info { background: var(--accent-soft); color: var(--accent); }
 
 .r-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; padding: 10px 22px 12px; }
-.r-node .label { font-size: 11px; color: var(--ink-3); letter-spacing: .04em; }
+.r-node .label { font-size: 11px; color: var(--ink-3); letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .r-node .name { font-family: var(--display); font-size: 21px; font-weight: 650; line-height: 1.25; margin-top: 2px; overflow-wrap: anywhere; }
 .r-node .standby { margin-top: 5px; font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .r-node .standby b { color: var(--ink-2); font-weight: 550; }
@@ -498,15 +509,18 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--hair); padding-top: 14px; }
 }
 @media (max-width: 980px) {
-  .routes { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 14px; }
+  .routes { gap: 14px; }
+  .routes-row { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 14px; }
   .route { grid-row: auto; grid-template-rows: none; }
 }
 @supports not (grid-template-rows: subgrid) {
-  .routes { grid-template-rows: none; row-gap: 20px; }
+  .routes-row { grid-template-rows: none; row-gap: 20px; }
   .route { grid-row: auto; grid-template-rows: none; }
 }
 @media (max-width: 720px) {
   .wrap { padding-inline: 16px; }
+  .idle-row { padding-inline: 18px; flex-wrap: wrap; row-gap: 4px; }
+  .idle-row .why { white-space: normal; flex-basis: 100%; order: 3; }
   .topbar .wrap { height: auto; flex-wrap: wrap; gap: 6px 14px; padding-block: 10px; }
   .nav { order: 3; flex-basis: 100%; margin-inline: -8px; }
   .nav a[aria-current="page"]::after { bottom: -1px; }
@@ -627,6 +641,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   </section>
 
   <section class="routes" id="routes"></section>
+  <section class="card idle" id="idle" aria-label="未接管的分组" hidden></section>
 
   <section class="card" aria-label="节点状态">
     <div class="nodes-head">
@@ -637,8 +652,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
       <div class="seg filters" role="group" aria-label="节点筛选">
         <button class="filter active" data-filter="focus" type="button" aria-pressed="true" title="当前线路、热备和异常节点">需关注<span class="count" data-count="focus"></span></button>
         <button class="filter" data-filter="all" type="button" aria-pressed="false">全部<span class="count" data-count="all"></span></button>
-        <button class="filter" data-filter="tw" type="button" aria-pressed="false">台湾<span class="count" data-count="tw"></span></button>
-        <button class="filter" data-filter="hk" type="button" aria-pressed="false">香港<span class="count" data-count="hk"></span></button>
+        <span class="region-filters" id="region-filters"></span>
       </div>
     </div>
     <div class="table-wrap">
@@ -696,6 +710,15 @@ const pct = v => v == null ? '—' : `${Math.round(v * 100)}%`;
 const ms = v => v == null ? '—' : `${Math.round(v)} ms`;
 const sevClass = severity => severity === 'critical' ? 'bad' : severity === 'warning' ? 'warn' : severity === 'info' ? 'info' : 'good';
 const regionName = code => code === 'TW' ? '台湾' : code === 'HK' ? '香港' : '其他';
+/* A route's country: the server's label (share edition locks any country), else the fixed TW / HK names. */
+const groupRegion = g => g.region_label && g.region_label !== '未知' ? g.region_label : regionName(g.region);
+const regionCode = g => /^[A-Z]{2}$/.test(g.region || '') ? g.region : '··';
+function lockText(g) {
+  const a = g.auto_lock;
+  if (!a) return `只切${groupRegion(g)}家宽`;
+  if (a.status === 'relocked') return `已改锁${a.country_label}（原${a.previous_label}）· ${a.candidates} 个家宽候选`;
+  return `已锁定${a.country_label} · ${a.candidates} 个家宽候选`;
+}
 const shorten = (text, n) => { const s = [...String(text || '')]; return s.length > n ? s.slice(0, n - 1).join('') + '…' : s.join(''); };
 const textWidth = (text, size) => [...String(text)].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? size : size * .58), 0);
 const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -726,6 +749,7 @@ const BENIGN = {
   recovery_observing: '正在观察新节点',
   cooldown: '刚完成回优',
   manual_hold: '按你的手动选择运行',
+  adopt_pending: '正在换上家宽',
 };
 
 /* ====================================================================
@@ -829,15 +853,19 @@ function renderHead(d) {
   let head = '所有线路运行正常', note = '', sev = 'ok', sub, lanes = false;
   if (stale) { head = s.stale_title; sev = 'warn'; sub = s.stale_detail; }
   else if (s.state_code && s.state_code !== 'running') { head = s.state_title; sev = s.state_severity === 'critical' ? 'bad' : 'warn'; sub = s.state_detail; }
+  else if (!d.groups.length) {
+    head = s.profile === 'auto_lock' ? '还没有可接管的线路' : '等待线路配置'; sev = 'warn';
+    sub = s.profile === 'auto_lock' ? '稳航接管 Clash 里直接选中了某个节点的分组；下方写了每个分组没接管的原因。' : '';
+  }
   else if (troubled.length) {
     const g = troubled[0];
-    head = `${regionName(g.region)}线路${g.decision_severity === 'critical' ? '故障' : '需要留意'}`;
+    head = `${groupRegion(g)}线路${g.decision_severity === 'critical' ? '故障' : '需要留意'}`;
     sev = sevClass(g.decision_severity) === 'bad' ? 'bad' : 'warn';
     sub = g.decision_detail || g.decision;
   } else {
-    if (busy.length) note = `${regionName(busy[0].region)}${BENIGN[busy[0].decision_code]}`;
+    if (busy.length) note = `${groupRegion(busy[0])}${BENIGN[busy[0].decision_code]}`;
     lanes = true;
-    sub = d.groups.map(g => { const n = d.nodes[g.current] || {}; return `<span class="lane" title="${esc(regionName(g.region))}线路当前延迟"><b>${esc(g.region || '··')}</b>${esc(regionName(g.region))}<em>${esc(ms(n.latency))}</em></span>`; }).join('');
+    sub = d.groups.map(g => { const n = d.nodes[g.current] || {}; return `<span class="lane" title="${esc(groupRegion(g))}线路当前延迟"><b>${esc(regionCode(g))}</b>${esc(groupRegion(g))}<em>${esc(ms(n.latency))}</em></span>`; }).join('');
   }
   const h1 = $('#head-title');
   setText(h1, head);
@@ -860,8 +888,9 @@ function renderHead(d) {
   const fo = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).failovers_24h || 0), 0);
   const op = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).performance_switches_24h || 0), 0);
   const rm = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).removal_switches_24h || 0), 0);
-  patch($('#k-switch'), `${fo + op + rm}<small>次</small>`);
-  setText($('#k-switch-note'), `故障 ${fo} · 回优 ${op}${rm ? ` · 节点移除 ${rm}` : ''}`);
+  const ad = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).adopt_switches_24h || 0), 0);
+  patch($('#k-switch'), `${fo + op + rm + ad}<small>次</small>`);
+  setText($('#k-switch-note'), `故障 ${fo} · 回优 ${op}${rm ? ` · 节点移除 ${rm}` : ''}${ad ? ` · 换上家宽 ${ad}` : ''}`);
 
   const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
   patch($('#k-memory'), `${(cur ?? peak).toFixed(1)}<small>MB</small>`);
@@ -879,7 +908,7 @@ function routeSkeleton(g) {
   return `<article class="card route" data-group="${key}">
     <div class="r-head">
       <div class="r-title">
-        <span class="region-code">${g.region === 'TW' ? 'TW' : g.region === 'HK' ? 'HK' : '··'}</span>
+        <span class="region-code" data-f="code">${esc(regionCode(g))}</span>
         <h2>${key}</h2>
         <span class="r-sub" data-f="region"></span>
       </div>
@@ -887,7 +916,7 @@ function routeSkeleton(g) {
     </div>
     <div class="r-hero">
       <div class="r-node">
-        <div class="label">当前节点</div>
+        <div class="label" data-f="curlabel">当前节点</div>
         <div class="name" data-f="current"></div>
         <div class="standby" data-f="standby"></div>
         <div data-f="handover"></div>
@@ -931,7 +960,9 @@ function ensureRoutes(d) {
   const box = $('#routes');
   const names = d.groups.map(g => g.name).join('|');
   if (box.__names !== names) {
-    box.innerHTML = d.groups.map(routeSkeleton).join('');
+    const rows = [];
+    for (let i = 0; i < d.groups.length; i += 2) rows.push(d.groups.slice(i, i + 2));
+    box.innerHTML = rows.map(pair => `<div class="routes-row${pair.length === 1 ? ' single' : ''}">${pair.map(routeSkeleton).join('')}</div>`).join('');
     box.__names = names;
     charts.clear();
     readouts.clear();
@@ -958,7 +989,12 @@ function renderRoutes(d) {
     const tone = BENIGN[g.decision_code] ? 'info' : sevClass(g.decision_severity);
 
     if (card.dataset.tone !== tone) card.dataset.tone = tone;
-    setText(f('region'), `只切${regionName(g.region)}家宽`);
+    setText(f('code'), regionCode(g));
+    /* Share edition: the lock is the key fact, so it sits on the current-node line where it
+       never gets squeezed out; the fixed profile keeps its short note beside the title. */
+    setText(f('region'), g.auto_lock ? '' : lockText(g));
+    setText(f('curlabel'), g.auto_lock ? `当前节点 · ${lockText(g)}` : '当前节点');
+    f('curlabel').title = g.auto_lock ? `稳航只在${g.auto_lock.country_label}家宽节点之间切换；你在 Clash 里换到别的国家，会改锁到那个国家` : '';
     const pill = f('decision');
     const pillClass = `decision ${tone}`;
     if (pill.className !== pillClass) pill.className = pillClass;
@@ -985,7 +1021,28 @@ function renderRoutes(d) {
     const chart = charts.get(g.name);
     if (chart) chart.setData(g, card);
   });
+  renderIdle(d);
   renderDrawer(d);
+}
+
+/* Share edition: the user's groups we are not switching, and why. */
+const IDLE = {
+  no_residential: ['没有家宽节点', '这个国家的订阅里没有家宽节点，稳航不切换这一组', 'warn'],
+  unknown_country: ['认不出国家', '当前节点名里看不出国家，换到带国家名的节点后自动锁定', 'warn'],
+  paused: ['已暂停', '这一组现在选的是另一个分组；选回具体节点后恢复', ''],
+};
+function renderIdle(d) {
+  const s = d.service || {};
+  const idle = Object.entries(s.auto_lock_idle || {});
+  const urltest = s.auto_lock_unsupported || [];
+  const box = $('#idle');
+  box.hidden = !idle.length && !urltest.length;
+  if (box.hidden) return;
+  patch(box, idle.map(([name, a]) => {
+    const [tag, why, cls] = IDLE[a.status] || ['未接管', '', ''];
+    const where = a.country_label ? `${a.country_label} · ` : '';
+    return `<div class="idle-row"><b>${esc(name)}</b><span class="why" title="${esc(why)}">${esc(where)}${esc(a.current || '')} — ${esc(why)}</span><span class="tag ${cls}">${esc(tag)}</span></div>`;
+  }).join('') + urltest.map(name => `<div class="idle-row"><b>${esc(name)}</b><span class="why">自动测速分组由 Clash 自己挑节点，稳航不接管</span><span class="tag">不接管</span></div>`).join(''));
 }
 
 /* Latency readout eases between values like an instrument needle. */
@@ -1078,8 +1135,8 @@ function renderDrawer(d) {
   const g = d.groups.find(item => item.name === drawer.group) || d.groups[0];
   if (!g) return;
   const c = g.connections || { total: g.active_connections, by_node: {}, sites: [] };
-  patch($('#conn-tabs'), d.groups.map(item => `<button type="button" role="tab" aria-selected="${item.name === g.name}" data-group="${esc(item.name)}"><b>${esc(item.region || '')}</b>${esc(regionName(item.region))}<span class="count">${item.active_connections}</span></button>`).join(''));
-  setText($('#conn-title'), `${regionName(g.region)}线路 · 活跃连接`);
+  patch($('#conn-tabs'), d.groups.map(item => `<button type="button" role="tab" aria-selected="${item.name === g.name}" data-group="${esc(item.name)}"><b>${esc(regionCode(item))}</b>${esc(groupRegion(item))}<span class="count">${item.active_connections}</span></button>`).join(''));
+  setText($('#conn-title'), `${groupRegion(g)}线路 · 活跃连接`);
   const age = c.observed_at ? `约 ${Math.max(0, Math.round(nowSeconds() - c.observed_at))} 秒前更新` : '等待下一轮完整检测';
   setText($('#conn-meta'), `实时 · ${age}`);
   patch($('#conn-body'), drawerHtml(g, c));
@@ -1118,6 +1175,7 @@ const SWITCH_KINDS = {
   failover: { label: '故障切换', color: 'var(--bad)', dash: false },
   optimize: { label: '回优', color: 'var(--good)', dash: true },
   removed: { label: '节点被移除', color: 'var(--warn)', dash: true },
+  adopt: { label: '换上家宽', color: 'var(--accent)', dash: true },
 };
 
 function niceMax(v) {
@@ -1323,19 +1381,34 @@ function allRows(d) {
   const current = new Set(d.groups.map(g => g.current));
   const standby = new Set(d.groups.map(g => g.hot_standby).filter(Boolean));
   const regions = new Map();
-  d.groups.forEach(g => (g.candidates || []).forEach(n => regions.set(n, regionName(g.region))));
+  d.groups.forEach(g => (g.candidates || []).forEach(n => regions.set(n, groupRegion(g))));
   const rank = r => r.current ? 0 : r.standby ? 1 : r.cls === 'bad' ? 2 : r.cls === 'warn' ? 3 : 4;
-  const regionRank = name => name === '台湾' ? 0 : name === '香港' ? 1 : 2;
+  const order = regionOrder(d);
+  const regionRank = name => { const i = order.indexOf(name); return i < 0 ? order.length : i; };
   return Object.entries(d.nodes)
-    .map(([name, node]) => ({ name, node, region: regions.get(name) || '其他', current: current.has(name), standby: standby.has(name), cls: sevClass(node.lifecycle_severity) }))
+    .map(([name, node]) => ({ name, node, region: regions.get(name) || node.region_label || '其他', current: current.has(name), standby: standby.has(name), cls: sevClass(node.lifecycle_severity) }))
     .sort((a, b) => regionRank(a.region) - regionRank(b.region) || rank(a) - rank(b) || (b.node.quality ?? -1) - (a.node.quality ?? -1));
+}
+
+/* Region order follows the route cards, so the node table reads in the same order. */
+function regionOrder(d) {
+  return [...new Set(d.groups.map(groupRegion))];
 }
 
 function matches(r) {
   return activeFilter === 'all'
-    || activeFilter === 'tw' && r.region === '台湾'
-    || activeFilter === 'hk' && r.region === '香港'
+    || activeFilter === `region:${r.region}`
     || activeFilter === 'focus' && (r.current || r.standby || r.cls !== 'good');
+}
+
+function renderFilters(d) {
+  const box = $('#region-filters');
+  const names = regionOrder(d);
+  if (box.__names === names.join('|')) return;
+  box.__names = names.join('|');
+  if (activeFilter.startsWith('region:') && !names.includes(activeFilter.slice(7))) activeFilter = 'focus';
+  box.innerHTML = names.map(name => `<button class="filter" data-filter="region:${esc(name)}" type="button" aria-pressed="false">${esc(name)}<span class="count" data-count="region:${esc(name)}"></span></button>`).join('');
+  $$('.filter').forEach(i => { i.classList.toggle('active', i.dataset.filter === activeFilter); i.setAttribute('aria-pressed', String(i.dataset.filter === activeFilter)); });
 }
 
 
@@ -1360,9 +1433,10 @@ function rowHtml(r, d) {
 }
 
 function renderNodes(d) {
+  renderFilters(d);
   const all = allRows(d);
   const saved = activeFilter;
-  ['focus', 'all', 'tw', 'hk'].forEach(key => { activeFilter = key; setText($(`[data-count="${key}"]`), String(all.filter(matches).length)); });
+  $$('.filter').forEach(b => { activeFilter = b.dataset.filter; setText(b.querySelector('.count'), String(all.filter(matches).length)); });
   activeFilter = saved;
   const rows = all.filter(matches);
   const body = $('#node-rows');
@@ -1474,11 +1548,13 @@ window.addEventListener('scroll', () => { if (!tipPinned) closeTip(); }, { passi
 /* ====================================================================
    Controls, polling and render loop
    ==================================================================== */
-$$('.filter').forEach(b => b.addEventListener('click', () => {
+$('.filters').addEventListener('click', event => {
+  const b = event.target.closest('.filter');
+  if (!b) return;
   activeFilter = b.dataset.filter;
   $$('.filter').forEach(i => { i.classList.toggle('active', i === b); i.setAttribute('aria-pressed', String(i === b)); });
   if (snapshot) renderNodes(snapshot);
-}));
+});
 function setRange(value) {
   rangeSeconds = value;
   $$('.range button').forEach(i => i.setAttribute('aria-pressed', String(Number(i.dataset.range) === value)));

@@ -188,6 +188,7 @@ def refresh_auto_lock(state, proxy_data, now):
     routed = [policy for policy in policies if policy["static_candidates"]]
     apply_policies(routed)
     auto_lock.prune_registry(state, routed)
+    auto_lock.prune_nodes(state, proxy_data, now)
     AUTO_LOCK_STATUS.clear()
     AUTO_LOCK_STATUS.update(statuses)
     AUTO_LOCK_UNSUPPORTED[:] = auto_lock.unsupported_groups(proxy_data, settings.get("exclude_groups", ()))
@@ -502,6 +503,28 @@ def connection_count_for_node(group_name, node_name, connections):
     )
 
 
+def adopt_decision(decision, group_name, candidates, state, facts):
+    """auto_lock: explain a group sitting on a same-country node that is not residential."""
+    label = region_label_for_group(group_name)
+    ready = sum(1 for name in candidates if eligible_for_optimization(state.get("nodes", {}).get(name, {})))
+    hold = int(facts.get("manual_hold_remaining_seconds", 0))
+    if facts.get("current_failed"):
+        return decision
+    if hold > 0:
+        title = "你选了%s普通节点（保留 %02d:%02d）" % ((label,) + divmod(hold, 60))
+        detail = "到时自动换回%s家宽；这个节点断了会立刻换，不用等。" % label
+    elif ready:
+        title = "正在换到%s家宽" % label
+        detail = "%d 个%s家宽节点已就绪，这一轮检测通过后换过去，已有连接不中断。" % (ready, label)
+    else:
+        title = "当前是%s普通节点，家宽预热中" % label
+        detail = "稳航正在给 %d 个%s家宽节点测速，预热好（约 5 分钟）后自动换上，已有连接不中断。" % (
+            len(candidates), label)
+    return dict(decision, code="manual_hold" if hold > 0 else "adopt_pending", severity="info",
+                title=title, detail=detail,
+                next_action_code="adopt_residential", next_action="预热完成后换到%s家宽。" % label)
+
+
 def group_decision_facts(group_name, candidates, state, proxy_data, connections, now):
     group_state = state.get("groups", {}).get(group_name, {})
     current = (proxy_data.get(group_name) or {}).get("now") or group_state.get("last_seen")
@@ -778,7 +801,10 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
 
     nodes = []
     node_by_name = {}
+    shown = set(current_names).union(*GROUPS.values()) if PROFILE == "auto_lock" else None
     for node_name, node_state in state.get("nodes", {}).items():
+        if shown is not None and node_name not in shown:
+            continue   # stats of another country's nodes are kept, just not listed
         group_name = next((name for name, candidates in GROUPS.items() if node_name in candidates), "unknown")
         item = node_contract(group_name, node_name, node_state, now, current_names)
         nodes.append(item)
@@ -815,6 +841,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
                 explicit_steps=pending_steps,
             )
         group_state["pending_decision_events"] = []
+        if current_name not in candidates and outside_same_country(group_name, current_name):
+            decision = adopt_decision(decision, group_name, candidates, state, facts)
         current = node_by_name.get(current_name)
         target = node_by_name.get(target_name)
         groups.append({
@@ -974,6 +1002,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
     legacy_nodes = {}
     for node in nodes:
         legacy_nodes[node["name"]] = {
+            "region_label": regions.label(regions.region_of(node["name"])[0]),
             "availability": node["availability_long"],
             "latency": node["latency_ewma_ms"],
             "jitter": node["jitter_ms"],
@@ -1043,6 +1072,9 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "version": versioned["service"]["version"],
             "profile": PROFILE,
             "auto_lock_unsupported": list(AUTO_LOCK_UNSUPPORTED),
+            # Groups we lock but do not route: no residential node, unknown country, paused.
+            "auto_lock_idle": {name: dict(status) for name, status in AUTO_LOCK_STATUS.items()
+                               if name not in POLICY_BY_GROUP},
             "stale_at": stale_at,
             "stale_title": stale_title,
             "stale_detail": stale_detail,
