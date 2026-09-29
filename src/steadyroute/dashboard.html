@@ -823,7 +823,16 @@ const TIPS = {
 /* ====================================================================
    Header: one calm sentence plus four facts
    ==================================================================== */
+const spanText = secs => secs >= 5400 ? `${(secs / 3600).toFixed(1).replace(/\.0$/, '')} 小时`
+  : secs >= 90 ? `${Math.round(secs / 60)} 分钟` : `${Math.max(1, Math.round(secs))} 秒`;
+/* The most recent of: a resume from sleep, a start after boot, a service restart. */
 function resumeNote(s) {
+  const start = s.last_start;
+  if (start && start.at && start.at >= (s.last_resume_at || 0)) {
+    return start.kind === 'boot'
+      ? `Mac 开机后启动 ${clock(start.at)}（上次运行在 ${spanText(start.gap_seconds || 0)}前）`
+      : `稳航重启过 ${clock(start.at)}（停了 ${spanText(start.gap_seconds || 0)}）`;
+  }
   if (!s.last_resume_at) return '';
   const secs = s.last_sleep_gap_seconds || 0;
   const span = secs >= 5400 ? `${(secs / 3600).toFixed(1).replace(/\.0$/, '')} 小时` : `${Math.max(1, Math.round(secs / 60))} 分钟`;

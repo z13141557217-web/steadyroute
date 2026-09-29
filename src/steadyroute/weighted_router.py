@@ -775,6 +775,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
     stale_detail = "超过 %d 秒没有完成检测周期，页面数据可能已过时。" % stale_after
     durations = [int(value) for value in state.get("cycle_durations_ms", [])]
     resumed = bool(state.get("last_resume_at") and now - int(state.get("last_resume_at")) < 180)
+    last_start = state.get("last_start") or {}
+    booted = last_start.get("kind") == "boot" and now - int(last_start.get("at", 0)) < 180
     if state_stale:
         service_state = {
             "code": "stale", "severity": "warning", "title": "检测暂停",
@@ -785,6 +787,11 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "code": "local_network_offline", "severity": "warning", "title": "本机网络不可用",
             "detail": "直连检测失败，已暂停故障判定和切换，避免误伤节点。",
             "next_action": "网络恢复后自动继续检测。",
+        }
+    elif booted and not resumed:
+        service_state = {
+            "code": "boot_recovery", "severity": "warning", "title": "Mac 刚开机",
+            "detail": "网络可能还在连接，先观察一轮再做切换判断。", "next_action": "等待下一轮检测。",
         }
     elif resumed:
         service_state = {
@@ -1066,6 +1073,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "probe_interval_seconds": PROBE_INTERVAL_SECONDS,
             "last_cycle_gap_seconds": int(state.get("last_cycle_gap_seconds", 0)),
             "last_resume_at": int(state.get("last_resume_at", 0)),
+            "last_start": dict(state.get("last_start") or {}) or None,
             "last_sleep_gap_seconds": int(state.get("last_sleep_gap_seconds", 0)),
             "last_sleep_brief_wakes": int(state.get("last_sleep_brief_wakes", 0)),
             "cycle_count": int(state.get("cycle_count", 0)),
@@ -2010,9 +2018,23 @@ def detect_cycle_resume(state, cycle_started_at):
     wall_now, mono_now = time.time(), time.monotonic()
     previous_update = int(state.get("updated_at", 0))
     if RUNTIME["last_cycle_wall"] is None:
-        # Fresh process: only the persisted completion time is available.
-        slept = bool(previous_update) and cycle_started_at - previous_update > PROBE_INTERVAL_SECONDS * 3
-        gap = max(0, cycle_started_at - previous_update) if previous_update else 0
+        # Fresh process: no clocks of our own to compare, so ask macOS what happened since the
+        # last recorded cycle: a boot, a sleep, or just this service being stopped.
+        kind, gap = health_model.classify_start(
+            previous_update, cycle_started_at, runtime_metrics.power_times(), PROBE_INTERVAL_SECONDS * 3)
+        slept = kind == "sleep"
+        if kind in ("boot", "restart"):
+            RUNTIME["last_cycle_wall"], RUNTIME["last_cycle_mono"] = wall_now, mono_now
+            if previous_update:
+                state["last_cycle_gap_seconds"] = gap
+            state["last_start"] = {"kind": kind, "at": cycle_started_at, "gap_seconds": gap}
+            if kind == "boot":
+                log("started after the Mac booted (last cycle %d seconds ago); observing one cycle" % gap)
+            else:
+                log("service restarted after %d seconds; the Mac stayed awake, decisions continue" % gap)
+            logging_setup.write_event("service_start", kind=kind, gap_seconds=gap)
+            # After a boot the network may still be coming up: observe one cycle, as after sleep.
+            return "boot" if kind == "boot" else False
     else:
         slept, gap = health_model.detect_resume(
             RUNTIME["last_cycle_wall"], RUNTIME["last_cycle_mono"], wall_now, mono_now,
@@ -2474,6 +2496,7 @@ def run_cycle(dry_run=False):
         state["groups"].setdefault(group_name, {})["dynamic_no_candidate"] = False
         if not record_failures:
             reason = ("local network offline" if local_offline
+                      else "Mac just started" if resume_cycle == "boot"
                       else "resumed from sleep" if resume_cycle else "all probes failed at once")
             log_routine((group_name, "paused"), reason, "%s: decisions paused this cycle (%s)" % (group_name, reason))
             continue

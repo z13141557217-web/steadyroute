@@ -45,6 +45,31 @@ def detect_resume(prev_wall, prev_mono, wall_now, mono_now, interval,
     return slept, int(max(0.0, wall_gap))
 
 
+def classify_start(last_active, now, power, fallback_gap_seconds, settle_seconds=300):
+    """Why a freshly started process has a gap since the last recorded cycle.
+
+    last_active: unix time of the last completed cycle (from the state file).
+    power: macOS's own {"boot", "sleep", "wake"} record, or None where unavailable.
+    Returns (kind, gap_seconds) with kind "boot" (the Mac was off or restarted), "sleep"
+    (the Mac slept in between), "restart" (the Mac stayed awake; only the service stopped)
+    or None when there is no previous cycle.
+    """
+    if not last_active:
+        return None, 0
+    gap = max(0, int(now) - int(last_active))
+    if power:
+        if power.get("boot") and float(power["boot"]) > float(last_active):
+            return "boot", gap
+        wake = power.get("wake")
+        # Slept in between and woke just now: the network is still settling, like a resume.
+        # A wake long before this start means the service was simply down for a while.
+        if wake and float(last_active) < float(wake) <= float(now) + 5 and float(now) - float(wake) <= settle_seconds:
+            return "sleep", gap
+        return "restart", gap
+    # Without the OS record, a long gap is treated as sleep, as before.
+    return ("sleep" if gap > fallback_gap_seconds else "restart"), gap
+
+
 def merge_sleep_episode(episode, fell_asleep_at, woke_at, merge_awake_seconds=300):
     """Fold short wake-ups into one sleep episode; return the updated episode.
 
