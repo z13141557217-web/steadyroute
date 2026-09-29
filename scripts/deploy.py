@@ -42,6 +42,8 @@ MANAGED_FILES = {
     "src/runtime_metrics.py": "runtime_metrics.py",
     "src/logging_setup.py": "logging_setup.py",
     "src/node_catalog.py": "node_catalog.py",
+    "src/regions.py": "regions.py",
+    "src/auto_lock.py": "auto_lock.py",
     "src/dashboard.html": "dashboard.html",
     "src/acceptance_dashboard.html": "acceptance_dashboard.html",
     "src/candidate_dashboard.html": "candidate_dashboard.html",

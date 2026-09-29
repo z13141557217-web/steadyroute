@@ -138,6 +138,8 @@ class DeploymentIntegrationTests(unittest.TestCase):
         (package_root / "src/acceptance_dashboard.html").write_text("acceptance", encoding="utf-8")
         (package_root / "src/candidate_dashboard.html").write_text("candidate acceptance", encoding="utf-8")
         (package_root / "src/node_catalog.py").write_text("CATALOG_LIMIT = 1000\n", encoding="utf-8")
+        (package_root / "src/regions.py").write_text("REGIONS = ()\n", encoding="utf-8")
+        (package_root / "src/auto_lock.py").write_text("SKIP_GROUPS = set()\n", encoding="utf-8")
         for page in ("nodes.html", "guide.html", "changelog.html", "pages.css"):
             (package_root / "src" / page).write_text(page, encoding="utf-8")
         (package_root / "src/fixtures/status_contract_v2.json").write_text('{"schema_version": 2}\n', encoding="utf-8")

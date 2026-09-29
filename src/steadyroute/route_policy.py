@@ -4,9 +4,18 @@ import json
 import pathlib
 import re
 
+try:
+    import regions
+except ModuleNotFoundError:  # pragma: no cover - imported as a package in some tools
+    from . import regions
+
 
 SCHEMA_VERSION = 1
 MODES = {"shadow", "active"}
+PROFILES = {"fixed", "auto_lock"}
+# Auto-lock policies are built at runtime from the user's own groups; their candidates are
+# matched by country + residential detection instead of a hand-written pattern.
+COUNTRY_RESIDENTIAL = "country_residential"
 BUILTIN_CANDIDATES = {
     "DIRECT", "COMPATIBLE", "REJECT", "REJECT-DROP", "PASS", "PASS-RULE",
 }
@@ -37,9 +46,36 @@ def _require_string_list(item, name):
         raise PolicyConfigError("policy %s must be a non-empty string array" % name)
 
 
+def validate_auto_lock_config(config):
+    """Shared-install profile: no hand-written policies; runtime policies come from auto_lock."""
+    settings = config.get("auto_lock", {})
+    if not isinstance(settings, dict):
+        raise PolicyConfigError("auto_lock must be an object")
+    exclude = settings.get("exclude_groups", [])
+    if not isinstance(exclude, list) or any(not isinstance(name, str) for name in exclude):
+        raise PolicyConfigError("auto_lock.exclude_groups must be a string array")
+    urls = settings.get("business_test_urls", [])
+    if not isinstance(urls, list) or any(not isinstance(url, str) or not url.startswith("https://") for url in urls):
+        raise PolicyConfigError("auto_lock.business_test_urls must be https URLs")
+    policies = config.get("policies", [])
+    if not isinstance(policies, list):
+        raise PolicyConfigError("policies must be an array")
+    for item in policies:
+        if not isinstance(item, dict) or item.get("match") != COUNTRY_RESIDENTIAL:
+            raise PolicyConfigError("auto_lock profile only accepts runtime country policies")
+        if item.get("region") in (None, "", regions.OTHER_REGION[0]):
+            raise PolicyConfigError("auto_lock policy needs a known country")
+        outside = [name for name in item.get("static_candidates", []) if not name_matches(item, name)]
+        if outside:
+            raise PolicyConfigError("candidate outside its locked country: %s" % outside[0])
+    return config
+
+
 def validate_policy_config(config):
     if not isinstance(config, dict) or config.get("schema_version") != SCHEMA_VERSION:
         raise PolicyConfigError("unsupported route policy schema")
+    if config.get("profile", "fixed") not in PROFILES:
+        raise PolicyConfigError("profile must be fixed or auto_lock")
     if config.get("mode") not in MODES:
         raise PolicyConfigError("mode must be shadow or active")
     activation = config.get("activation", {})
@@ -52,6 +88,8 @@ def validate_policy_config(config):
             raise PolicyConfigError("active mode requires separate approval")
         if measured is None or float(measured) > min(1.0, float(maximum)):
             raise PolicyConfigError("active mode blocked by RSS activation budget")
+    if config.get("profile") == "auto_lock":
+        return validate_auto_lock_config(config)
     policies = config.get("policies")
     if not isinstance(policies, list) or not policies:
         raise PolicyConfigError("policies must be a non-empty array")
@@ -130,6 +168,12 @@ def load_policy_config(path):
 def name_matches(policy, name):
     if not isinstance(name, str) or name in BUILTIN_CANDIDATES:
         return False
+    if policy.get("match") == COUNTRY_RESIDENTIAL:
+        return (
+            regions.region_of(name)[0] == policy["region"]
+            and regions.is_residential(name)
+            and not regions.is_notice(name)
+        )
     return bool(re.search(policy["include_pattern"], name)) and not bool(
         re.search(policy["exclude_pattern"], name)
     )

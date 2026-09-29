@@ -27,6 +27,8 @@ try:
     import logging_setup
     import runtime_metrics
     import node_catalog
+    import regions
+    import auto_lock
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import state_contract
@@ -36,6 +38,8 @@ except ModuleNotFoundError:
     import logging_setup
     import runtime_metrics
     import node_catalog
+    import regions
+    import auto_lock
 
 
 CONTROLLER_SOCKET_PATHS = (
@@ -136,10 +140,11 @@ RUNTIME = {"last_cycle_wall": None, "last_cycle_mono": None, "last_duration_s": 
 TIMELINE = {}   # group -> recent current-node probes and switches (memory only)
 WAKE_EVENT = threading.Event()
 
-POLICY_CONFIG_PATHS = (
+POLICY_CONFIG_PATHS = tuple(path for path in (
+    os.environ.get("STEADYROUTE_POLICY_CONFIG"),
     os.path.join(APP_DIR, "config", "route-policies.json"),
     os.path.join(os.path.dirname(os.path.dirname(APP_DIR)), "config", "route-policies.json"),
-)
+) if path)
 
 
 def load_runtime_policy_config():
@@ -154,6 +159,47 @@ POLICIES = list(POLICY_CONFIG["policies"])
 POLICY_BY_GROUP = {item["group_name"]: item for item in POLICIES}
 GROUPS = {item["group_name"]: list(item["static_candidates"]) for item in POLICIES}
 BUSINESS_TEST_URLS = {item["group_name"]: list(item["business_test_urls"]) for item in POLICIES}
+# "fixed": hand-written lines (the author's Taiwan / Hong Kong setup).
+# "auto_lock": shared installs; lines are the user's own groups, rebuilt every cycle.
+PROFILE = POLICY_CONFIG.get("profile", "fixed")
+AUTO_LOCK_STATUS = {}   # group -> lock status from the last full cycle (memory only)
+AUTO_LOCK_UNSUPPORTED = []
+
+
+def apply_policies(policies):
+    """Swap in this cycle's policies, updating the shared containers in place."""
+    POLICY_CONFIG["policies"] = list(policies)
+    POLICIES[:] = list(policies)
+    POLICY_BY_GROUP.clear()
+    POLICY_BY_GROUP.update({item["group_name"]: item for item in policies})
+    GROUPS.clear()
+    GROUPS.update({item["group_name"]: list(item["static_candidates"]) for item in policies})
+    BUSINESS_TEST_URLS.clear()
+    BUSINESS_TEST_URLS.update({item["group_name"]: list(item["business_test_urls"]) for item in policies})
+
+
+def refresh_auto_lock(state, proxy_data, now):
+    """auto_lock profile: rebuild the lines from the user's own groups for this cycle."""
+    if PROFILE != "auto_lock":
+        return
+    settings = POLICY_CONFIG.get("auto_lock") or {}
+    policies, statuses, events = auto_lock.build_policies(proxy_data, state, now, settings)
+    # A country without residential nodes is shown but never routed.
+    routed = [policy for policy in policies if policy["static_candidates"]]
+    apply_policies(routed)
+    auto_lock.prune_registry(state, routed)
+    AUTO_LOCK_STATUS.clear()
+    AUTO_LOCK_STATUS.update(statuses)
+    AUTO_LOCK_UNSUPPORTED[:] = auto_lock.unsupported_groups(proxy_data, settings.get("exclude_groups", ()))
+    for event in events:
+        if event["kind"] == "relocked":
+            log("%s: user moved to %s; locked to %s (was %s), %d residential candidates" % (
+                event["group"], regions.label(event["country"]), event["country"], event["previous"],
+                event["candidates"]))
+        else:
+            log("%s: locked to %s, %d residential candidates" % (
+                event["group"], event["country"], event["candidates"]))
+        logging_setup.write_event("auto_lock_" + event["kind"], **{k: v for k, v in event.items() if k != "kind"})
 
 
 LOGGER = logging.getLogger("steadyroute")
@@ -439,6 +485,13 @@ def _read_version_file():
 def region_for_group(group_name):
     policy = POLICY_BY_GROUP.get(group_name)
     return policy["region"] if policy else "unknown"
+
+
+def region_label_for_group(group_name):
+    policy = POLICY_BY_GROUP.get(group_name)
+    if not policy:
+        return "未知"
+    return policy.get("region_label") or regions.label(policy["region"])
 
 
 def connection_count_for_node(group_name, node_name, connections):
@@ -817,6 +870,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
                     group_state.get("performance_switch_times"), now, 86400),
                 "removal_switches_24h": health_model.count_recent(
                     group_state.get("removal_switch_times"), now, 86400),
+                "adopt_switches_24h": health_model.count_recent(
+                    group_state.get("adopt_switch_times"), now, 86400),
                 "last_failover_detect_seconds": group_state.get("last_failover_detect_seconds"),
             },
             "automation": {
@@ -945,6 +1000,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
         legacy_groups.append({
             "name": group["name"],
             "region": group["region"],
+            "region_label": region_label_for_group(group["name"]),
+            "auto_lock": AUTO_LOCK_STATUS.get(group["name"]),
             "current": group["current"]["name"] if group["current"] else group_state.get("last_seen"),
             "active_connections": sum(
                 1 for connection in connections if group["name"] in (connection.get("chains") or [])
@@ -984,6 +1041,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "fast_probe_interval_seconds": FAST_PROBE_INTERVAL_SECONDS,
             "timeline_window_seconds": TIMELINE_WINDOW_SECONDS,
             "version": versioned["service"]["version"],
+            "profile": PROFILE,
+            "auto_lock_unsupported": list(AUTO_LOCK_UNSUPPORTED),
             "stale_at": stale_at,
             "stale_title": stale_title,
             "stale_detail": stale_detail,
@@ -1459,9 +1518,7 @@ def select_hot_standby(candidates, nodes, current):
 def choose_probe_targets(state, proxy_data):
     targets = set()
     for group_name, candidates in GROUPS.items():
-        current = (proxy_data.get(group_name) or {}).get("now")
-        if current not in candidates:
-            current = candidates[0]
+        current = current_for_group(proxy_data, group_name, candidates)
         targets.add(current)
         group_state = state["groups"].setdefault(group_name, {})
         hot = select_hot_standby(candidates, state["nodes"], current)
@@ -1559,9 +1616,11 @@ def selection_allowed(group_name, node_name):
         return False
     if not route_policy.name_matches(policy, node_name):
         return False
+    # A node that another region's policy also claims is ambiguous; groups locked to the
+    # same country (auto_lock) legitimately share nodes.
     return all(
         not route_policy.name_matches(other, node_name)
-        for other in POLICIES if other["group_name"] != group_name
+        for other in POLICIES if other["group_name"] != group_name and other["region"] != policy["region"]
     )
 
 
@@ -1611,6 +1670,8 @@ SWITCH_KINDS = {
     "removed": ("removal_switch_times", None, True, 300, 360, True),
     "failover": ("failover_times", True, False, 0, 60, True),
     "optimize": ("performance_switch_times", False, True, 300, 360, False),
+    # auto_lock: moved from a non-residential node of the locked country onto its residential line.
+    "adopt": ("adopt_switch_times", None, True, 300, 360, True),
 }
 
 
@@ -1644,6 +1705,46 @@ def apply_switch(group_name, group_state, kind, old, new, now):
         group_state["manual_hold_until"] = 0
 
 
+def adopt_residential(group_name, candidates, current, state, group_state, now, dry_run):
+    """auto_lock: the group is on a same-country node that is not residential.
+
+    The first time we see a group we move it onto the best residential node once one has
+    warmed up. A later manual pick of such a node is honoured for MANUAL_HOLD_SECONDS, like
+    any manual choice, unless it fails."""
+    previous_seen = group_state.get("last_seen")
+    router_choice = group_state.get("last_router_selection")
+    if previous_seen and current != previous_seen and current != router_choice:
+        group_state["manual_hold_until"] = int(now + MANUAL_HOLD_SECONDS)
+        group_state["manual_preference_expired_for"] = 0
+        record_manual_preference_event(state, group_name, "MANUAL_PREFERENCE_STARTED",
+                                       "manual_selection_detected", now)
+        log("%s: manual pick of non-residential %s; kept for 60 minutes unless it fails" % (group_name, current))
+    group_state["last_seen"] = current
+    current_stats = state["nodes"].get(current, {})
+    failing = (int(current_stats.get("effective_failure_streak", current_stats.get("failure_streak", 0)))
+               >= FAILURES_BEFORE_SWITCH or is_quarantined(current_stats, now))
+    if int(group_state.get("manual_hold_until", 0)) > now and not failing:
+        return
+    if failing and int(group_state.get("manual_hold_until", 0)) > now:
+        record_manual_preference_event(state, group_name, "MANUAL_PREFERENCE_INTERRUPTED",
+                                       "confirmed_current_failure", now)
+    group_state["manual_hold_until"] = 0
+    mature = [name for name in candidates if eligible_for_optimization(state["nodes"].get(name, {}))]
+    target = min(mature, key=lambda name: float(state["nodes"].get(name, {}).get("score", 1000000.0))) if mature else None
+    if target is None:
+        log_routine(("adopt_wait", group_name), "warming",
+                    "%s: on non-residential %s; residential candidates still warming up" % (group_name, current), now)
+        return
+    if not business_preflight(group_name, target, state, dry_run):
+        log("%s: residential %s failed preflight; staying on %s" % (group_name, target, current))
+        return
+    kind = "failover" if failing else "adopt"
+    select_node(group_name, target, dry_run)
+    apply_switch(group_name, group_state, kind, current, target, now)
+    log("%s: moved from non-residential %s to residential %s (%s)" % (group_name, current, target, kind))
+    logging_setup.write_event("auto_lock_adopt", group=group_name, **{"from": current}, to=target, reason=kind)
+
+
 def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run):
     group_info = proxy_data.get(group_name) or {}
     current = group_info.get("now")
@@ -1675,6 +1776,9 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         group_state["manual_hold_until"] = 0
         group_state["dynamic_no_candidate"] = True
         log("%s: no safe candidate; fail closed" % group_name)
+        return
+    if current not in candidates and outside_same_country(group_name, current):
+        adopt_residential(group_name, candidates, current, state, group_state, now, dry_run)
         return
     if current not in candidates:
         if int(group_state.get("manual_hold_until", 0)) > now:
@@ -1885,9 +1989,22 @@ def detect_cycle_resume(state, cycle_started_at):
     return slept
 
 
+def outside_same_country(group_name, current):
+    """auto_lock: the group sits on a node of its locked country that is not a candidate
+    (usually a non-residential node the user picked). We watch it and may move off it."""
+    policy = POLICY_BY_GROUP.get(group_name)
+    return bool(
+        PROFILE == "auto_lock" and policy is not None and isinstance(current, str)
+        and current not in route_policy.BUILTIN_CANDIDATES
+        and regions.region_of(current)[0] == policy["region"]
+    )
+
+
 def current_for_group(proxy_data, group_name, candidates):
     current = (proxy_data.get(group_name) or {}).get("now")
-    return current if current in candidates else candidates[0]
+    if current in candidates or outside_same_country(group_name, current):
+        return current
+    return candidates[0]
 
 
 def record_probe_results(state, targets, base_results, observed_at, record_failures, transient=()):
@@ -2074,6 +2191,7 @@ def run_cycle(dry_run=False):
         raise
     proxy_data = proxy_response.get("proxies") or {}
     state["controller_connected"] = True
+    refresh_auto_lock(state, proxy_data, cycle_started_at)
     candidate_registry.reconcile(POLICY_CONFIG, state, proxy_data, cycle_started_at)
     try:
         connection_response = api_request("GET", "/connections") or {}
