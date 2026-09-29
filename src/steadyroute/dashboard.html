@@ -863,8 +863,8 @@ function renderHead(d) {
   if (stale) { head = s.stale_title; sev = 'warn'; sub = s.stale_detail; }
   else if (s.state_code && s.state_code !== 'running') { head = s.state_title; sev = s.state_severity === 'critical' ? 'bad' : 'warn'; sub = s.state_detail; }
   else if (!d.groups.length) {
-    head = s.profile === 'auto_lock' ? '还没有可接管的线路' : '等待线路配置'; sev = 'warn';
-    sub = s.profile === 'auto_lock' ? '稳航接管 Clash 里直接选中了某个节点的分组；下方写了每个分组没接管的原因。' : '';
+    head = s.profile === 'auto_lock' ? '暂无接管线路' : '等待线路配置'; sev = 'warn';
+    sub = s.profile === 'auto_lock' ? '仅接管在 Clash 中直接选中节点的分组；各分组未接管的原因见下方。' : '';
   }
   else if (troubled.length) {
     const g = troubled[0];
