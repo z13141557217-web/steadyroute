@@ -4,6 +4,38 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-29
+
+### Added
+
+- 分享版（issue #32）：`profile: auto_lock`。接管用户 Clash Verge 里直接选中节点的 select 分组，
+  按当前节点的国家锁定，候选只取该国家的家宽节点（`regions.py` 识别国家与家宽）；每轮从
+  控制器快照重建策略，不修改 Clash 配置。
+  - 用户手动换到别的国家 → 改锁（`auto_lock_relocked` 事件）；同国家换节点不改锁。
+  - 当前是同国家普通节点 → 家宽成熟后无损换上，新切换类型 `adopt`（`adopt_switches_24h`）；
+    之后手动选普通节点按人工偏好保留 60 分钟，故障立即切换。
+  - 没有家宽的国家不路由；分组选的是另一个分组时暂停并保留锁定；url-test 等分组不接管。
+  - 同国家守卫：锁同一国家的两个分组可以共用节点，跨国家、机房、DIRECT 仍一律拒绝。
+  - 注册表记录按（分组，国家）区分，改锁后旧记录清除；离开订阅超过一天的节点统计会被清理。
+- 分享包与安装器：`scripts/share/build_share.py` 生成 `SteadyRoute-share-v<版本>.zip`，只含程序、
+  分享版配置和安装器，并检查个人信息（本机路径、用户名、订阅链接、密钥、邮箱）后才打包；
+  `scripts/share/installer.py` 负责安装 / 升级 / 卸载 / 状态：检查 macOS、Python 3.9+、
+  Clash Verge 与另一份稳航，安装到 `~/Library/Application Support/SteadyRoute`，LaunchAgent
+  `com.steadyroute.share`，启动后按版本号确认健康，失败自动恢复上一版（保留 3 份备份）。
+  `publish-release.sh` 会把分享包一起附到 GitHub Release。
+- 示例配置 `config/route-policies.auto-lock.json`；`STEADYROUTE_POLICY_CONFIG` 可指定配置文件。
+
+### Changed
+
+- 看板支持任意国家、任意数量的线路：卡片两张一行、单张占满；锁定状态显示在当前节点一行；
+  未接管的分组列出原因；节点表按实际国家筛选。使用说明新增“分享版”一节。
+
+### Fixed
+
+- 休眠时长：Power Nap 等短暂唤醒（小于 5 分钟）并入同一次休眠，看板显示整段时长和
+  “期间短暂唤醒 N 次”，不再只显示最后一段。
+- 快速故障切换后，看板要等下一轮完整检测（最多 20 秒）才显示新节点；现在切换后立即显示。
+
 ## [0.4.6] - 2026-09-27
 
 ### Security

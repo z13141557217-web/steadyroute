@@ -1632,6 +1632,11 @@ def close_old_connections(group_name, old_node, connections=None):
     return closed
 
 
+# Selections made since the controller snapshot was read; published with it so the dashboard
+# shows the new node at once instead of after the next full cycle.
+PENDING_SELECTIONS = {}
+
+
 class RegionGuardError(RuntimeError):
     """A selection would leave the group's own region/residential candidate set."""
 
@@ -1667,6 +1672,7 @@ def select_node(group_name, node_name, dry_run):
         {"name": node_name},
         timeout=5,
     )
+    PENDING_SELECTIONS[group_name] = node_name
 
 
 def eligible_for_optimization(node_state):
@@ -2084,6 +2090,10 @@ def finish_cycle(state, proxy_data, connections, cycle_clock, cycle_started_at):
 
 
 def publish_state(state, proxy_data, connections, now):
+    for group_name, node_name in list(PENDING_SELECTIONS.items()):
+        if isinstance(proxy_data.get(group_name), dict):
+            proxy_data[group_name] = dict(proxy_data[group_name], now=node_name)
+    PENDING_SELECTIONS.clear()
     snapshots = build_status_snapshots(state, proxy_data, connections, now=int(now))
     save_state(state)
     update_dashboard_cache(snapshots)

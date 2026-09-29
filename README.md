@@ -7,7 +7,7 @@
 
 - 只用 Python 3.9 标准库，没有第三方依赖。单进程，由 LaunchAgent 开机自启、异常自动拉起。
 - 不改订阅，不碰其他策略组，不上传任何数据。看板只监听 `127.0.0.1:17654`。
-- 当前版本：**v0.4.6**（2026-09-27）。
+- 当前版本：**v0.5.0**（2026-09-29）。
 
 ---
 
@@ -17,6 +17,7 @@
 - [铁律：只在同地区家宽之间切换](#铁律只在同地区家宽之间切换)
 - [工作原理](#工作原理)
 - [看板与页面](#看板与页面)
+- [分享给朋友（分享版）](#分享给朋友分享版)
 - [安装、发布与回滚](#安装发布与回滚)
 - [日志与数据](#日志与数据)
 - [资源占用](#资源占用)
@@ -172,6 +173,26 @@ flowchart LR
 
 ---
 
+## 分享给朋友（分享版）
+
+v0.5.0 起，稳航可以装在朋友的 Mac 上（Clash Verge，TUN 模式也可以），不需要改他的 Clash 配置：
+
+- 接管朋友 Clash 里**直接选中了某个节点**的分组，按这个节点的国家锁定（美国就锁美国），之后**只在这个国家的家宽节点之间切换**，不跨国家。
+- 朋友在 Clash 里手动换到别的国家，稳航改锁到新国家。
+- 当前是同国家的普通节点时，家宽预热好（约 4 分钟）后无损换上；之后手动选普通节点保留 60 分钟，断了立刻换。
+- 没有家宽的国家只提示不切换；分组选的是另一个分组（比如"自动选择"）时暂停。
+- 装好后先给家宽候选测速约 4 分钟，有了热备之后故障切换才生效。
+
+### 打包与安装
+
+```bash
+python3 scripts/share/build_share.py        # 生成 dist/SteadyRoute-share-v<版本>.zip
+```
+
+打包时只放程序、分享版配置（`config/route-policies.auto-lock.json`）和安装器，不带作者自己的配置、状态和日志，并自动检查个人信息（本机路径、用户名、订阅链接、密钥、邮箱），发现就拒绝打包。
+
+朋友解压后右键 `install.command` → 打开。安装器会：检查 macOS、Python 3.9+ 和 Clash Verge；拒绝与另一份稳航同时运行；把程序装到 `~/Library/Application Support/SteadyRoute`，日志在 `~/Library/Logs/SteadyRoute`，开机自启 `com.steadyroute.share`；启动后确认看板回报的版本正确，失败自动恢复到上一版（保留最近 3 份备份）。升级再运行一次即可，状态和配置保留。`uninstall.command` 卸载，Clash 设置不受影响。
+
 ## 安装、发布与回滚
 
 ### 路径
@@ -283,6 +304,8 @@ src/steadyroute/
   route_policy.py           策略加载与同地区家宽规则
   candidate_registry.py     订阅候选发现与生命周期
   node_catalog.py           只读订阅节点目录（/api/nodes）
+  regions.py                国家与家宽识别
+  auto_lock.py              分享版：按当前节点的国家锁定用户自己的分组
   state_contract.py         持久状态与 API 契约、迁移
   logging_setup.py          有界日志轮换
   runtime_metrics.py        内存指标（phys_footprint）
@@ -292,6 +315,7 @@ src/steadyroute/
 config/                     路由策略、Clash Verge 增强配置
 deploy/macos/               LaunchAgent 模板
 scripts/                    检查、构建、部署、回滚、状态、代理组管理
+scripts/share/              分享版打包与安装器
 sim/                        假 Mihomo 控制器与上线前模拟验收（不进发布包）
 tests/                      单元、集成与回归测试
 docs/                       架构、运维、发布、安全、风险、ADR
@@ -326,7 +350,8 @@ python3 sim/run_scenarios.py --old ../steadyroute-prev --new . --out /tmp/sim.js
 
 | 版本 | 日期 | 主要变化 |
 |---|---|---|
-| **0.4.6** | 2026-09-27 | 安全加固：只接受本机 Host（防 DNS rebinding）、所有响应带安全头、密钥扫描不再被跳过；24 小时切换统计不再漏算 |
+| **0.5.0** | 2026-09-29 | 分享版：装在朋友的 Mac 上，按当前节点的国家锁定、只换该国家家宽；一键安装包；休眠时长合并短暂唤醒 |
+| 0.4.6 | 2026-09-27 | 安全加固：只接受本机 Host（防 DNS rebinding）、所有响应带安全头、密钥扫描不再被跳过；24 小时切换统计不再漏算 |
 | 0.4.5 | 2026-09-26 | 看板重新设计；5 / 15 / 30 分钟曲线；活跃连接面板；全部节点、使用说明、更新日志页面；`/api/nodes` |
 | 0.4.4 | 2026-09-26 | 有界日志（合计 ≤ 38 MB）；偶发丢包不再隔离最优节点；内存当前 / 峰值 |
 | 0.4.3 | 2026-09-26 | 5 秒快速通道（断线到切换约 6 秒）；热备；同地区铁律写进代码；断网 / 休眠 / 网站故障识别 |
@@ -345,8 +370,10 @@ python3 sim/run_scenarios.py --old ../steadyroute-prev --new . --out /tmp/sim.js
 
 | 版本 | 内容 |
 |---|---|
-| v0.4.6 | 选路策略 v2（[#23](https://github.com/z13141557217-web/steadyroute/issues/23)） |
-| v0.5.0 | 动态候选正式接管：订阅新增的家宽经预热后直接参与选路（[#24](https://github.com/z13141557217-web/steadyroute/issues/24)） |
+| v0.5.0 | 分享版：装在朋友的 Mac 上，按国家锁定、只换该国家家宽（[#32](https://github.com/z13141557217-web/steadyroute/issues/32)） |
+| v0.5.1 | 可选的"AI 家宽专线"模板（作者这套配置） |
+| v0.5.x | 选路策略 v2（[#23](https://github.com/z13141557217-web/steadyroute/issues/23)） |
+| v0.6.0 | 动态候选正式接管：订阅新增的家宽经预热后直接参与选路（[#24](https://github.com/z13141557217-web/steadyroute/issues/24)） |
 | 之后 | 被动检测：利用真实连接的成败辅助判断（[#25](https://github.com/z13141557217-web/steadyroute/issues/25)）；全节点监控与配置页面（[#26](https://github.com/z13141557217-web/steadyroute/issues/26)） |
 
 详见 [ROADMAP.md](docs/ROADMAP.md)。
