@@ -521,7 +521,7 @@ def adopt_decision(decision, group_name, candidates, state, facts):
         detail = "%d 个%s家宽节点已就绪，这一轮检测通过后换过去，已有连接不中断。" % (ready, label)
     else:
         title = "当前是%s普通节点，家宽预热中" % label
-        detail = "稳航正在给 %d 个%s家宽节点测速，预热好（约 5 分钟）后自动换上，已有连接不中断。" % (
+        detail = "稳航正在给 %d 个%s家宽节点测速，预热好（约 1 分钟）后自动换上，已有连接不中断。" % (
             len(candidates), label)
     return dict(decision, code="manual_hold" if hold > 0 else "adopt_pending", severity="info",
                 title=title, detail=detail,

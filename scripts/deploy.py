@@ -272,6 +272,42 @@ def create_backup(target, plist_path, backup_dir):
     return destination, metadata
 
 
+KEEP_BACKUPS = 10
+KEEP_DIAGNOSTICS = 10
+
+
+def prune_backups(backup_dir, keep=KEEP_BACKUPS, protect=()):
+    """Keep the newest `keep` verified backups; never touch `protect` or anything unrecognised.
+
+    Runs only after a deploy passed its health check, so the backup of the version that was
+    just replaced (the newest) is always kept and the production directory is never involved.
+    Failure evidence under diagnostics/ is capped the same way.
+    """
+    removed = []
+    if not backup_dir.is_dir():
+        return removed
+    protected = {pathlib.Path(path).resolve() for path in protect}
+    backups = sorted(
+        path for path in backup_dir.iterdir()
+        if path.is_dir() and not path.is_symlink() and (path / "backup.json").is_file()
+    )
+    for old in backups[:-keep] if len(backups) > keep else []:
+        if old.resolve() in protected:
+            continue
+        shutil.rmtree(str(old))
+        removed.append(old.name)
+    diagnostics = backup_dir / "diagnostics"
+    if diagnostics.is_dir() and not diagnostics.is_symlink():
+        evidence = sorted(
+            (path for path in diagnostics.iterdir() if path.is_dir() and not path.is_symlink()),
+            key=lambda path: path.stat().st_mtime,
+        )
+        for old in evidence[:-KEEP_DIAGNOSTICS] if len(evidence) > KEEP_DIAGNOSTICS else []:
+            shutil.rmtree(str(old))
+            removed.append("diagnostics/" + old.name)
+    return removed
+
+
 def validate_backup(backup):
     metadata_path = backup / "backup.json"
     if not metadata_path.is_file():
@@ -603,6 +639,9 @@ def deploy(args):
             if previous_slot.exists():
                 shutil.rmtree(str(previous_slot))
             print("DEPLOYED version=%s commit=%s backup=%s" % (release["version"], release["commit"], backup))
+            removed = prune_backups(backups, protect=(backup,))
+            if removed:
+                print("PRUNED %d old backup(s), kept the newest %d: %s" % (len(removed), KEEP_BACKUPS, ", ".join(removed)))
     finally:
         shutil.rmtree(str(staging), ignore_errors=True)
         if staged_target is not None:
