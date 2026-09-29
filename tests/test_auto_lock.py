@@ -294,6 +294,56 @@ class RouterTests(unittest.TestCase):
         self.cycle()
         self.assertEqual(router.POLICY_BY_GROUP[GROUP]["region"], "JP")
 
+    def fresh_install(self, now_main=US_RES[0]):
+        for name in US_RES + JP_RES:
+            self.state["nodes"].pop(name)
+        router.RUNTIME.pop("last_state", None)
+        router.RUNTIME.pop("last_tick_wall", None)
+        self.serve(friend_proxies(now_main=now_main))
+        self.cycle()
+
+    def ticks_until(self, predicate, limit=30):
+        for tick in range(1, limit + 1):
+            self.net.run_fast_tick(self.state)
+            self.state = router.RUNTIME["last_state"]
+            if predicate():
+                return tick
+        return None
+
+    def test_fresh_install_gets_a_mature_backup_within_a_minute_of_fast_ticks(self):
+        self.fresh_install()
+        mature = lambda: any(router.eligible_for_optimization(self.state["nodes"].get(n, {})) for n in US_RES[1:])
+        ticks = self.ticks_until(mature)
+        self.assertIsNotNone(ticks)
+        self.assertLessEqual(ticks * router.FAST_PROBE_INTERVAL_SECONDS, 60, "about a minute, not four")
+        probed = {name for name, url in self.net.probe_calls if url == router.TEST_URL}
+        self.assertFalse(probed & set(JP_RES + US_DC + JP_DC), "only this line's own candidates are warmed")
+        # The boost stops once a backup is mature.
+        before = len(self.net.probe_calls)
+        self.net.run_fast_tick(self.state)
+        extra = [c for c in self.net.probe_calls[before:] if c[1] == router.TEST_URL]
+        self.assertEqual(extra, [])
+        # And the backup is usable straight away.
+        self.net.down_nodes.add(US_RES[0])
+        self.assertEqual(self.net.run_fast_tick(router.RUNTIME["last_state"]), "failover")
+        self.assertEqual(self.net.puts[-1][0], GROUP)
+        self.assertIn(self.net.puts[-1][1], US_RES[1:])
+
+    def test_fresh_install_on_a_datacenter_node_adopts_within_a_minute(self):
+        self.fresh_install(now_main=US_DC[0])
+        self.ticks_until(lambda: any(router.eligible_for_optimization(self.state["nodes"].get(n, {})) for n in US_RES))
+        self.cycle()
+        self.assertEqual(self.net.puts[-1][0], GROUP)
+        self.assertIn(self.net.puts[-1][1], US_RES)
+
+    def test_warm_up_failures_are_not_recorded_during_a_local_outage(self):
+        self.fresh_install()
+        self.net.local_offline = True
+        before = {n: self.state["nodes"].get(n, {}).get("samples", 0) for n in US_RES[1:]}
+        self.net.run_fast_tick(self.state)
+        state = router.RUNTIME["last_state"]
+        self.assertEqual({n: state["nodes"].get(n, {}).get("samples", 0) for n in US_RES[1:]}, before)
+
     def test_country_without_residential_is_monitor_only(self):
         self.serve(friend_proxies(now_main=KR_DC[0]))
         for _ in range(3):

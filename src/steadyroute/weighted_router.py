@@ -113,6 +113,11 @@ FAILOVER_STORM_THRESHOLD = 3
 MASS_FAILURE_MIN_TARGETS = 3
 BUSINESS_PROBE_INTERVAL_SECONDS = 60
 STANDBY_PROBES_PER_GROUP = 1
+# Warm-up boost: while a line has no mature backup (fresh install, new country, new
+# subscription), each 5-second fast tick also measures a few immature candidates, so a
+# backup is ready in about a minute instead of four. Stops by itself once one is mature.
+WARMUP_BOOST_PER_GROUP = 4
+WARMUP_BOOST_MAX = 8
 FAILURES_BEFORE_SWITCH = 2
 MIN_SAMPLES_FOR_OPTIMIZATION = 10
 MIN_SUCCESS_STREAK = 3
@@ -2149,6 +2154,44 @@ def refresh_cached_snapshot(proxy_data=None, now=None):
     update_dashboard_cache(snapshots)
 
 
+def warmup_boost_targets(state, proxy_data):
+    """Immature candidates to measure this tick, for lines that have no mature backup yet."""
+    targets = []
+    nodes = state.get("nodes", {})
+    for policy in POLICIES:
+        group_name = policy["group_name"]
+        candidates = candidate_registry.routing_candidates(POLICY_CONFIG, policy, state)
+        current = (proxy_data.get(group_name) or {}).get("now")
+        others = [name for name in candidates if name != current]
+        if not others or any(eligible_for_optimization(nodes.get(name, {})) for name in others):
+            continue
+        immature = sorted(
+            (name for name in others if not is_quarantined(nodes.get(name, {})) and name not in targets),
+            key=lambda name: int(nodes.get(name, {}).get("samples", 0)),
+        )
+        targets.extend(immature[:WARMUP_BOOST_PER_GROUP])
+    return targets[:WARMUP_BOOST_MAX]
+
+
+def record_warmup_boost(results, targets, fast_results, now):
+    """Store warm-up samples. Failures only count when something else in the same batch got
+    through, so a local outage never marks every candidate down."""
+    reached = any(results.get(("warm", name)) is not None for name in targets) or any(
+        value is not None for value in fast_results.values())
+    state = load_state()
+    for name in targets:
+        delay = results.get(("warm", name))
+        if delay is None and not reached:
+            continue
+        node_state = state["nodes"].setdefault(name, {})
+        # Dense samples must not quarantine a node faster than normal probing would.
+        update_node_stats(node_state, delay, int(now), quarantine=False)
+        node_state["last_probe_at"] = int(now)
+    save_state(state)
+    RUNTIME["last_state"] = state
+    return state
+
+
 def run_fast_tick(dry_run=False):
     """Probe only the current node of each group between full cycles.
 
@@ -2175,12 +2218,15 @@ def run_fast_tick(dry_run=False):
         current = (proxy_data.get(group_name) or {}).get("now")
         if candidates and current in candidates:
             plan[group_name] = (current, candidates)
+    warm = warmup_boost_targets(base_state, proxy_data)
     results = run_probe_jobs([
         (group_name, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS)
         for group_name, (current, _candidates) in plan.items()
-    ])
+    ] + [(("warm", name), name, TEST_URL, PROBE_TIMEOUT_MS) for name in warm])
     now = time.time()
     RUNTIME["last_probe_at"] = int(now)
+    if warm:
+        record_warmup_boost(results, warm, {g: results.get(g) for g in plan}, now)
     for group_name, (current, _candidates) in plan.items():
         timeline_add(group_name, {"t": round(now, 1), "ms": results.get(group_name), "node": current, "kind": "probe"})
     failed = [group_name for group_name in plan if results.get(group_name) is None]
