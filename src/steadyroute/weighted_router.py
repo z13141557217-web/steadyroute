@@ -514,18 +514,18 @@ def adopt_decision(decision, group_name, candidates, state, facts):
     if facts.get("current_failed"):
         return decision
     if hold > 0:
-        title = "你选了%s普通节点（保留 %02d:%02d）" % ((label,) + divmod(hold, 60))
-        detail = "到时自动换回%s家宽；这个节点断了会立刻换，不用等。" % label
+        title = "手动选择保护（剩余 %02d:%02d），到期切至%s家宽" % (divmod(hold, 60) + (label,))
+        detail = "当前为手动选择的%s普通节点；保护期结束后切至%s家宽，该节点故障时立即切换。" % (label, label)
     elif ready:
-        title = "正在换到%s家宽" % label
-        detail = "%d 个%s家宽节点已就绪，这一轮检测通过后换过去，已有连接不中断。" % (ready, label)
+        title = "即将切至%s家宽" % label
+        detail = "%d 个%s家宽节点已就绪，本轮检测通过后切换，现有连接不中断。" % (ready, label)
     else:
-        title = "当前是%s普通节点，家宽预热中" % label
-        detail = "稳航正在给 %d 个%s家宽节点测速，预热好（约 1 分钟）后自动换上，已有连接不中断。" % (
+        title = "当前为%s普通节点，家宽预热中" % label
+        detail = "正在对 %d 个%s家宽节点测速，预热完成（约 1 分钟）后自动切换，现有连接不中断。" % (
             len(candidates), label)
     return dict(decision, code="manual_hold" if hold > 0 else "adopt_pending", severity="info",
                 title=title, detail=detail,
-                next_action_code="adopt_residential", next_action="预热完成后换到%s家宽。" % label)
+                next_action_code="adopt_residential", next_action="预热完成后切至%s家宽。" % label)
 
 
 def group_decision_facts(group_name, candidates, state, proxy_data, connections, now):
@@ -790,8 +790,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
         }
     elif booted and not resumed:
         service_state = {
-            "code": "boot_recovery", "severity": "warning", "title": "Mac 刚开机",
-            "detail": "网络可能还在连接，先观察一轮再做切换判断。", "next_action": "等待下一轮检测。",
+            "code": "boot_recovery", "severity": "warning", "title": "刚开机启动",
+            "detail": "网络可能仍在连接，本轮只观察，不做切换判断。", "next_action": "等待下一轮检测。",
         }
     elif resumed:
         service_state = {

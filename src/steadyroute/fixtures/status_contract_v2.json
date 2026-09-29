@@ -152,7 +152,7 @@
       "reachability": "真实运行快照可达"
     },
     {
-      "scenario": "人工偏好保护",
+      "scenario": "手动选择保护",
       "facts": {
         "controller_connected": true,
         "candidate_count": 2,
@@ -162,7 +162,7 @@
       },
       "expected": {
         "code": "manual_hold",
-        "title": "人工偏好保护（剩余 30:00），故障时将预检成熟备援"
+        "title": "手动选择保护（剩余 30:00），故障时将预检成熟备援"
       },
       "reachability": "真实运行快照可达"
     },

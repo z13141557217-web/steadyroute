@@ -748,8 +748,8 @@ const BENIGN = {
   handover_grace: '正在无损回优',
   recovery_observing: '正在观察新节点',
   cooldown: '刚完成回优',
-  manual_hold: '按你的手动选择运行',
-  adopt_pending: '正在换上家宽',
+  manual_hold: '手动选择保护中',
+  adopt_pending: '正在切至家宽',
 };
 
 /* ====================================================================
@@ -830,8 +830,8 @@ function resumeNote(s) {
   const start = s.last_start;
   if (start && start.at && start.at >= (s.last_resume_at || 0)) {
     return start.kind === 'boot'
-      ? `Mac 开机后启动 ${clock(start.at)}（上次运行在 ${spanText(start.gap_seconds || 0)}前）`
-      : `稳航重启过 ${clock(start.at)}（停了 ${spanText(start.gap_seconds || 0)}）`;
+      ? `上次开机启动 ${clock(start.at)}（距上次运行 ${spanText(start.gap_seconds || 0)}）`
+      : `上次服务重启 ${clock(start.at)}（中断 ${spanText(start.gap_seconds || 0)}）`;
   }
   if (!s.last_resume_at) return '';
   const secs = s.last_sleep_gap_seconds || 0;
@@ -899,7 +899,7 @@ function renderHead(d) {
   const rm = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).removal_switches_24h || 0), 0);
   const ad = d.groups.reduce((sum, g) => sum + ((g.metrics || {}).adopt_switches_24h || 0), 0);
   patch($('#k-switch'), `${fo + op + rm + ad}<small>次</small>`);
-  setText($('#k-switch-note'), `故障 ${fo} · 回优 ${op}${rm ? ` · 节点移除 ${rm}` : ''}${ad ? ` · 换上家宽 ${ad}` : ''}`);
+  setText($('#k-switch-note'), `故障 ${fo} · 回优 ${op}${rm ? ` · 节点移除 ${rm}` : ''}${ad ? ` · 切至家宽 ${ad}` : ''}`);
 
   const cur = s.memory_current_mb, peak = s.memory_peak_mb ?? s.memory_mb;
   patch($('#k-memory'), `${(cur ?? peak).toFixed(1)}<small>MB</small>`);
@@ -1003,7 +1003,7 @@ function renderRoutes(d) {
        never gets squeezed out; the fixed profile keeps its short note beside the title. */
     setText(f('region'), g.auto_lock ? '' : lockText(g));
     setText(f('curlabel'), g.auto_lock ? `当前节点 · ${lockText(g)}` : '当前节点');
-    f('curlabel').title = g.auto_lock ? `稳航只在${g.auto_lock.country_label}家宽节点之间切换；你在 Clash 里换到别的国家，会改锁到那个国家` : '';
+    f('curlabel').title = g.auto_lock ? `仅在${g.auto_lock.country_label}家宽节点之间切换；在 Clash 中手动切换到其他国家的节点时，自动改锁至该国家` : '';
     const pill = f('decision');
     const pillClass = `decision ${tone}`;
     if (pill.className !== pillClass) pill.className = pillClass;
@@ -1039,11 +1039,11 @@ function renderRoutes(d) {
    cannot place, or a group that is paused because it now points at another group. */
 function idleText(a) {
   const cur = `「${a.current || ''}」`;
-  if (a.status === 'no_residential') return [`${a.country_label} · ${a.current} — 订阅里没有${a.country_label}家宽节点，稳航不切换这一组`, '没有家宽节点', 'warn'];
-  if (a.status === 'unknown_country') return [`${a.current} — 节点名里看不出国家，换到带国家名的节点后自动锁定`, '认不出国家', 'warn'];
+  if (a.status === 'no_residential') return [`${a.country_label} · ${a.current} — 订阅中无${a.country_label}家宽节点，不接管切换`, '无家宽节点', 'warn'];
+  if (a.status === 'unknown_country') return [`${a.current} — 无法从节点名识别国家；切换到带国家名的节点后自动锁定`, '国家未识别', 'warn'];
   if (a.status === 'paused') return [a.current_is_auto_group
-    ? `这一组现在用的是${cur}（Clash 自动测速），稳航不接管；在 Clash 里选回具体节点后恢复`
-    : `这一组现在选的是另一个分组${cur}；在 Clash 里选回具体节点后恢复`, '已暂停', ''];
+    ? `当前选择${cur}（Clash 自动测速分组），暂停接管；在 Clash 中选回具体节点后恢复`
+    : `当前选择另一个分组${cur}，暂停接管；在 Clash 中选回具体节点后恢复`, '已暂停', ''];
   return ['', '未接管', ''];
 }
 function renderIdle(d) {
@@ -1186,9 +1186,9 @@ function closeDrawer() {
 const SWITCH_KINDS = {
   failover: { label: '故障切换', color: 'var(--bad)', dash: false },
   optimize: { label: '回优', color: 'var(--good)', dash: true },
-  removed: { label: '节点被移除', color: 'var(--warn)', dash: true },
-  adopt: { label: '换上家宽', color: 'var(--accent)', dash: true },
-  manual: { label: '你手动切换', color: 'var(--ink-3)', dash: true },
+  removed: { label: '节点移除', color: 'var(--warn)', dash: true },
+  adopt: { label: '切至家宽', color: 'var(--accent)', dash: true },
+  manual: { label: '手动切换', color: 'var(--ink-3)', dash: true },
 };
 
 function niceMax(v) {

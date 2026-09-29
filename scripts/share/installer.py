@@ -333,8 +333,8 @@ class Installer(object):
             lock = group.get("auto_lock") or {}
             say("  %s：锁定%s，%s 个家宽候选" % (group.get("name"), lock.get("country_label", "?"), lock.get("candidates", "?")))
         for name, status in idle.items():
-            reason = {"no_residential": "这个国家没有家宽节点，不切换", "unknown_country": "认不出节点的国家",
-                      "paused": "选的是另一个分组，暂停"}.get(status.get("status"), "未接管")
+            reason = {"no_residential": "无家宽节点，不接管切换", "unknown_country": "国家未识别",
+                      "paused": "当前选择另一个分组，暂停接管"}.get(status.get("status"), "未接管")
             say("  %s：%s" % (name, reason))
         if not groups and not idle:
             say("  Clash 里没有直接选中节点的分组，稳航暂时没有可接管的线路。")

@@ -81,7 +81,7 @@ class RouterStartTests(unittest.TestCase):
         self.state["updated_at"] = self.now
         self.state["last_cycle_started_at"] = self.now
         service = router.build_status_snapshots(self.state, {}, [], now=self.now)["legacy"]["service"]
-        self.assertEqual((service["state_code"], service["state_title"]), ("boot_recovery", "Mac 刚开机"))
+        self.assertEqual((service["state_code"], service["state_title"]), ("boot_recovery", "刚开机启动"))
 
     def test_sleep_while_stopped_is_still_a_resume(self):
         result = self.start({"boot": self.now - 86400, "sleep": self.now - 60, "wake": self.now - 5})
