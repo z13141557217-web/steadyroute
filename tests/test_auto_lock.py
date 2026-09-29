@@ -67,7 +67,6 @@ class ModuleTests(unittest.TestCase):
         proxies["hidden"] = {"type": "Selector", "now": US_RES[0], "all": US_RES, "hidden": True}
         self.assertEqual(auto_lock.managed_groups(proxies), [GROUP, AI_GROUP])
         self.assertEqual(auto_lock.managed_groups(proxies, exclude=[AI_GROUP]), [GROUP])
-        self.assertEqual(auto_lock.unsupported_groups(proxies), ["♻️ 自动选择"])
 
     def test_locks_to_current_country_with_residential_candidates_only(self):
         policies, statuses, events = self.build(friend_proxies())
@@ -276,6 +275,7 @@ class RouterTests(unittest.TestCase):
         self.cycle()
         self.assertEqual((router.POLICIES, self.net.puts), ([], []))
         self.assertEqual(router.AUTO_LOCK_STATUS[GROUP]["status"], "paused")
+        self.assertTrue(router.AUTO_LOCK_STATUS[GROUP]["current_is_auto_group"])
         self.assertEqual(self.state["auto_lock"][GROUP]["country"], "US")
         self.net.proxy_data[GROUP]["now"] = US_RES[1]
         self.cycle()
@@ -324,7 +324,7 @@ class RouterTests(unittest.TestCase):
         legacy = {group["name"]: group for group in snapshots["legacy"]["groups"]}
         self.assertEqual(legacy[GROUP]["region_label"], "美国")
         self.assertEqual(legacy[AI_GROUP]["auto_lock"]["country_label"], "日本")
-        self.assertEqual(snapshots["legacy"]["service"]["auto_lock_unsupported"], ["♻️ 自动选择"])
+        self.assertNotIn("♻️ 自动选择", snapshots["legacy"]["service"]["auto_lock_idle"], "url-test groups are not listed")
 
     def test_fixed_profile_is_untouched(self):
         fixed = cycle_harness.load_router("auto_lock_fixed_router")

@@ -163,7 +163,6 @@ BUSINESS_TEST_URLS = {item["group_name"]: list(item["business_test_urls"]) for i
 # "auto_lock": shared installs; lines are the user's own groups, rebuilt every cycle.
 PROFILE = POLICY_CONFIG.get("profile", "fixed")
 AUTO_LOCK_STATUS = {}   # group -> lock status from the last full cycle (memory only)
-AUTO_LOCK_UNSUPPORTED = []
 
 
 def apply_policies(policies):
@@ -191,7 +190,6 @@ def refresh_auto_lock(state, proxy_data, now):
     auto_lock.prune_nodes(state, proxy_data, now)
     AUTO_LOCK_STATUS.clear()
     AUTO_LOCK_STATUS.update(statuses)
-    AUTO_LOCK_UNSUPPORTED[:] = auto_lock.unsupported_groups(proxy_data, settings.get("exclude_groups", ()))
     for event in events:
         if event["kind"] == "relocked":
             log("%s: user moved to %s; locked to %s (was %s), %d residential candidates" % (
@@ -1071,7 +1069,6 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "timeline_window_seconds": TIMELINE_WINDOW_SECONDS,
             "version": versioned["service"]["version"],
             "profile": PROFILE,
-            "auto_lock_unsupported": list(AUTO_LOCK_UNSUPPORTED),
             # Groups we lock but do not route: no residential node, unknown country, paused.
             "auto_lock_idle": {name: dict(status) for name, status in AUTO_LOCK_STATUS.items()
                                if name not in POLICY_BY_GROUP},

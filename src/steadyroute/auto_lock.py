@@ -64,17 +64,6 @@ def managed_groups(proxy_data, exclude=()):
     return found
 
 
-def unsupported_groups(proxy_data, exclude=()):
-    """url-test / fallback groups the user may expect us to manage but that we cannot switch."""
-    excluded = set(exclude) | SKIP_GROUPS
-    return [
-        name for name, group in (proxy_data or {}).items()
-        if isinstance(group, dict) and name not in excluded and not group.get("hidden")
-        and str(group.get("type") or "").lower() in {"urltest", "fallback", "loadbalance"}
-        and is_node(proxy_data.get(group.get("now")))
-    ]
-
-
 def _policy_id(group_name, country):
     """One registry record per (group, country): a relock starts from a clean candidate set."""
     key = "%s\0%s" % (group_name, country)
@@ -186,8 +175,12 @@ def build_policies(proxy_data, state, now, settings=None):
         group = (proxy_data or {}).get(group_name)
         if group_name in statuses or not isinstance(group, dict):
             continue
+        selected = (proxy_data or {}).get(group.get("now"))
+        kind = str((selected or {}).get("type") or "").replace("-", "").lower()
         statuses[group_name] = {
             "status": "paused", "current": group.get("now"), "country": lock["country"],
             "country_label": regions.label(lock["country"]),
+            # Clash's own speed-test groups pick their node themselves; we say so by name.
+            "current_is_auto_group": kind in {"urltest", "fallback", "loadbalance"},
         }
     return policies, statuses, events

@@ -1026,23 +1026,26 @@ function renderRoutes(d) {
 }
 
 /* Share edition: the user's groups we are not switching, and why. */
-const IDLE = {
-  no_residential: ['没有家宽节点', '这个国家的订阅里没有家宽节点，稳航不切换这一组', 'warn'],
-  unknown_country: ['认不出国家', '当前节点名里看不出国家，换到带国家名的节点后自动锁定', 'warn'],
-  paused: ['已暂停', '这一组现在选的是另一个分组；选回具体节点后恢复', ''],
-};
+/* Only what the user can act on: a country without residential nodes, a node name we
+   cannot place, or a group that is paused because it now points at another group. */
+function idleText(a) {
+  const cur = `「${a.current || ''}」`;
+  if (a.status === 'no_residential') return [`${a.country_label} · ${a.current} — 订阅里没有${a.country_label}家宽节点，稳航不切换这一组`, '没有家宽节点', 'warn'];
+  if (a.status === 'unknown_country') return [`${a.current} — 节点名里看不出国家，换到带国家名的节点后自动锁定`, '认不出国家', 'warn'];
+  if (a.status === 'paused') return [a.current_is_auto_group
+    ? `这一组现在用的是${cur}（Clash 自动测速），稳航不接管；在 Clash 里选回具体节点后恢复`
+    : `这一组现在选的是另一个分组${cur}；在 Clash 里选回具体节点后恢复`, '已暂停', ''];
+  return ['', '未接管', ''];
+}
 function renderIdle(d) {
-  const s = d.service || {};
-  const idle = Object.entries(s.auto_lock_idle || {});
-  const urltest = s.auto_lock_unsupported || [];
+  const idle = Object.entries((d.service || {}).auto_lock_idle || {});
   const box = $('#idle');
-  box.hidden = !idle.length && !urltest.length;
+  box.hidden = !idle.length;
   if (box.hidden) return;
   patch(box, idle.map(([name, a]) => {
-    const [tag, why, cls] = IDLE[a.status] || ['未接管', '', ''];
-    const where = a.country_label ? `${a.country_label} · ` : '';
-    return `<div class="idle-row"><b>${esc(name)}</b><span class="why" title="${esc(why)}">${esc(where)}${esc(a.current || '')} — ${esc(why)}</span><span class="tag ${cls}">${esc(tag)}</span></div>`;
-  }).join('') + urltest.map(name => `<div class="idle-row"><b>${esc(name)}</b><span class="why">自动测速分组由 Clash 自己挑节点，稳航不接管</span><span class="tag">不接管</span></div>`).join(''));
+    const [why, tag, cls] = idleText(a);
+    return `<div class="idle-row"><b>${esc(name)}</b><span class="why" title="${esc(why)}">${esc(why)}</span><span class="tag ${cls}">${esc(tag)}</span></div>`;
+  }).join(''));
 }
 
 /* Latency readout eases between values like an instrument needle. */
