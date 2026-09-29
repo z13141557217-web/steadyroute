@@ -286,7 +286,8 @@ class Installer(object):
         warnings = self.preflight()
         version = read_version(self.source)
         previous = read_version(self.paths.app) if (self.paths.app / "weighted_router.py").exists() else None
-        say("稳航分享版 v%s %s" % (version, "升级（当前 v%s）" % previous if previous else "安装"))
+        action = "安装" if not previous else "重新安装" if previous == version else "升级（当前 v%s）" % previous
+        say("稳航分享版 v%s %s" % (version, action))
         for warning in warnings:
             say("  注意：" + warning)
         if not self.stop_service():
