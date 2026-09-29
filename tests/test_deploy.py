@@ -138,6 +138,8 @@ class DeploymentIntegrationTests(unittest.TestCase):
         (package_root / "src/acceptance_dashboard.html").write_text("acceptance", encoding="utf-8")
         (package_root / "src/candidate_dashboard.html").write_text("candidate acceptance", encoding="utf-8")
         (package_root / "src/node_catalog.py").write_text("CATALOG_LIMIT = 1000\n", encoding="utf-8")
+        (package_root / "src/regions.py").write_text("REGIONS = ()\n", encoding="utf-8")
+        (package_root / "src/auto_lock.py").write_text("SKIP_GROUPS = set()\n", encoding="utf-8")
         for page in ("nodes.html", "guide.html", "changelog.html", "pages.css"):
             (package_root / "src" / page).write_text(page, encoding="utf-8")
         (package_root / "src/fixtures/status_contract_v2.json").write_text('{"schema_version": 2}\n', encoding="utf-8")
@@ -204,6 +206,40 @@ class DeploymentIntegrationTests(unittest.TestCase):
         self.assertEqual(metadata["commit"], "old-commit")
         self.assertEqual(len(metadata["sha256"]), 64)
         self.assertIn("bootstrap", self.launchctl_log.read_text())
+
+    def plant_backups(self, count):
+        for index in range(count):
+            old = self.backups / ("2026010%dT0000%02dZ-0.0.%d-old" % (1 + index // 60, index % 60, index))
+            (old / "payload").mkdir(parents=True)
+            (old / "backup.json").write_text("{}", encoding="utf-8")
+        (self.backups / "notes").mkdir(parents=True, exist_ok=True)   # not a backup: never touched
+
+    def test_successful_deploy_keeps_the_newest_ten_backups(self):
+        self.plant_backups(12)
+        self.assertEqual(deploy.main(self.command(apply=True)), 0)
+        kept = sorted(path.name for path in self.backups.iterdir() if (path / "backup.json").is_file())
+        self.assertEqual(len(kept), 10)
+        self.assertEqual(deploy.validate_backup(deploy.newest_backup(self.backups))["version"], "0.1.0",
+                         "the backup of the version just replaced is kept")
+        self.assertNotIn("20260101T000000Z-0.0.0-old", kept)
+        self.assertTrue((self.backups / "notes").is_dir())
+
+    def test_failed_deploy_prunes_nothing(self):
+        self.plant_backups(12)
+        os.environ["STEADYROUTE_TEST_FAIL_AFTER_ACTIVATE"] = "1"
+        try:
+            self.assertEqual(deploy.main(self.command(apply=True)), 1)
+        finally:
+            os.environ.pop("STEADYROUTE_TEST_FAIL_AFTER_ACTIVATE", None)
+        kept = [path for path in self.backups.iterdir() if (path / "backup.json").is_file()]
+        self.assertEqual(len(kept), 13)
+
+    def test_prune_never_removes_a_protected_backup(self):
+        self.plant_backups(12)
+        oldest = sorted(self.backups.iterdir())[0]
+        removed = deploy.prune_backups(self.backups, keep=10, protect=(oldest,))
+        self.assertTrue(oldest.is_dir())
+        self.assertEqual(len(removed), 1)
 
     def test_failure_after_atomic_activation_restores_previous_complete_version(self):
         os.environ["STEADYROUTE_TEST_FAIL_AFTER_ACTIVATE"] = "1"

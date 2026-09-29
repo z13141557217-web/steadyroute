@@ -46,6 +46,29 @@ class FastFailoverCycleTests(unittest.TestCase):
         self.assertEqual(self.state["groups"][TW_GROUP]["last_confirm"]["verdict"], "confirmed")
         self.assert_never_selected_builtin()
 
+    def test_dashboard_shows_the_new_node_right_after_a_fast_failover(self):
+        import copy
+        published = []
+        original_api = self.net.api
+
+        def api(method, path, payload=None, timeout=10):
+            result = original_api(method, path, payload, timeout)
+            return copy.deepcopy(result) if method == "GET" and path == "/proxies" else result
+
+        self.net.api = api
+        self.net.run_cycle(self.state)
+        router.RUNTIME["last_tick_wall"] = None
+        self.net.down_nodes.add(self.current)
+        with mock.patch.object(router, "update_dashboard_cache", side_effect=published.append), \
+                mock.patch.object(router, "load_state", return_value=self.state), \
+                mock.patch.object(router, "save_state"), mock.patch.object(router, "log"), \
+                mock.patch.object(router, "api_request", side_effect=api), \
+                mock.patch.object(router, "probe_url", side_effect=self.net.probe):
+            self.assertEqual(router.run_fast_tick(dry_run=False), "failover")
+        legacy = {group["name"]: group for group in published[-1]["legacy"]["groups"]}
+        self.assertEqual(legacy[TW_GROUP]["current"], self.backup)
+        self.assertEqual(router.PENDING_SELECTIONS, {})
+
     def test_confirmation_uses_three_consecutive_failures(self):
         self.net.down_nodes.add(self.current)
         self.net.run_cycle(self.state)

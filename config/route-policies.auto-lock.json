@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "mode": "shadow",
+  "profile": "auto_lock",
+  "auto_lock": {
+    "exclude_groups": [],
+    "business_test_urls": [
+      "https://www.gstatic.com/generate_204",
+      "https://chatgpt.com/cdn-cgi/trace",
+      "https://claude.ai/cdn-cgi/trace"
+    ]
+  },
+  "policies": []
+}

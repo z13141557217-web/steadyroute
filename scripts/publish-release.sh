@@ -50,15 +50,27 @@ if [ "$EXPECTED" != "$ACTUAL" ]; then
   exit 1
 fi
 
+# v0.5.0+: the share package for friends goes into the same release.
+ASSETS="$ZIP $ZIP.sha256"
+if [ -f "$WORK/src/scripts/share/build_share.py" ]; then
+  (cd "$WORK/src" && python3 scripts/share/build_share.py --out "$WORK/src/dist" >>"$WORK/build.log" 2>&1) || {
+    tail -30 "$WORK/build.log" >&2
+    echo "分享包构建失败（可能检查到个人信息），未发布" >&2
+    exit 1
+  }
+  ASSETS="$ASSETS $WORK/src/dist/SteadyRoute-share-v$VERSION.zip"
+fi
+
 NEWEST=$(git -C "$PROJECT_DIR" tag -l 'v[0-9]*' --sort=-v:refname | head -n 1)
 if [ "$NEWEST" = "$TAG" ]; then LATEST=--latest; else LATEST=--latest=false; fi
 
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   gh release edit "$TAG" --repo "$REPO" --title "SteadyRoute $TAG" --notes-file "$NOTES" "$LATEST"
-  gh release upload "$TAG" --repo "$REPO" --clobber "$ZIP" "$ZIP.sha256"
+  # shellcheck disable=SC2086  # asset paths have no spaces (mktemp dir)
+  gh release upload "$TAG" --repo "$REPO" --clobber $ASSETS
   echo "已更新 GitHub Release $TAG"
 else
   gh release create "$TAG" --repo "$REPO" --verify-tag --title "SteadyRoute $TAG" \
-    --notes-file "$NOTES" "$LATEST" "$ZIP" "$ZIP.sha256"
+    --notes-file "$NOTES" "$LATEST" $ASSETS
   echo "已发布 GitHub Release $TAG"
 fi

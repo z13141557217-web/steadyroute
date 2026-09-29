@@ -124,3 +124,37 @@ def trend_mb_per_hour(samples, minimum=12, edge=6):
     v0 = sum(v for _t, v in head) / len(head)
     v1 = sum(v for _t, v in tail) / len(tail)
     return round((v1 - v0) / ((t1 - t0) / 3600.0), 3)
+
+
+class _Timeval(ctypes.Structure):
+    # <sys/_types/_timeval.h>: time_t tv_sec; suseconds_t (int32) tv_usec — 16 bytes on 64-bit macOS.
+    _fields_ = [("tv_sec", ctypes.c_long), ("tv_usec", ctypes.c_int32)]
+
+
+_POWER_SYSCTLS = (("boot", b"kern.boottime"), ("sleep", b"kern.sleeptime"), ("wake", b"kern.waketime"))
+
+
+def power_times():
+    """macOS's own record of the last boot, sleep and wake, as unix seconds.
+
+    Returns {"boot": float, "sleep": float|None, "wake": float|None}, or None where the OS
+    does not keep this record (anything but macOS) or it cannot be read. sleep/wake are None
+    when the Mac has not slept since it booted.
+    """
+    if sys.platform != "darwin":
+        return None
+    global _LIBC
+    try:
+        if _LIBC is None:
+            _LIBC = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        times = {}
+        for key, name in _POWER_SYSCTLS:
+            value = _Timeval()
+            size = ctypes.c_size_t(ctypes.sizeof(value))
+            if _LIBC.sysctlbyname(name, ctypes.byref(value), ctypes.byref(size), None, ctypes.c_size_t(0)) != 0:
+                return None
+            seconds = float(value.tv_sec) + float(value.tv_usec) / 1e6
+            times[key] = seconds if seconds > 0 else None
+        return times if times.get("boot") else None
+    except Exception:
+        return None

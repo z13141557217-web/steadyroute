@@ -339,16 +339,18 @@ def configure(log_dir, to_stdout=False, clock=time.time):
 def _write(logger_name, kind, fields):
     now = time.time()
     record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(now)), "unix": int(now), "kind": kind}
-    record.update(fields)
+    for key, value in fields.items():
+        # A field may not overwrite the record's own keys; keep it under a suffixed name.
+        record[key + "_field" if key in ("ts", "unix", "kind") else key] = value
     logging.getLogger(logger_name).info(json.dumps(record, ensure_ascii=False, sort_keys=True))
 
 
-def write_event(kind, **fields):
+def write_event(kind, /, **fields):
     """Append one decision record to events.jsonl (no-op when logging is not configured)."""
     _write(EVENTS_LOGGER_NAME, kind, fields)
 
 
-def write_node_event(kind, **fields):
+def write_node_event(kind, /, **fields):
     """Append one node lifecycle record to node-events.jsonl (kept 30 days, apart from decisions)."""
     _write(NODES_LOGGER_NAME, kind, fields)
 
