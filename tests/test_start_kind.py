@@ -1,6 +1,7 @@
 """v0.5.0: a freshly started process tells a boot, a sleep and a plain service restart apart
 by asking macOS, instead of calling every gap over 60 seconds a sleep."""
 
+import os
 import pathlib
 import sys
 import time
@@ -98,6 +99,10 @@ class RealMacTests(unittest.TestCase):
     def test_macos_reports_boot_sleep_and_wake(self):
         power = runtime_metrics.power_times()
         self.assertIsNotNone(power, "sysctl kern.boottime / sleeptime / waketime must be readable")
+        if os.environ.get("GITHUB_ACTIONS"):
+            # Visible as a CI annotation, so the real macOS values can be checked without logs.
+            print("::notice title=macOS power record::boot %.0fs ago, sleep=%s, wake=%s" % (
+                time.time() - power["boot"], power["sleep"], power["wake"]))
         now = time.time()
         self.assertLess(power["boot"], now)
         self.assertGreater(power["boot"], now - 400 * 86400)
