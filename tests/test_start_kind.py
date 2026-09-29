@@ -55,14 +55,18 @@ class RouterStartTests(unittest.TestCase):
 
     def start(self, power):
         with mock.patch.object(router.runtime_metrics, "power_times", return_value=power), \
-                mock.patch.object(router, "log"), mock.patch.object(router.logging_setup, "write_event"):
-            return router.detect_cycle_resume(self.state, self.now)
+                mock.patch.object(router, "log"), \
+                mock.patch.object(router.logging_setup, "write_event", autospec=True) as events:
+            result = router.detect_cycle_resume(self.state, self.now)
+        self.events = [call.args[0] for call in events.call_args_list]
+        return result
 
     def test_service_restart_does_not_pause_decisions_or_count_as_sleep(self):
         result = self.start({"boot": self.now - 86400, "sleep": None, "wake": None})
         self.assertFalse(result)
         self.assertNotIn("last_resume_at", self.state)
         self.assertEqual(self.state["last_start"], {"kind": "restart", "at": self.now, "gap_seconds": 65})
+        self.assertEqual(self.events, ["service_start"])
         snapshots = router.build_status_snapshots(self.state, {}, [], now=self.now)
         service = snapshots["legacy"]["service"]
         self.assertEqual(service["last_start"]["kind"], "restart")
@@ -101,6 +105,18 @@ class RealMacTests(unittest.TestCase):
             if power[key] is not None:
                 self.assertGreaterEqual(power[key], power["boot"] - 1)
                 self.assertLessEqual(power[key], now + 5)
+
+
+class EventFieldTests(unittest.TestCase):
+    def test_an_event_field_may_be_called_kind(self):
+        # write_event's own first parameter is positional-only, so a field named "kind"
+        # can never collide with it again (it did twice in this release).
+        lines = []
+        with mock.patch.object(router.logging_setup.logging.getLogger(router.logging_setup.EVENTS_LOGGER_NAME),
+                               "info", side_effect=lines.append):
+            router.logging_setup.write_event("service_start", kind="restart", gap_seconds=1)
+        record = __import__("json").loads(lines[0])
+        self.assertEqual((record["kind"], record["kind_field"], record["gap_seconds"]), ("service_start", "restart", 1))
 
 
 class OtherPlatformTests(unittest.TestCase):

@@ -2032,7 +2032,7 @@ def detect_cycle_resume(state, cycle_started_at):
                 log("started after the Mac booted (last cycle %d seconds ago); observing one cycle" % gap)
             else:
                 log("service restarted after %d seconds; the Mac stayed awake, decisions continue" % gap)
-            logging_setup.write_event("service_start", kind=kind, gap_seconds=gap)
+            logging_setup.write_event("service_start", start=kind, gap_seconds=gap)
             # After a boot the network may still be coming up: observe one cycle, as after sleep.
             return "boot" if kind == "boot" else False
     else:
