@@ -6,126 +6,134 @@
 <title>设置 · 稳航 SteadyRoute</title>
 <link rel="stylesheet" href="/assets/pages.css">
 <style>
-.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 18px 22px 14px; }
-.card-head h2 { font-family: var(--display); font-size: 16.5px; font-weight: 650; display: flex; align-items: center; gap: 10px; }
-.card-head p { color: var(--ink-3); font-size: 13px; margin-top: 4px; max-width: 70ch; }
-.card-body { padding: 0 22px 20px; display: grid; gap: 14px; }
-.step {
-  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; flex: 0 0 auto;
-  font-family: var(--display); font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
-}
-.hint { font-size: 12px; color: var(--ink-4); line-height: 1.6; }
+/* One column, four text sizes: 22 page title · 15 section / option · 14 body · 12.5 secondary. */
+.narrow { width: min(760px, 100%); }
+main.narrow { gap: 14px; padding-block: 28px 48px; }
+.ph { display: grid; gap: 4px; padding: 0 2px 6px; }
+.ph h1 { font-family: var(--display); font-size: 22px; font-weight: 680; letter-spacing: .01em; }
+.ph p { font-size: 13.5px; color: var(--ink-3); }
+
+.sec { padding: 20px 22px; display: grid; gap: 14px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sec-head h2 { font-family: var(--display); font-size: 15px; font-weight: 650; color: var(--ink); }
+.desc { font-size: 13px; color: var(--ink-3); line-height: 1.6; margin-top: -8px; }
+.state { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
+.state.on { color: var(--good); font-weight: 600; }
+.state.warn { color: var(--warn); font-weight: 600; }
+.banner { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-2); }
+.okline { color: var(--good); }
 .warnline { color: var(--warn); }
 .badline { color: var(--bad); }
-.okline { color: var(--good); }
-.pad { padding: 0 22px 20px; }
+.hint { font-size: 12.5px; color: var(--ink-4); line-height: 1.6; }
+.muted { color: var(--ink-3); }
 
 .btn {
   height: 34px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--hair-2); background: var(--surface);
-  color: var(--ink-2); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  color: var(--ink-2); font: inherit; font-size: 13.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
 }
 .btn:hover { color: var(--ink); border-color: var(--accent-line); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.btn.primary:hover { background: var(--accent-2); color: #fff; }
-.btn.small { height: 28px; padding: 0 10px; font-size: 12px; margin-top: 8px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
+.btn.primary:hover { background: var(--accent-2); color: var(--surface); }
+.btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; margin-top: 8px; }
 .btn:disabled { opacity: .5; cursor: default; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ① the one real choice: a row of country cards, "不使用" first */
-.choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+/* plain lists: migration lines, what is included */
+.list { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--hair); border-radius: 12px; }
+.list li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--hair); font-size: 13.5px; color: var(--ink-2); }
+.list li:first-child { border-top: 0; }
+.list li b { font-weight: 600; color: var(--ink); }
+.list li span:last-child { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }
+
+/* the one real choice: compact options, name left, node count right */
+.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 8px; }
 .choice {
-  position: relative; display: grid; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 12px; cursor: pointer;
-  border: 1px solid var(--hair-2); background: var(--surface-2); color: var(--ink-2); font: inherit; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; height: 58px; padding: 0 14px; text-align: left;
+  border-radius: 11px; border: 1px solid var(--hair-2); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; min-width: 0;
   transition: border-color .15s, background .15s;
 }
-.choice b { font-size: 14px; font-weight: 600; color: var(--ink); }
-.choice small { font-size: 12px; color: var(--ink-3); }
+.choice b { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.choice small { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.choice small.warn { color: var(--warn); }
 .choice:hover:not(:disabled) { border-color: var(--accent-line); }
-.choice[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent-line); }
+.choice[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
 .choice[aria-checked="true"] b { color: var(--accent); }
-.choice[aria-checked="true"]::after {
-  content: "✓"; position: absolute; top: 10px; right: 12px; font-size: 13px; font-weight: 700; color: var(--accent);
-}
-.choice:disabled { cursor: not-allowed; opacity: .55; }
-.result { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; font-size: 13.5px; color: var(--ink-2); padding: 10px 14px; border-radius: 12px; background: var(--sunken); }
+.choice:disabled { cursor: not-allowed; background: transparent; border-style: dashed; }
+.choice:disabled b, .choice:disabled small { color: var(--ink-4); }
+
+.result { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; font-size: 13.5px; color: var(--ink-2); }
 .result:empty { display: none; }
-.result b { font-family: var(--display); font-weight: 650; }
-.result .links { display: inline-flex; gap: 14px; margin-left: auto; font-size: 12.5px; }
+.result .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px var(--good-soft); flex: 0 0 auto; }
+.result .dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.result .links { display: inline-flex; gap: 16px; margin-left: auto; font-size: 13px; }
 .result .links button { border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
 
-details.more > summary { cursor: pointer; font-size: 12.5px; color: var(--ink-3); list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+details.more { border-top: 1px solid var(--hair); padding-top: 12px; }
+details.more > summary { cursor: pointer; font-size: 13px; color: var(--ink-3); list-style: none; display: inline-flex; align-items: center; gap: 6px; }
 details.more > summary::-webkit-details-marker { display: none; }
-details.more > summary::before { content: "›"; display: inline-block; transition: transform .15s; font-size: 14px; }
-details.more[open] > summary::before { transform: rotate(90deg); }
+details.more > summary::after { content: "›"; font-size: 15px; line-height: 1; transition: transform .15s; }
+details.more[open] > summary::after { transform: rotate(90deg); }
 details.more > summary:hover { color: var(--ink); }
-details.more > :not(summary) { margin-top: 10px; }
-.facts { display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); line-height: 1.65; }
+details.more > :not(summary) { margin-top: 12px; }
+.facts { display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); line-height: 1.6; }
 .facts b { color: var(--ink); font-weight: 600; }
 
+.add { display: flex; gap: 8px; }
+.add input {
+  flex: 1 1 auto; min-width: 0; height: 36px; border-radius: 10px; border: 1px solid var(--hair-2); background: var(--surface);
+  padding: 0 12px; font: inherit; font-size: 14px; color: var(--ink);
+}
+.add input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips:empty { display: none; }
 .chip {
-  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 6px 0 11px; border-radius: 9px;
-  border: 1px solid var(--hair-2); background: var(--surface-2); color: var(--ink-2); font-family: var(--mono); font-size: 12.5px;
+  display: inline-flex; align-items: center; gap: 2px; height: 30px; padding: 0 4px 0 11px; border-radius: 8px;
+  background: var(--sunken); color: var(--ink-2); font-size: 13px;
 }
-.chip button { border: 0; background: transparent; color: var(--ink-4); cursor: pointer; width: 22px; height: 22px; border-radius: 6px; font-size: 14px; }
+.chip button { border: 0; background: transparent; color: var(--ink-4); cursor: pointer; width: 24px; height: 24px; border-radius: 6px; font-size: 15px; line-height: 1; }
 .chip button:hover { color: var(--bad); background: var(--bad-soft); }
-.add { display: flex; gap: 8px; flex-wrap: wrap; }
-.add input {
-  flex: 1 1 240px; min-width: 0; height: 36px; border-radius: 10px; border: 1px solid var(--hair-2); background: var(--surface-2);
-  padding: 0 12px; font: inherit; font-size: 13.5px; color: var(--ink);
-}
-.add input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
-.prio { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
-.prio li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 10px 14px; border-top: 1px solid var(--hair); font-size: 13px; }
-.prio li:first-child { border-top: 0; }
-.prio b { font-weight: 600; color: var(--ink); }
-.prio small { display: block; color: var(--ink-4); font-size: 11.5px; margin-top: 1px; }
-.prio .c { font-family: var(--display); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
-
-/* ③ one row per group, a switch on the right */
-.groups { display: grid; border-top: 1px solid var(--hair); }
-.grow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 12px 22px; border-bottom: 1px solid var(--hair); }
+/* groups: full-width rows with a switch */
+.flush { padding-bottom: 6px; }
+.groups { display: grid; margin-inline: -22px; border-top: 1px solid var(--hair); }
+.grow { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 22px; border-bottom: 1px solid var(--hair); }
 .grow:last-child { border-bottom: 0; }
-.grow b { font-weight: 600; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
-.grow small { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+.grow > div { min-width: 0; display: grid; gap: 2px; }
+.grow b { font-size: 14px; font-weight: 550; color: var(--ink); overflow-wrap: anywhere; }
+.grow small { font-size: 12.5px; color: var(--ink-3); }
 .grow small.warn { color: var(--warn); }
-.switch { position: relative; width: 44px; height: 26px; flex: 0 0 auto; }
+.grow.off b { color: var(--ink-3); }
+.empty { font-size: 13px; color: var(--ink-3); padding: 14px 22px; }
+.switch { position: relative; width: 42px; height: 24px; flex: 0 0 auto; }
 .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
 .switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--hair-2); transition: background .15s; pointer-events: none; }
-.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-1); transition: transform .15s; }
+.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-1); transition: transform .15s; }
 .switch input:checked + i { background: var(--accent); }
 .switch input:checked + i::after { transform: translateX(18px); }
 .switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.banner { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-2); }
-.lines { display: grid; gap: 6px; }
-.lines div { font-size: 13.5px; color: var(--ink-2); }
-.lines b { color: var(--ink); font-weight: 600; }
-
-details.advanced > summary { list-style: none; cursor: pointer; padding: 16px 22px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+details.advanced > summary { cursor: pointer; list-style: none; font-size: 13px; color: var(--ink-3); padding: 4px 2px; display: inline-flex; gap: 6px; align-items: center; }
 details.advanced > summary::-webkit-details-marker { display: none; }
-details.advanced > summary span { font-family: var(--display); font-size: 15px; font-weight: 650; color: var(--ink-2); }
-details.advanced > summary span::before { content: "› "; display: inline-block; transition: transform .15s; }
-details.advanced[open] > summary span::before { transform: rotate(90deg); }
-details.advanced > summary small { font-size: 12px; color: var(--ink-4); }
-.row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 18px; align-items: start; font-size: 13px; color: var(--ink-2); line-height: 1.65; }
-.row > span { font-size: 12.5px; color: var(--ink-3); }
-.row > div { min-width: 0; }
+details.advanced > summary::after { content: "›"; font-size: 15px; line-height: 1; transition: transform .15s; }
+details.advanced[open] > summary::after { transform: rotate(90deg); }
+details.advanced > summary:hover { color: var(--ink); }
+details.advanced > .card { margin-top: 10px; }
+.kv { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px 16px; margin: 0; font-size: 13px; line-height: 1.6; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; color: var(--ink-2); min-width: 0; }
 
 .compare { width: 100%; border-collapse: collapse; font-size: 13px; }
-.compare th, .compare td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--hair); vertical-align: top; }
-.compare th { font-size: 11.5px; color: var(--ink-3); font-weight: 500; background: var(--surface-2); }
+.compare th, .compare td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--hair); vertical-align: top; }
+.compare th { font-size: 12px; color: var(--ink-3); font-weight: 500; }
 .compare td:first-child { color: var(--ink-3); white-space: nowrap; }
 .compare td.after { color: var(--ink); font-weight: 600; }
-.compare .arrow { color: var(--ink-4); padding-inline: 0; width: 18px; }
-.plain { font-size: 13.5px; color: var(--ink); line-height: 1.7; }
+.compare .arrow { color: var(--ink-4); padding-inline: 0; width: 16px; }
+.plain { font-size: 14px; color: var(--ink); line-height: 1.7; }
 
 .table-wrap { overflow-x: auto; }
-#check-table table { width: 100%; border-collapse: collapse; min-width: 720px; }
-#check-table th, #check-table td { padding: 7px 12px; text-align: left; vertical-align: top; font-size: 12.5px; }
-#check-table th { font-size: 11.5px; font-weight: 500; color: var(--ink-3); background: var(--surface-2); border-bottom: 1px solid var(--hair); white-space: nowrap; }
+#check-table table { width: 100%; border-collapse: collapse; min-width: 640px; }
+#check-table th, #check-table td { padding: 7px 10px; text-align: left; vertical-align: top; font-size: 12.5px; }
+#check-table th { font-size: 12px; font-weight: 500; color: var(--ink-3); border-bottom: 1px solid var(--hair); white-space: nowrap; }
 #check-table td { border-bottom: 1px solid var(--hair); color: var(--ink-2); }
 .mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 td.res { white-space: nowrap; font-weight: 600; }
@@ -134,15 +142,15 @@ tr.bad td { background: color-mix(in srgb, var(--bad-soft) 60%, transparent); }
 .chain b { color: var(--ink); font-weight: 560; }
 
 dialog {
-  width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--hair-2); border-radius: 18px;
+  width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--hair-2); border-radius: 18px;
   background: var(--surface); color: var(--ink); box-shadow: var(--pop);
 }
 dialog::backdrop { background: rgba(8, 12, 18, .45); }
-.dlg-head { padding: 18px 22px 12px; border-bottom: 1px solid var(--hair); }
+.dlg-head { padding: 20px 22px 4px; }
 .dlg-head h3 { font-family: var(--display); font-size: 17px; font-weight: 650; }
 .dlg-head p { color: var(--ink-3); font-size: 12.5px; margin-top: 4px; }
-.dlg-body { padding: 14px 22px; display: grid; gap: 14px; overflow-y: auto; max-height: calc(100vh - 220px); }
-.dlg-foot { padding: 12px 22px 18px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--hair); }
+.dlg-body { padding: 12px 22px 8px; display: grid; gap: 14px; overflow-y: auto; max-height: calc(100vh - 220px); }
+.dlg-foot { padding: 14px 22px 20px; display: flex; justify-content: flex-end; gap: 8px; }
 .diff { border: 1px solid var(--hair); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; font-size: 13px; }
 .diff h4 { margin: 0; font-size: 13.5px; font-weight: 650; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .diff ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
@@ -157,14 +165,17 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
 .toast.bad { background: var(--bad); color: #fff; }
 
 @media (max-width: 720px) {
-  .card-head, .card-body, .pad { padding-inline: 16px; }
-  .grow, details.advanced > summary { padding-inline: 16px; }
+  .sec { padding: 18px 16px; }
+  .groups { margin-inline: -16px; }
+  .grow, .empty { padding-inline: 16px; }
   .choices { grid-template-columns: 1fr 1fr; }
-  .row { grid-template-columns: 1fr; gap: 2px; }
-  .result .links { margin-left: 0; }
+  .choice { padding: 0 12px; }
+  .result .links { margin-left: 0; width: 100%; }
+  .kv { grid-template-columns: 1fr; gap: 2px; }
+  .kv dd { margin-bottom: 10px; }
   #check-table table { min-width: 0; }
   #check-table thead { display: none; }
-  #check-table tbody tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 12px; border-bottom: 1px solid var(--hair); }
+  #check-table tbody tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--hair); }
   #check-table tbody td { border: 0 !important; padding: 0; }
   #check-table td.svc { display: none; }
   #check-table td.res { grid-column: 2; grid-row: 1; text-align: right; }
@@ -201,100 +212,73 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
   </div>
 </header>
 
-<main class="wrap">
-  <section class="page-head">
-    <div>
-      <p class="eyebrow">可选设置</p>
-      <h1>设置</h1>
-      <p class="lead" id="overview">稳航安装后即自动工作，以下均为可选项。</p>
-    </div>
-    <span class="meta" id="meta">正在读取…</span>
-  </section>
+<main class="wrap narrow">
+  <header class="ph">
+    <h1>设置</h1>
+    <p>以下均为可选，不设置也能正常使用。</p>
+  </header>
 
   <div class="note" role="note" id="clash-note" hidden>
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M10 9v5" stroke-linecap="round"></path><circle cx="10" cy="6.2" r=".9" fill="currentColor" stroke="none"></circle></svg>
     <p id="clash-note-text"></p>
   </div>
 
-  <section class="card banner" id="migration" hidden aria-labelledby="migration-title">
-    <div class="card-head">
-      <div>
-        <h2 id="migration-title">检测到旧版的线路</h2>
-        <p>升级后，这些线路会自动包含订阅中新增的同国家家宽节点；名称不变，其他规则不受影响。</p>
-      </div>
-    </div>
-    <div class="card-body">
-      <div class="lines" id="migration-lines"></div>
-      <div class="actions">
-        <button class="btn primary" type="button" id="migration-accept">升级这些线路</button>
-        <button class="btn" type="button" id="migration-dismiss">保持原样</button>
-      </div>
+  <section class="card sec banner" id="migration" hidden aria-labelledby="migration-title">
+    <div class="sec-head"><h2 id="migration-title">检测到旧版线路</h2></div>
+    <p class="desc">升级后自动包含订阅中新增的同国家家宽节点；名称不变，其他规则不受影响。</p>
+    <ul class="list" id="migration-lines"></ul>
+    <div class="actions">
+      <button class="btn primary" type="button" id="migration-accept">升级这些线路</button>
+      <button class="btn" type="button" id="migration-dismiss">保持原样</button>
     </div>
   </section>
 
-  <section class="card" id="ai-line" aria-labelledby="ai-title">
-    <div class="card-head">
-      <div>
-        <h2 id="ai-title"><span class="step">1</span>AI 服务从哪个国家出口</h2>
-        <p>选择国家后，ChatGPT、Claude、Gemini 等 AI 服务固定从该国家的家宽节点出口，不会跳到其他国家。</p>
+  <section class="card sec" id="ai-line" aria-labelledby="ai-title">
+    <div class="sec-head"><h2 id="ai-title">AI 出口国家</h2><span class="state" id="ai-state"></span></div>
+    <p class="desc">ChatGPT、Claude 等 AI 服务固定从所选国家的家宽节点出口，不会跳到其他国家。</p>
+    <div class="choices" id="choices" role="radiogroup" aria-label="AI 出口国家"></div>
+    <div class="result" id="ai-result" aria-live="polite"></div>
+    <details class="more" id="check">
+      <summary>详情</summary>
+      <div class="facts" id="ai-facts"></div>
+      <div class="table-wrap" id="check-table" hidden>
+        <table>
+          <thead><tr><th>服务</th><th>地址</th><th>命中的规则</th><th>分组 → 出口节点</th><th>结果</th></tr></thead>
+          <tbody id="check-rows"></tbody>
+        </table>
       </div>
-    </div>
-    <div class="card-body">
-      <div class="choices" id="choices" role="radiogroup" aria-label="AI 服务出口国家"></div>
-      <div class="result" id="ai-result" aria-live="polite"></div>
-      <details class="more" id="check">
-        <summary>查看每一项 AI 地址的去向</summary>
-        <div class="table-wrap" id="check-table">
-          <table>
-            <thead><tr><th>服务</th><th>地址</th><th>命中的规则</th><th>分组 → 出口节点</th><th>结果</th></tr></thead>
-            <tbody id="check-rows"></tbody>
-          </table>
-        </div>
-      </details>
-      <details class="more">
-        <summary>技术细节</summary>
-        <div class="facts" id="ai-facts"></div>
-      </details>
-    </div>
+    </details>
   </section>
 
-  <section class="card" id="sites" aria-labelledby="sites-title" hidden>
-    <div class="card-head">
-      <div>
-        <h2 id="sites-title"><span class="step">2</span>还有哪些网站也走 AI 专线</h2>
-        <p>ChatGPT、Claude、Gemini、Grok、Perplexity 等已自动包含，只需添加列表之外的网站。</p>
-      </div>
-    </div>
-    <div class="card-body">
-      <form class="add" id="manual-form">
-        <input id="manual-input" type="text" placeholder="网址或域名，例如 poe.com" autocomplete="off" aria-label="要添加的网站">
-        <button class="btn" type="submit">添加</button>
-      </form>
-      <div class="chips" id="manual" aria-live="polite"></div>
-      <details class="more">
-        <summary>查看已自动包含的内容</summary>
-        <ol class="prio" id="prio"></ol>
-      </details>
-    </div>
+  <section class="card sec" id="sites" aria-labelledby="sites-title" hidden>
+    <div class="sec-head"><h2 id="sites-title">其他网站</h2><span class="state" id="sites-count"></span></div>
+    <p class="desc">主流 AI 服务已自动包含，只需添加列表之外的网站。</p>
+    <form class="add" id="manual-form">
+      <input id="manual-input" type="text" placeholder="网址或域名，例如 poe.com" autocomplete="off" aria-label="要添加的网站">
+      <button class="btn" type="submit">添加</button>
+    </form>
+    <div class="chips" id="manual" aria-live="polite"></div>
+    <details class="more">
+      <summary>已自动包含的内容</summary>
+      <ul class="list" id="prio"></ul>
+    </details>
   </section>
 
-  <section class="card" id="takeover" aria-labelledby="takeover-title">
-    <div class="card-head">
-      <div>
-        <h2 id="takeover-title"><span class="step" id="takeover-step">2</span>哪些分组由稳航自动切换</h2>
-        <p>每个分组锁定当前节点所在的国家，只在该国家的家宽节点之间切换。关闭后，该分组保持 Clash 自身的选择。</p>
-      </div>
-    </div>
-    <div class="groups" id="groups"><p class="muted pad">正在读取分组…</p></div>
+  <section class="card sec flush" id="takeover" aria-labelledby="takeover-title">
+    <div class="sec-head"><h2 id="takeover-title">自动切换的分组</h2><span class="state" id="groups-count"></span></div>
+    <p class="desc">每个分组只在当前节点所在国家的家宽节点之间切换；关闭后保持 Clash 自身的选择。</p>
+    <div class="groups" id="groups"><p class="empty">正在读取分组…</p></div>
   </section>
 
-  <details class="card advanced" id="advanced">
-    <summary><span>高级信息</span><small>规则来源与同步、地理数据库、Clash 网络、写入位置</small></summary>
-    <div class="card-body">
-      <div class="row"><span>规则来源</span><div><div id="source">—</div><button class="btn small" type="button" id="sync-now">立即同步</button></div></div>
-      <div class="row"><span>地理数据库</span><div id="geo">—</div></div>
-      <div class="row"><span>Clash 网络</span><div id="net">—</div></div>
-      <div class="row"><span>写入位置</span><div id="where">—</div></div>
+  <details class="advanced" id="advanced">
+    <summary>高级信息</summary>
+    <div class="card sec">
+      <dl class="kv">
+        <dt>规则来源</dt><dd><div id="source">—</div><button class="btn small" type="button" id="sync-now">立即同步</button></dd>
+        <dt>地理数据库</dt><dd id="geo">—</dd>
+        <dt>Clash 网络</dt><dd id="net">—</dd>
+        <dt>写入位置</dt><dd id="where">—</dd>
+      </dl>
     </div>
   </details>
 </main>
@@ -309,7 +293,7 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
 </dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 
-<footer class="wrap"><span>仅监听本机 127.0.0.1 · 只接受本页发出的修改</span><span id="footer-version"></span></footer>
+<footer class="wrap narrow"><span>仅监听本机 127.0.0.1 · 只接受本页发出的修改</span><span id="footer-version"></span></footer>
 
 <script>
 'use strict';
@@ -385,11 +369,6 @@ const liveRules = () => live() ? snap.applied_rule_count : 0;
 function render() {
   if (!snap) return;
   const s = snap, l = line();
-  $('#meta').textContent = s.applied && s.applied.at ? `上次写入 Clash：${ago(s.applied.at)}` : '';
-
-  const details = s.group_details || [];
-  const switching = details.filter(g => g.status === 'switching').length;
-  $('#overview').textContent = `稳航安装后即自动工作，以下均为可选项。当前自动切换 ${switching} 个分组；AI 专线${live() ? `从${countryLabel(l.country)}家宽出口` : '未启用'}。`;
 
   const notes = [];
   if (s.clash && !s.clash.ok) notes.push(`<b>无法写入 Clash：</b>${esc(s.clash.error)}`);
@@ -403,78 +382,90 @@ function render() {
   $('#migration').hidden = !m;
   if (m) {
     const rows = [];
-    if (m.ai_line) rows.push(`<div><b>${esc(m.ai_line.group_name)}</b>：固定节点列表 → ${esc(countryLabel(m.ai_line.country))}家宽，自动包含新节点；作为 AI 专线</div>`);
-    (m.managed_lines || []).forEach(x => rows.push(`<div><b>${esc(x.group_name)}</b>：固定节点列表 → ${esc(countryLabel(x.country))}家宽，自动包含新节点</div>`));
-    if ((m.legacy_group_names || []).length) rows.push(`<div class="muted">不再需要的旧版辅助分组将移除：${m.legacy_group_names.map(esc).join('、')}</div>`);
+    if (m.ai_line) rows.push(`<li><span><b>${esc(m.ai_line.group_name)}</b> · AI 专线</span><span>固定节点 → ${esc(countryLabel(m.ai_line.country))}家宽</span></li>`);
+    (m.managed_lines || []).forEach(x => rows.push(`<li><span><b>${esc(x.group_name)}</b></span><span>固定节点 → ${esc(countryLabel(x.country))}家宽</span></li>`));
+    if ((m.legacy_group_names || []).length) rows.push(`<li><span>${m.legacy_group_names.map(esc).join('、')}</span><span>旧版辅助分组，移除</span></li>`);
     $('#migration-lines').innerHTML = rows.join('');
   }
 
-  /* ① the choice */
+  /* AI exit country */
   const selected = pending || (l.enabled && l.country ? l.country : 'off');
   const countries = (s.countries || []).slice();
   if (l.country && !countries.some(c => c.code === l.country)) {
     countries.unshift({ code: l.country, label: countryLabel(l.country), residential: 0, ai_ok: !(l.country in (s.unsupported || {})) });
   }
-  const cards = [`<button class="choice" type="button" role="radio" data-country="off" aria-checked="${selected === 'off'}"><b>不使用</b><small>按 Clash 原有规则分流</small></button>`]
-    .concat(countries.map(c => `<button class="choice" type="button" role="radio" data-country="${esc(c.code)}" aria-checked="${selected === c.code}" ${c.ai_ok ? '' : 'disabled'}>
-      <b>${esc(c.label)}</b><small>${!c.ai_ok ? 'ChatGPT / Claude 不支持该地区' : c.residential === 1 ? '1 个家宽节点，无备用' : `${c.residential} 个家宽节点`}</small></button>`));
-  const box = $('#choices'), html = cards.join('');
+  const supported = countries.filter(c => c.ai_ok), unsupported = countries.filter(c => !c.ai_ok);
+  const option = c => {
+    const count = !c.ai_ok ? '不支持' : c.residential === 1 ? '1 个 · 无备用' : `${c.residential} 个家宽`;
+    return `<button class="choice" type="button" role="radio" data-country="${esc(c.code)}" aria-checked="${selected === c.code}" ${c.ai_ok ? '' : 'disabled title="ChatGPT / Claude 不支持该地区"'}>
+      <b>${esc(c.label)}</b><small${c.ai_ok && c.residential === 1 ? ' class="warn"' : ''}>${esc(count)}</small></button>`;
+  };
+  const html = [`<button class="choice" type="button" role="radio" data-country="off" aria-checked="${selected === 'off'}"><b>不使用</b><small>原有规则</small></button>`]
+    .concat(supported.map(option), unsupported.map(option)).join('');
+  const box = $('#choices');
   if (box.__html !== html) { box.innerHTML = html; box.__html = html; }
+
+  const state = $('#ai-state');
+  state.className = live() ? 'state on' : l.enabled ? 'state warn' : 'state';
+  state.textContent = live() ? `${countryLabel(l.country)} · 已生效` : l.enabled ? '尚未写入 Clash' : '未启用';
 
   let result = '';
   if (live()) {
     const label = countryLabel(l.country);
-    const summary = !check ? '正在检查…'
-      : check.error ? `<span class="warnline">检查失败：${esc(check.error)}</span>`
-      : check.ok === check.total ? `<b class="okline">${check.ok} / ${check.total}</b> 项 AI 地址经${esc(label)}家宽出口`
-      : `<b class="warnline">${check.ok} / ${check.total}</b> 项 AI 地址经${esc(label)}家宽出口；其余 ${check.total - check.ok} 项见下方明细`;
-    result = `<span class="okline">✓ 已生效</span><span>${summary}</span><span class="links"><button type="button" id="recheck">重新检查</button><a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">检测出口 IP ↗</a></span>`;
-    if ((s.applied.dropped || []).length) result += `<span class="warnline">当前 Clash 内核缺少数据库，已跳过：${s.applied.dropped.map(x => esc(x.join(','))).join('、')}</span>`;
+    const full = check && !check.error && check.ok === check.total;
+    const text = !check ? '正在核对 AI 地址的去向…'
+      : check.error ? `核对失败：${esc(check.error)}`
+      : `<b>${check.ok} / ${check.total}</b> 项 AI 地址经${esc(label)}家宽出口${full ? '' : '，其余见详情'}`;
+    result = `<span class="dot${full || !check ? '' : ' warn'}"></span><span>${text}</span>
+      <span class="links"><button type="button" id="recheck">重新核对</button><a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">检测出口 IP ↗</a></span>`;
   } else if (l.enabled) {
-    result = '<span class="warnline">设置已保存，尚未写入 Clash；请确认 Clash Verge 正在运行后重新选择国家。</span>';
+    result = '<span class="dot warn"></span><span>设置已保存，尚未写入 Clash；确认 Clash Verge 正在运行后重新选择国家。</span>';
   }
   $('#ai-result').innerHTML = result;
-  $('#check').hidden = !(live() && check && !check.error);
   const managed = s.managed_lines || [];
   $('#ai-facts').innerHTML = [
-    `<div>Clash 中的分组名称：<b>${esc(l.group_name || 'AI 家宽专线')}</b>${live() ? ` · ${liveRules()} 条 AI 规则排在所有规则之前` : ''}</div>`,
-    '<div>专线只包含所选国家的家宽节点，订阅更新后自动跟随；节点全部不可用时拒绝连接，不会改走直连或其他国家。</div>',
-    '<div>专线禁用 UDP，避免 QUIC 绕过专线出口。</div>',
+    `<div>Clash 中的分组：<b>${esc(l.group_name || 'AI 家宽专线')}</b>${live() ? ` · ${liveRules()} 条 AI 规则排在所有规则之前 · ${esc(ago(s.applied.at))}写入` : ''}</div>`,
+    '<div>只包含所选国家的家宽节点，订阅更新后自动跟随；节点全部不可用时拒绝连接，不会改走直连或其他国家；禁用 UDP，避免 QUIC 绕过出口。</div>',
     managed.length ? `<div>其他家宽专线：${managed.map(x => `<b>${esc(x.group_name)}</b>（${esc(countryLabel(x.country))}家宽）`).join('、')}</div>` : '',
+    (s.applied && (s.applied.dropped || []).length) ? `<div class="warnline">当前 Clash 内核缺少数据库，已跳过：${s.applied.dropped.map(x => esc(x.join(','))).join('、')}</div>` : '',
   ].join('');
+  $('#check-table').hidden = !(live() && check && !check.error);
 
-  /* ② sites */
+  /* other sites */
   $('#sites').hidden = !l.enabled;
-  $('#takeover-step').textContent = l.enabled ? '3' : '2';
-  $('#manual').innerHTML = (s.manual || []).map((d, i) => `<span class="chip">${esc(d)}<button type="button" data-remove="${i}" aria-label="移除 ${esc(d)}">×</button></span>`).join('');
+  const manual = s.manual || [];
+  $('#sites-count').textContent = manual.length ? `已添加 ${manual.length} 个` : '';
+  $('#manual').innerHTML = manual.map((d, i) => `<span class="chip">${esc(d)}<button type="button" data-remove="${i}" aria-label="移除 ${esc(d)}">×</button></span>`).join('');
   const counts = s.ai_rules_counts || {};
   $('#prio').innerHTML = [
-    ['ip.net.coffee 整理的 Claude 与 ChatGPT / Codex 规则', '含 Anthropic 的 IP 段；每周自动同步', counts.netcoffee],
-    ['社区维护的 AI 服务合集', 'Gemini、Grok、Perplexity 等', counts.community],
-    ['AI 桌面 App 与命令行', 'Claude、ChatGPT、Codex', counts.processes],
-    ['本页添加的网站', '', (s.manual || []).length],
-  ].map(([t, d, c]) => `<li><span><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ''}</span><span class="c">${esc(c ?? '—')} 条</span></li>`).join('');
+    ['Claude、ChatGPT、Codex', 'ip.net.coffee 整理，含 IP 段，每周同步', counts.netcoffee],
+    ['Gemini、Grok、Perplexity 等', '社区维护的 AI 服务合集', counts.community],
+    ['Claude、ChatGPT 桌面 App 与命令行', '按进程名', counts.processes],
+  ].map(([t, d, c]) => `<li><span><b>${esc(t)}</b> · ${esc(d)}</span><span>${esc(c ?? '—')} 条规则</span></li>`).join('');
 
-  /* ③ groups */
+  /* groups */
+  const details = s.group_details || [];
+  const switching = details.filter(g => g.status === 'switching').length;
+  $('#groups-count').textContent = details.length ? `${switching} / ${details.length} 个开启` : '';
   $('#groups').innerHTML = details.length ? details.map(g => {
     const on = g.status !== 'excluded';
-    const where = g.country_label ? `${g.country_label}家宽` : '';
     const single = g.status === 'switching' && g.residential === 1;
-    const text = single ? `${esc(where)}只有 1 个节点，断线时没有可切换的备用`
-      : g.status === 'switching' ? `${esc(where)} · ${g.residential} 个节点`
-      : g.status === 'excluded' ? `已关闭，保持 Clash 自身的选择${where ? `（当前在${esc(g.country_label)}）` : ''}`
-      : g.status === 'no_residential' ? `<span class="warn">订阅中没有${esc(g.country_label)}家宽节点，暂不切换</span>`
-      : '<span class="warn">当前节点的国家无法识别，暂不切换</span>';
-    return `<div class="grow"><div><b>${esc(g.name)}</b><small${(g.status === 'switching' && !single) || g.status === 'excluded' ? '' : ' class="warn"'}>${text}</small></div>
-      <label class="switch" title="${on ? '自动切换中' : '已关闭'}"><input type="checkbox" data-group="${esc(g.name)}" ${on ? 'checked' : ''} aria-label="${esc(g.name)} 自动切换"><i></i></label></div>`;
-  }).join('') : '<p class="muted pad">Clash 中暂无直接选中节点的分组。</p>';
+    const where = g.country_label ? `${g.country_label}家宽` : '';
+    const text = single ? `${where}只有 1 个节点，断线时没有备用`
+      : g.status === 'switching' ? `${where} · ${g.residential} 个节点`
+      : g.status === 'excluded' ? '已关闭，保持 Clash 自身的选择'
+      : g.status === 'no_residential' ? `订阅中没有${g.country_label}家宽节点，暂不切换`
+      : '当前节点的国家无法识别，暂不切换';
+    const warn = single || g.status === 'no_residential' || g.status === 'unknown';
+    return `<div class="grow${on ? '' : ' off'}"><div><b>${esc(g.name)}</b><small${warn ? ' class="warn"' : ''}>${esc(text)}</small></div>
+      <label class="switch"><input type="checkbox" data-group="${esc(g.name)}" ${on ? 'checked' : ''} aria-label="${esc(g.name)} 自动切换"><i></i></label></div>`;
+  }).join('') : '<p class="empty">Clash 中暂无直接选中节点的分组。</p>';
 
   /* advanced */
   const src = s.rules_source || {};
-  let source = `规则快照 ${esc(src.snapshot_date || '')} · ${src.synced_at ? `上次同步 ${esc(day(src.synced_at))}` : '尚未在线同步'}`;
-  if (src.next_check_at) source += ` · 下次 ${esc(when(src.next_check_at))}`;
+  let source = `快照 ${esc(src.snapshot_date || '')} · ${src.synced_at ? `上次同步 ${esc(day(src.synced_at))}` : '尚未在线同步'}${src.next_check_at ? ` · 下次 ${esc(when(src.next_check_at))}` : ''}`;
   if (src.last_change) source += `<br><span class="muted">${esc(day(src.last_change.at))} 更新：新增 ${src.last_change.added.length} 条，移除 ${src.last_change.removed.length} 条</span>`;
-  if (src.last_error) source += `<br><span class="warnline">上次尝试未成功：${esc(src.last_error)}；继续使用现有规则${src.next_check_at ? `，将于 ${esc(when(src.next_check_at))} 重试` : ''}</span>`;
+  if (src.last_error) source += `<br><span class="warnline">上次同步未成功：${esc(src.last_error)}；继续使用现有规则${src.next_check_at ? `，${esc(when(src.next_check_at))} 重试` : ''}</span>`;
   $('#source').innerHTML = source;
   const geo = s.geo || {};
   $('#geo').innerHTML = (geo.updated_at ? `上次更新 ${esc(day(geo.updated_at))} · 随规则每周更新` : '随规则每周更新') +
@@ -602,7 +593,7 @@ $('#choices').addEventListener('click', e => {
   if (code === 'off') submit({ ai_line: { enabled: false } }, '已关闭 AI 专线，AI 服务按 Clash 原有规则分流。');
   else submit({ ai_line: { enabled: true, country: code } }, r => `已生效：AI 服务从${countryLabel(code)}家宽出口（${r.rule_count} 条规则）。`);
 });
-$('#ai-result').addEventListener('click', e => { if (e.target.id === 'recheck') runCheck(); });
+$('#ai-result').addEventListener('click', e => { if (e.target.id === 'recheck') { check = null; render(); runCheck(); } });
 $('#manual-form').addEventListener('submit', e => {
   e.preventDefault();
   const input = $('#manual-input');
@@ -673,7 +664,7 @@ async function load() {
     snap = d;
     render();
   } catch (error) {
-    $('#meta').textContent = `读取失败：${error.message}`;
+    toast(`读取设置失败：${error.message}`, true);
   }
 }
 
