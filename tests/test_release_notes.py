@@ -13,7 +13,7 @@ class ReleaseNotesTests(unittest.TestCase):
         notes = PROJECT_DIR / "docs" / "releases" / ("v%s.md" % version)
         self.assertTrue(notes.is_file(), "missing %s" % notes.relative_to(PROJECT_DIR))
         text = notes.read_text(encoding="utf-8")
-        self.assertIn("steadyroute-%s.zip" % version, text)
+        self.assertIn("SteadyRoute-v%s.zip" % version, text)
         self.assertIn("/blob/v%s/CHANGELOG.md" % version, text)
 
     def test_notes_only_for_released_versions(self):

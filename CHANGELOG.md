@@ -4,6 +4,57 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-30
+
+### Added
+
+- AI 家宽专线（可选）：设置页选择国家后，稳航把分组与规则写入 Clash Verge 当前订阅的扩展分组 /
+  扩展规则文件（`profiles.yaml` → `option.groups` / `option.rules`，标记块内的 `prepend`），更新订阅
+  不丢失。分组为 select + `include-all-proxies` + 国家与家宽双重筛选，`empty-fallback: REJECT`
+  （默认的 COMPATIBLE 等于直连，因此要求内核 mihomo ≥ v1.19.27，旧内核拒绝写入）；按 net.coffee 开启 UDP 代理；
+  只在节点故障时切换（不做“更快就换”），出口 IP 尽量不变；香港、澳门、俄罗斯、中国大陆不可选。
+  - 规则按优先级排在用户规则之前：① ip.net.coffee 的 Claude（22 条，含 IP 段与 ASN 399358，以及 `GEOSITE,category-ntp`）与
+    ChatGPT / Codex（`GEOSITE,openai` + 12 条）；② `GEOSITE,category-ai-!cn`；③ AI 桌面 App 进程名；
+    ④ 设置页手动添加的域名。net.coffee 的规则原样采用，包括 NTP 走代理出口。
+  - 每次写入：Clash 内核校验（`verge-mihomo -t`）→ 备份 → 写入三个文件 → 重载 → 核对分组 → 任一步失败
+    完整恢复并重新选回原节点。内核缺少数据库时跳过对应可选规则并在设置页注明。
+  - 每周同步 net.coffee 规则（失败后 6 小时重试，连续失败 3 次后每天一次；设置页可立即同步）（数量范围、核心域名、规则类型、单次移除不超过一半等检查，失败保留现有
+    规则）并更新地理数据库；每小时自检，订阅切换或规则丢失时自动重新写入。
+  - 关闭专线或卸载：撤销全部写入内容，恢复被替换的旧分组定义（迁移后只关闭 AI 专线时，同名旧分组即时放回，
+    原有规则引用的分组名始终有效）。
+  - 专线分组使用 ChatGPT / Claude 网页与 API 地址做业务检测。
+- 设置页 `/settings`，单列三块，均为可选：“AI 出口国家”（“不使用”或选一个国家，生效后一行显示核对结果）；
+  “其他网站”（开启专线后显示）；“自动切换的分组”（每个分组一个开关，显示锁定的国家与家宽节点数，只有 1 个节点时提示无备用）。
+  旧版线路以“升级 / 保持原样”提示；规则同步、地理数据库、Clash 网络、写入位置收在“高级信息”。
+  每项操作即时生效；会写入 Clash 的操作先弹窗用一句话说明结果，并列出改动前后对比，技术细节可展开，确认后写入。
+  修改接口只接受本页请求（Host、同源 Origin、`Content-Type: application/json`、`X-SteadyRoute: 1`、64 KB 上限）。
+- AI 分流体检：按 Clash 当前生效的规则推演 net.coffee 列出的 34 项域名与 IP，显示命中规则、分组链、
+  出口节点与国家；只读。
+- 看板：AI 专线分组显示“AI 专线”标记与“检测出口 IP”链接（ip.net.coffee）；各页导航新增“设置”。
+
+### Changed
+
+- 大一统：只有一个产品、一种安装方式。仓库根目录与发布包 `SteadyRoute-v<版本>.zip` 布局相同，
+  新装、升级、换电脑都运行 `install.command`（`scripts/installer.py`）。LaunchAgent 改为
+  `com.steadyroute`，程序目录 `~/Library/Application Support/SteadyRoute`，日志
+  `~/Library/Logs/SteadyRoute`。
+- 安装时先做只读检查并打印结果：Clash 内核版本，以及从旧版升级时“升级这些线路”将写入的分组成员与规则
+  （用本机 Clash 内核校验，不改动 Clash）。新增 `rollback.command`：撤销写入 Clash 的内容并回到升级前的版本。
+- 旧版自动迁移：安装器识别运行 `weighted_router.py` 的旧 LaunchAgent（包括 0.5.0 以前的固定配置版与
+  0.5.0 分享版），带过状态、节点历史和日志，把旧设置转换为新格式；新服务健康后才停用旧自启，失败则
+  重新启动旧版。台湾 / 香港固定线路作为迁移建议出现在设置页，确认后改为同名、自动筛选的家宽专线。
+  迁移后只自动切换旧版原本切换的两个分组，其他分组保持 Clash 自身的选择，需在设置页逐个开启。
+- 固定配置（手写节点列表）退役，所有安装都使用自动接管：Clash 中直接选中节点的分组全部接管，可在
+  设置页排除。按分组的业务检测地址 `auto_lock.group_business_urls`。
+- 仓库去除个人信息：测试、模拟与示例数据中的节点名、分组名和本机路径改为通用名称。
+
+### Removed
+
+- `scripts/deploy.py`、`deploy-local.sh`、`rollback-local.sh`、`build-release.sh`、`status.sh`、
+  `generate-groups.py`、`manage-clash-groups.py`、`verify-clash-discovery.py`、
+  `validate-mihomo-config.py`，`clash_group_deploy.py`，`deploy/macos/*.plist`，
+  `config/clash-verge/groups.yaml`，`config/route-policies.json`，分享版目录 `scripts/share/`。
+
 ## [0.5.0] - 2026-09-29
 
 ### Added

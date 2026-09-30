@@ -54,9 +54,42 @@ def validate_auto_lock_config(config):
     exclude = settings.get("exclude_groups", [])
     if not isinstance(exclude, list) or any(not isinstance(name, str) for name in exclude):
         raise PolicyConfigError("auto_lock.exclude_groups must be a string array")
+    include = settings.get("include_groups")
+    if include is not None and (not isinstance(include, list) or any(not isinstance(name, str) for name in include)):
+        raise PolicyConfigError("auto_lock.include_groups must be a string array")
     urls = settings.get("business_test_urls", [])
     if not isinstance(urls, list) or any(not isinstance(url, str) or not url.startswith("https://") for url in urls):
         raise PolicyConfigError("auto_lock.business_test_urls must be https URLs")
+    per_group = settings.get("group_business_urls", {})
+    if not isinstance(per_group, dict) or any(
+            not isinstance(name, str) or not isinstance(value, list)
+            or any(not isinstance(url, str) or not url.startswith("https://") for url in value)
+            for name, value in per_group.items()):
+        raise PolicyConfigError("auto_lock.group_business_urls must map group names to https URLs")
+    line = config.get("ai_line", {})
+    if not isinstance(line, dict) or not isinstance(line.get("enabled", False), bool):
+        raise PolicyConfigError("ai_line must be an object with a boolean enabled")
+    if line.get("enabled"):
+        if not isinstance(line.get("group_name"), str) or not line["group_name"].strip():
+            raise PolicyConfigError("ai_line.group_name is required when enabled")
+        if line.get("country") not in regions.LABELS or line.get("country") == regions.OTHER_REGION[0]:
+            raise PolicyConfigError("ai_line.country must be a known country")
+    lines = config.get("managed_lines", [])
+    if not isinstance(lines, list) or any(
+            not isinstance(item, dict) or not isinstance(item.get("group_name"), str)
+            or item.get("country") not in regions.LABELS for item in lines):
+        raise PolicyConfigError("managed_lines must list {group_name, country}")
+    for key in ("legacy_group_names",):
+        value = config.get(key, [])
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise PolicyConfigError("%s must be a string array" % key)
+    migration = config.get("migration")
+    if migration is not None and (not isinstance(migration, dict) or not isinstance(
+            migration.get("managed_lines", []), list)):
+        raise PolicyConfigError("migration must be an object")
+    manual = (config.get("ai_rules") or {}).get("manual", [])
+    if not isinstance(manual, list) or any(not isinstance(item, str) for item in manual):
+        raise PolicyConfigError("ai_rules.manual must be a string array")
     policies = config.get("policies", [])
     if not isinstance(policies, list):
         raise PolicyConfigError("policies must be an array")

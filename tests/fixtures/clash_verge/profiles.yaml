@@ -1,0 +1,39 @@
+current: RbX7kQ2mN0aa
+items:
+- uid: RbX7kQ2mN0aa
+  type: remote
+  name: 机场订阅
+  file: RbX7kQ2mN0aa.yaml
+  desc: null
+  url: https://example.invalid/sub?flag=clash
+  selected:
+  - name: 🚀 节点选择
+    now: 🇺🇸 美国 家宽 01
+  extra:
+    upload: 0
+    download: 0
+  updated: 1790409600
+  option:
+    user_agent: clash-verge/v2.4.2
+    with_proxy: false
+    self_proxy: false
+    update_interval: 1440
+    merge: MkX1aa
+    script: SkX1aa
+    rules: rkX1aa
+    proxies: pkX1aa
+    groups: gkX1aa
+- uid: MkX1aa
+  type: merge
+  name: null
+  file: MkX1aa.yaml
+- uid: rkX1aa
+  type: rules
+  file: rkX1aa.yaml
+- uid: gkX1aa
+  type: groups
+  file: gkX1aa.yaml
+- uid: Merge
+  type: merge
+  name: 全局扩展覆写配置
+  file: Merge.yaml

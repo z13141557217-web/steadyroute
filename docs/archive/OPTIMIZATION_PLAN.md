@@ -81,7 +81,7 @@
 ### 4.1 给 Codex 的提示词模板
 
 ```text
-仓库：/Users/nurture/Projects/steadyroute，分支：<分支名>。
+仓库：~/Projects/steadyroute，分支：<分支名>。
 先阅读 README.md、CONTEXT.md、docs/ARCHITECTURE.md、docs/STATE_API.md、docs/TESTING.md，
 以及 docs/plans/OPTIMIZATION_PLAN.md 的第 4 节和任务 <编号>。
 只完成任务 <编号>，不要提前实现后续任务。
@@ -642,11 +642,11 @@ def install_exception_hooks(logger):
 ```
 
 **修改 `weighted_router.py`**：
-1. 常量 `LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR", "/Users/nurture/Library/Logs/Clash-Verge-Stability-Router")`。
+1. 常量 `LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR", "~/Library/Logs/Clash-Verge-Stability-Router")`。
 2. `log(message)` 改为 `logging.getLogger("steadyroute").info(message)`；新增 `log_warning()`、`log_error()`。原来 `could not close connection`、`cycle failed` 改用 warning/error 级别。
 3. `main()` 中：`--daemon` 时 `logging_setup.configure(LOG_DIR)`；否则 `configure(LOG_DIR, to_stdout=True)`（`--once`、`--status` 仍输出到终端）。
 
-**修改 plist**（`deploy/macos/com.nurture.clash-stability-router.plist`）：`StandardOutPath` 改为 `.../bootstrap.log`，`StandardErrorPath` 改为 `.../bootstrap-error.log`。原因：launchd 持有的文件描述符不会跟随轮换，必须让 launchd 和应用写不同的文件。这两个文件只会记录日志系统初始化之前的崩溃，体积可以忽略。
+**修改 plist**（`deploy/macos/<LaunchAgent>.plist`）：`StandardOutPath` 改为 `.../bootstrap.log`，`StandardErrorPath` 改为 `.../bootstrap-error.log`。原因：launchd 持有的文件描述符不会跟随轮换，必须让 launchd 和应用写不同的文件。这两个文件只会记录日志系统初始化之前的崩溃，体积可以忽略。
 
 **测试**（新建 `tests/test_logging_setup.py`）：
 - `test_rotation_keeps_writing_current_path`：`MAIN_LOG_BYTES` 临时改成 2048，写入 10 KB 后 `router.log.1` 存在；再写一条唯一标记，标记出现在 `router.log` 中而不在 `router.log.1` 中。（不要比较 inode：文件系统可能复用被删除文件的 inode，比较结果不稳定。）

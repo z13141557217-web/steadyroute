@@ -8,9 +8,10 @@ from unittest import mock
 PROJECT_DIR = pathlib.Path(__file__).parents[1]
 MODULE_DIR = PROJECT_DIR / "src" / "steadyroute"
 sys.path.insert(0, str(MODULE_DIR))
-SPEC = importlib.util.spec_from_file_location("flow_router", str(MODULE_DIR / "weighted_router.py"))
-router = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(router)
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import cycle_harness  # noqa: E402
+
+router = cycle_harness.load_router("flow_router")
 
 
 def healthy(score):

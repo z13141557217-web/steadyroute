@@ -88,8 +88,8 @@ class SameRegionRuleTests(unittest.TestCase):
         self.assertFalse(router.selection_allowed(TW_GROUP, HK_NODES[0]))
         self.assertFalse(router.selection_allowed(HK_GROUP, TW_NODES[0]))
         self.assertFalse(router.selection_allowed(TW_GROUP, "DIRECT"))
-        self.assertFalse(router.selection_allowed(TW_GROUP, "【3x】中转|香港BGP🇭🇰"))
-        self.assertFalse(router.selection_allowed(TW_GROUP, "【3x】中转|高速新加坡🇸🇬"))
+        self.assertFalse(router.selection_allowed(TW_GROUP, "香港 BGP 01"))
+        self.assertFalse(router.selection_allowed(TW_GROUP, "新加坡 01"))
 
     def test_select_node_refuses_cross_region(self):
         with self.assertRaises(router.RegionGuardError):
@@ -113,7 +113,7 @@ class SameRegionRuleTests(unittest.TestCase):
         self.assertEqual(net.puts, [(TW_GROUP, TW_NODES[1])])
 
     def test_policy_rejects_static_candidate_from_another_region(self):
-        config = router.route_policy.load_policy_config(router.POLICY_CONFIG_PATHS[1])
+        config = router.route_policy.load_policy_config(cycle_harness.FIXED_CONFIG)
         config["policies"][0]["static_candidates"].append(HK_NODES[0])
         with self.assertRaises(router.route_policy.PolicyConfigError):
             router.route_policy.validate_policy_config(config)

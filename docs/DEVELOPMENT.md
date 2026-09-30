@@ -8,6 +8,8 @@
 - 每项工作使用 `feat/...`、`fix/...`、`refactor/...` 或 `docs/...` 分支。
 - 一项功能一个分支、一个明确验收目标。
 - 合并前必须通过 `./scripts/check.sh`。
+- 开发只在仓库中进行；安装目录 `~/Library/Application Support/SteadyRoute` 只由
+  `./install.command` 更新。
 
 当前 GitHub 套餐不会对私有个人仓库强制执行 Ruleset。仓库因此使用本机 `pre-push` 钩子阻止直接推送 `main`，并以功能分支、Pull Request 和 GitHub Actions 作为实际门禁。升级到支持私有仓库规则强制执行的套餐后，再增加远端 Ruleset。
 
@@ -43,11 +45,12 @@ docs(runbook): add local rollback procedure
 - [ ] 需求和验收条件明确
 - [ ] 有自动测试或说明无法自动化的原因
 - [ ] 所有检查通过
-- [ ] 无订阅地址、密码、令牌或生产状态进入 Git
+- [ ] 无订阅地址、密码、令牌、运行状态、真实节点名或本机路径进入 Git
+- [ ] 若改动会写入用户的 Clash 配置：有预览、内核校验、备份、失败回滚和完整撤销，并有测试
 - [ ] 更新变更日志
 - [ ] 更新相关运维/架构文档
 - [ ] 描述发布风险与回滚方法
-- [ ] 生产验证指标明确
+- [ ] 本机 `./install.command` 升级后的验证指标明确
 
 ## 紧急修复
 
@@ -56,6 +59,6 @@ docs(runbook): add local rollback procedure
 1. 保存故障证据。
 2. 最小修复。
 3. 回归验证。
-4. 把生产修复同步回仓库。
+4. 修复只在仓库中进行，经 `./install.command` 安装到本机。
 5. 补测试和变更日志。
 6. 发布 PATCH 版本。

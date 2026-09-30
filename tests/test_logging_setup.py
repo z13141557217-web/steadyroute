@@ -269,14 +269,5 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(os.listdir(self.dir), [])
 
 
-class PlistTests(unittest.TestCase):
-    def test_launchd_stdout_does_not_share_the_rotated_file(self):
-        plist = (PROJECT_DIR / "deploy" / "macos" / "com.nurture.clash-stability-router.plist").read_text()
-        self.assertIn("bootstrap.log", plist)
-        self.assertIn("bootstrap-error.log", plist)
-        self.assertNotIn("/router.log", plist)
-        self.assertNotIn("/router-error.log", plist)
-
-
 if __name__ == "__main__":
     unittest.main()

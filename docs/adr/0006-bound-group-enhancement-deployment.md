@@ -1,5 +1,7 @@
 # ADR-0006：当前订阅的 group enhancement 独立原子部署
 
+> 已被 v0.5.1 取代（见 [ADR-0008](0008-unified-install-and-ai-line.md)）。
+
 状态：Accepted  
 日期：2026-09-20
 

@@ -17,7 +17,7 @@ import auto_lock  # noqa: E402
 import regions  # noqa: E402
 import route_policy  # noqa: E402
 
-EXAMPLE_CONFIG = cycle_harness.PROJECT_DIR / "config" / "route-policies.auto-lock.json"
+EXAMPLE_CONFIG = cycle_harness.PROJECT_DIR / "config" / "route-policies.default.json"
 os.environ["STEADYROUTE_POLICY_CONFIG"] = str(EXAMPLE_CONFIG)
 try:
     router = cycle_harness.load_router("auto_lock_router")
@@ -67,6 +67,8 @@ class ModuleTests(unittest.TestCase):
         proxies["hidden"] = {"type": "Selector", "now": US_RES[0], "all": US_RES, "hidden": True}
         self.assertEqual(auto_lock.managed_groups(proxies), [GROUP, AI_GROUP])
         self.assertEqual(auto_lock.managed_groups(proxies, exclude=[AI_GROUP]), [GROUP])
+        self.assertEqual(auto_lock.managed_groups(proxies, only=[AI_GROUP]), [AI_GROUP])
+        self.assertEqual(auto_lock.managed_groups(proxies, only=[]), [])
 
     def test_locks_to_current_country_with_residential_candidates_only(self):
         policies, statuses, events = self.build(friend_proxies())

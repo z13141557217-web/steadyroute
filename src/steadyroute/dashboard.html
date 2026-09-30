@@ -278,6 +278,8 @@ main.wrap { padding-block: 18px 40px; display: grid; grid-template-columns: minm
   color: var(--accent); background: var(--accent-soft);
 }
 .r-title h2 { font-size: 14.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.ai-badge { flex: 0 0 auto; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 650; line-height: 20px; color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); white-space: nowrap; }
+.r-link { flex: 0 0 auto; font-size: 12px; white-space: nowrap; }
 .decision {
   display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 11px; border-radius: 999px;
   font-size: 12px; font-weight: 600; background: var(--good-soft); color: var(--good); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -497,6 +499,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 .route.w600 .readout .big { font-size: 38px; }
 .route.w600 .r-head, .route.w600 .r-hero, .route.w600 .r-chart, .route.w600 .r-reason { padding-inline: 18px; }
 .route.w600 .r-sub { display: none; }
+.route.w420 .r-link { display: none; }
 .route.w420 .r-hero { grid-template-columns: 1fr; }
 .route.w420 .readout { text-align: left; padding-top: 0; }
 .route.w380 .stats { grid-template-columns: 1fr 1fr; }
@@ -586,6 +589,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
       <a href="/nodes">全部节点</a>
       <a href="/guide">使用说明</a>
       <a href="/changelog">更新日志</a>
+      <a href="/settings">设置</a>
     </nav>
     <div class="range" role="group" aria-label="曲线时间范围">
       <span class="range-label">曲线</span>
@@ -919,6 +923,8 @@ function routeSkeleton(g) {
       <div class="r-title">
         <span class="region-code" data-f="code">${esc(regionCode(g))}</span>
         <h2>${key}</h2>
+        <span class="ai-badge" data-f="ai" hidden title="AI 家宽专线：ChatGPT、Claude 等 AI 服务的流量经此分组">AI 专线</span>
+        <a class="r-link" data-f="ai-check" hidden href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer" title="在 ip.net.coffee 检测 AI 服务看到的出口 IP">检测出口 IP ↗</a>
         <span class="r-sub" data-f="region"></span>
       </div>
       <span class="decision" data-f="decision"></span>
@@ -999,6 +1005,7 @@ function renderRoutes(d) {
 
     if (card.dataset.tone !== tone) card.dataset.tone = tone;
     setText(f('code'), regionCode(g));
+    if (f('ai').hidden === !!g.ai_line) { f('ai').hidden = !g.ai_line; f('ai-check').hidden = !g.ai_line; }
     /* Share edition: the lock is the key fact, so it sits on the current-node line where it
        never gets squeezed out; the fixed profile keeps its short note beside the title. */
     setText(f('region'), g.auto_lock ? '' : lockText(g));
