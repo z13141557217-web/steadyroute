@@ -201,7 +201,7 @@ def refresh_auto_lock(state, proxy_data, now):
     line = POLICY_CONFIG.get("ai_line") or {}
     if line.get("enabled") and line.get("group_name"):
         per_group = dict(settings.get("group_business_urls") or {})
-        per_group.setdefault(line["group_name"], list(ai_line.AI_BUSINESS_URLS))
+        per_group[line["group_name"]] = ai_line.business_urls(per_group.get(line["group_name"]))
         settings["group_business_urls"] = per_group
     policies, statuses, events = auto_lock.build_policies(proxy_data, state, now, settings)
     # A country without residential nodes is shown but never routed.

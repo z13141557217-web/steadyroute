@@ -151,6 +151,14 @@ class RulesTests(unittest.TestCase):
                     ai_rules.check_source("claude", [e for e in bad if ai_rules.valid_entry(*e)] + (
                         [bad[-1]] if not ai_rules.valid_entry(*bad[-1]) else []), previous=good)
 
+    def test_ai_line_tests_web_and_api_even_after_migration(self):
+        migrated = ["https://chatgpt.com/cdn-cgi/trace", "https://claude.ai/cdn-cgi/trace"]
+        urls = ai_line.business_urls(migrated)
+        self.assertEqual(urls, ai_line.AI_BUSINESS_URLS)
+        self.assertIn("https://api.openai.com/cdn-cgi/trace", urls)
+        self.assertIn("https://api.anthropic.com/v1/models", urls)
+        self.assertEqual(ai_line.business_urls(["https://example.com/x"])[-1], "https://example.com/x")
+
     def test_manual_entries_are_cleaned_or_refused(self):
         self.assertEqual(ai_rules.manual_entry(" *.Perplexity.AI/ "), ("DOMAIN-SUFFIX", "perplexity.ai"))
         self.assertEqual(ai_rules.manual_entry("https://www.perplexity.ai/search?q=1"), ("DOMAIN-SUFFIX", "perplexity.ai"))

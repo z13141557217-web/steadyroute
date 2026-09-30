@@ -31,6 +31,14 @@ AI_BUSINESS_URLS = [
     "https://claude.ai/cdn-cgi/trace",
     "https://api.anthropic.com/v1/models",
 ]
+
+
+def business_urls(existing=None):
+    """The AI line always tests web and API separately; URLs kept from an older setup come after."""
+    urls = list(AI_BUSINESS_URLS)
+    return urls + [url for url in existing or [] if url not in urls]
+
+
 EXCLUDE_FILTER = "(?i)" + regions.INFO_RE.pattern
 
 
