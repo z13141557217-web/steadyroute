@@ -144,3 +144,19 @@ python3 scripts/installer.py uninstall --purge
 中运行完整流程，不触碰真实的 `~/Library`、LaunchAgent 或 Clash：全新安装、升级保留数据、
 备份数量上限、启动失败回滚、端口占用、旧版迁移与失败恢复、卸载撤销 Clash 改动，以及从
 发布包安装。
+
+## 回到升级前的版本
+
+```bash
+./rollback.command
+```
+
+等同 `python3 scripts/installer.py rollback`：先撤销稳航写入 Clash 的专线和规则，再停止新服务，把
+`SteadyRoute-backups/legacy/` 中的旧开机自启放回并启动。新版本的文件保留，之后再运行 `install.command`
+即可重新升级。
+
+## 安装时的只读检查
+
+`install.command` 在停止任何服务之前，先读取本机 Clash Verge：内核版本是否不低于 mihomo v1.19.27；
+从旧版升级时，用本机 Clash 内核校验“升级这些线路”将写入的分组成员与 AI 规则，并逐项打印。检查只读，
+不改动 Clash；检查失败只提示，不阻止安装（安装本身不改动 Clash）。

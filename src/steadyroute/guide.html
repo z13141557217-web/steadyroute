@@ -368,7 +368,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <details><summary>看板打不开怎么办？</summary>
             <p>先确认稳航在运行：它由系统的 LaunchAgent 自动启动，开机后自己会跑起来。看板地址是 <code>http://127.0.0.1:17654</code>。运行 <code>python3 scripts/installer.py status</code> 能看到它是否在线；如果没在运行，重新运行一次 <code>install.command</code> 即可。</p></details>
           <details><summary>怎么升级、换电脑或卸载？</summary>
-            <p>升级：下载新版（或在仓库里 <code>git pull</code>）后再运行一次 <code>install.command</code>，状态、历史和设置都会保留，新版启动失败会自动恢复旧版。换电脑：在新 Mac 上装好 Clash Verge，再运行 <code>install.command</code>。卸载：运行 <code>uninstall.command</code>，稳航写进 Clash 的专线和规则会一并撤销。</p></details>
+            <p>升级：下载新版（或在仓库里 <code>git pull</code>）后再运行一次 <code>install.command</code>，状态、历史和设置都会保留，新版启动失败会自动恢复旧版。换电脑：在新 Mac 上装好 Clash Verge，再运行 <code>install.command</code>。想回到升级前的版本：运行 <code>rollback.command</code>。卸载：运行 <code>uninstall.command</code>，稳航写进 Clash 的专线和规则会一并撤销。</p></details>
           <details><summary>一直在测，会不会耗流量、拖慢网速？</summary>
             <p>不会。每次探测只是一个几百字节的小请求，业务检测也只打开 AI 网站很小的检测页。和正常上网相比可以忽略。</p></details>
           <details><summary>“全部节点”里的节点能用来切换吗？</summary>

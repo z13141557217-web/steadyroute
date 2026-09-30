@@ -76,12 +76,12 @@ class PackageTests(unittest.TestCase):
                          "config/route-policies.default.json", "src/steadyroute/weighted_router.py",
                          "src/steadyroute/settings.html", "src/steadyroute/ai_line.py", "src/steadyroute/ai_rules.py"):
             self.assertIn(required, names)
-        self.assertEqual(names, {"VERSION", "install.command", "uninstall.command", "使用说明.txt",
+        self.assertEqual(names, {"VERSION", "install.command", "uninstall.command", "rollback.command", "使用说明.txt",
                                  "scripts/installer.py", "config/route-policies.default.json"}
                          | {"src/steadyroute/" + name for name in installer.APP_FILES})
 
     def test_repository_top_level_commands_are_the_packaged_ones(self):
-        for name in ("install.command", "uninstall.command"):
+        for name in ("install.command", "uninstall.command", "rollback.command"):
             self.assertTrue(os.access(str(ROOT / name), os.X_OK), name)
             self.assertEqual((ROOT / name).read_bytes(), (self.tree / name).read_bytes())
             self.assertIn("scripts/installer.py", (ROOT / name).read_text(encoding="utf-8"))
@@ -102,7 +102,7 @@ class PackageTests(unittest.TestCase):
 
     def test_zip_keeps_command_files_executable(self):
         with zipfile.ZipFile(str(self.archive)) as bundle:
-            for name in ("install.command", "uninstall.command", "scripts/installer.py"):
+            for name in ("install.command", "uninstall.command", "rollback.command", "scripts/installer.py"):
                 info = bundle.getinfo("SteadyRoute-v%s/%s" % (VERSION, name))
                 self.assertTrue((info.external_attr >> 16) & stat.S_IXUSR, name)
 
@@ -356,6 +356,61 @@ class MigrationTests(InstallerBase):
         self.assertIs(installer.convert_legacy_config(current, default), current)
         self.assertEqual(installer.convert_legacy_config({"profile": "fixed"}, default), default)
         self.assertEqual(installer.convert_legacy_config(None, default), default)
+
+
+class ClashCheckTests(InstallerBase):
+    """install.command reports, before touching anything, what upgrading the lines would write."""
+
+    def clash(self):
+        clash_home = self.home / "Library/Application Support" / installer.CLASH_APP_ID
+        shutil.copytree(str(FIXTURES / "clash_verge"), str(clash_home))
+        nodes = ["台湾 HiNet 家宽 01 🇨🇳", "台湾 HiNet 家宽 02 🇨🇳", "台湾 HiNet 家宽 11", "香港 家宽 01", "香港 BGP 01"]
+        version = ["v1.19.31"]
+
+        def controller(method, path, payload=None):
+            if method != "GET":
+                raise AssertionError("the check must only read: %s %s" % (method, path))
+            if path == "/version":
+                return 200, json.dumps({"version": version[0]})
+            if path == "/proxies":
+                data = {name: {"type": "Hysteria2"} for name in nodes}
+                data["AI 台湾家宽线路"] = {"type": "Selector", "now": nodes[0], "all": nodes[:2]}
+                return 200, json.dumps({"proxies": data}, ensure_ascii=False)
+            return 200, "{}"
+        return clash_home, controller, version
+
+    def test_install_reports_the_upgrade_checked_by_the_real_core(self):
+        clash_home, controller, _version = self.clash()
+        before = {p: p.read_bytes() for p in clash_home.rglob("*") if p.is_file()}
+        self.make_legacy()
+        self.install(controller=controller, core="/bin/true")
+        text = "\n".join(self.printed)
+        self.assertIn("检查（只读，不改动 Clash）", text)
+        self.assertIn("Clash 内核 v1.19.31", text)
+        self.assertIn("升级后「AI 台湾家宽线路」：台湾家宽 3 个节点（现在 2 个）", text)
+        self.assertIn("已由本机 Clash 内核校验通过", text)
+        self.assertEqual({p: p.read_bytes() for p in clash_home.rglob("*") if p.is_file()}, before)
+
+    def test_old_core_is_reported_but_does_not_block_the_install(self):
+        _home, controller, version = self.clash()
+        version[0] = "v1.19.20"
+        self.make_legacy()
+        self.install(controller=controller, core="/bin/true")
+        self.assertTrue(any("v1.19.27" in line for line in self.printed), self.printed)
+        self.assertTrue(self.plist.exists())
+
+    def test_rollback_starts_the_old_version_again(self):
+        old_plist = self.make_legacy()
+        self.install()
+        with self.quiet():
+            self.make().back_to_old()
+        self.assertTrue(old_plist.exists())
+        self.assertIn(str(old_plist), self.launchd.loaded)
+        self.assertFalse(self.plist.exists())
+        self.assertFalse(self.launchd.running)
+        self.assertTrue(any("已回到旧版本" in line for line in self.printed))
+        with self.quiet(), self.assertRaises(installer.InstallError):
+            self.make().back_to_old()
 
 
 class UninstallTests(InstallerBase):

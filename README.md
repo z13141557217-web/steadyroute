@@ -208,10 +208,11 @@ flowchart LR
 ```bash
 ./install.command
 python3 scripts/installer.py status
+./rollback.command
 ./uninstall.command
 ```
 
-安装器：检查 macOS、Python 3.9+ 与 Clash Verge → 停止旧服务 → 备份当前版本 → 安装程序、保留设置 → 启动并确认看板回报的是新版本；失败自动恢复上一版（保留最近 3 份备份）。`uninstall.command` 先停止服务，再撤销写入 Clash 的专线和规则，最后删除程序（`--purge` 连日志一起删除）。
+安装器：检查 macOS、Python 3.9+ 与 Clash Verge → 只读检查 Clash（内核版本；从旧版升级时，用本机内核校验“升级这些线路”将写入的分组成员与规则，并打印出来，不改动 Clash）→ 停止旧服务 → 备份当前版本 → 安装程序、保留设置 → 启动并确认看板回报的是新版本；失败自动恢复上一版（保留最近 3 份备份）。`rollback.command` 回到升级前的版本（先撤销写入 Clash 的内容，再启动旧版本）。`uninstall.command` 先停止服务，再撤销写入 Clash 的专线和规则，最后删除程序（`--purge` 连日志一起删除）。
 
 **旧版迁移**：安装器会识别运行 `weighted_router.py` 的旧 LaunchAgent（v0.5.0 及以前的固定台湾 / 香港配置，或 v0.5.0 分享版），带过状态、节点历史和日志，把旧设置转换为新格式；新服务确认正常后才停用旧版自启（plist 移到备份目录），失败则重新启动旧版。旧版的台湾 / 香港线路作为迁移建议出现在设置页，确认后改为同名、自动筛选同国家家宽的专线，Clash 中引用这些分组的规则继续有效。
 

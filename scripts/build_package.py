@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import installer  # noqa: E402
 
-TOP_FILES = ("install.command", "uninstall.command")
+TOP_FILES = ("install.command", "uninstall.command", "rollback.command")
 
 # Anything here means the package would carry someone's machine, subscription or nodes.
 PERSONAL = [
@@ -58,6 +58,7 @@ README = """稳航 SteadyRoute v{version}
 设置：看板右上角“设置”，可开关 AI 家宽专线、添加域名、排除分组、做 AI 分流体检。
 升级 / 换电脑：用新版再运行一次 install.command，状态和设置都会保留。
 卸载：运行 uninstall.command，稳航写进 Clash 的专线和规则会一并去掉。
+回到升级前的版本：运行 rollback.command（先撤销写入 Clash 的内容，再启动旧版本）。
 
 所有数据只在这台 Mac 上，看板只有本机能打开。
 """

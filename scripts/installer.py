@@ -182,7 +182,7 @@ class Installer(object):
 
     def __init__(self, root, home=None, uid=None, system=None, run=run_command, status=fetch_status,
                  port_free=port_is_free, sleep=time.sleep, python=None, sockets=None, clock=time.time,
-                 ask=None, service_factory=None):
+                 ask=None, service_factory=None, controller=None, core=None):
         self.root = pathlib.Path(root)
         self.source = self.root / "src" / "steadyroute"
         self.paths = Paths(home or pathlib.Path.home())
@@ -197,6 +197,8 @@ class Installer(object):
         self.clock = clock
         self.ask = ask
         self.service_factory = service_factory
+        self.controller = controller
+        self.core = core
         self.domain = "gui/%d" % self.uid
 
     # ---------------------------------------------------------------- checks
@@ -311,18 +313,67 @@ class Installer(object):
         shutil.copy2(str(self.root / "VERSION"), str(app / "VERSION"))
         shutil.rmtree(str(app / "__pycache__"), ignore_errors=True)
         config_path = app / "config" / "route-policies.json"
+        config, kind = self.planned_config(legacy)
+        if kind == "kept":
+            return kind
+        config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return kind
+
+    def planned_config(self, legacy):
+        """(settings the new version will run with, "kept" | "migrated" | "default"). Reads only."""
         default = read_json(self.root / DEFAULT_CONFIG)
-        current = read_json(config_path)
+        current = read_json(self.paths.app / "config" / "route-policies.json")
         if is_current_config(current):
-            return "kept"
+            return current, "kept"
         old = None
         for agent in legacy:
             old = read_json(agent["app"] / "config" / "route-policies.json")
             if old:
                 break
         converted = convert_legacy_config(old if old else current, default)
-        config_path.write_text(json.dumps(converted, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        return "migrated" if converted.get("migration") else "default"
+        return converted, ("migrated" if converted.get("migration") else "default")
+
+    # ---------------------------------------------------------------- Clash check (read-only)
+    def clash_check(self, config):
+        """What upgrading the old lines would write, worked out against this Mac's real Clash Verge
+        and checked by its own core, before anything is stopped or copied. Never writes to Clash.
+        Returns lines to print."""
+        socket_path = self.clash_socket()
+        controller = self.controller or (unix_controller(socket_path) if socket_path else None)
+        if controller is None:
+            return ["Clash Verge 没在运行，跳过 Clash 检查；装好后在设置页升级线路时会再检查。"]
+        sys.path.insert(0, str(self.source))
+        try:
+            import importlib
+            settings_service = importlib.import_module("settings_service")
+            clash_profile = importlib.import_module("clash_profile")
+        finally:
+            sys.path.remove(str(self.source))
+        with tempfile.TemporaryDirectory(prefix="steadyroute-check-") as work:
+            path = pathlib.Path(work) / "config" / "route-policies.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            service = settings_service.SettingsService(
+                path, work, controller, clash_home=self.paths.home / "Library" / "Application Support" / CLASH_APP_ID,
+                core=self.core if self.core is not None else clash_profile.find_core())
+            lines = []
+            try:
+                lines.append("Clash 内核 %s，支持专线的全部设置" % service.check_core())
+            except Exception as error:
+                return ["Clash：%s" % error]
+            if not config.get("migration"):
+                return lines
+            try:
+                plan = service.preview({"migration": "accept"})
+            except Exception as error:
+                return lines + ["升级线路的检查没有通过：%s。装好后先不要升级线路，把这段提示发给开发者。" % error]
+            for line in plan.get("lines") or []:
+                lines.append("升级后「%s」：%s家宽 %d 个节点（现在 %d 个）" % (
+                    line["group"], line["country_label"], len(line["after"]), len(line["before"])))
+            lines.append("升级后 AI 规则 %d 条，排在所有规则之前；已由本机 Clash 内核校验通过" % plan.get("rule_count", 0))
+            for item in plan.get("dropped") or []:
+                lines.append("本机内核缺少数据，这条会跳过：%s" % ",".join(item))
+            return lines
 
     def carry_over(self, legacy):
         """State and logs of an older install, when this folder has none yet."""
@@ -376,6 +427,14 @@ class Installer(object):
         say("稳航 SteadyRoute v%s %s" % (version, action))
         for warning in warnings:
             say("  注意：" + warning)
+        planned, _kind = self.planned_config(legacy)
+        say("检查（只读，不改动 Clash）：")
+        try:
+            checked = self.clash_check(planned)
+        except Exception as error:   # the check must never stand in the way of the install itself
+            checked = ["检查没有完成：%s" % error]
+        for line in checked:
+            say("  " + line)
         for agent in legacy:
             self.bootout(agent["plist"])
         self.bootout(self.paths.plist)
@@ -486,6 +545,40 @@ class Installer(object):
             self.paths.app / "config" / "route-policies.json", self.paths.app, unix_controller(socket_path),
             clash_home=self.paths.home / "Library" / "Application Support" / CLASH_APP_ID)
 
+    def back_to_old(self):
+        """Go back to the version this one replaced: stop this service, start the old one again.
+        Clash changes are taken out first; this version's files stay for a later try."""
+        folder = self.paths.backups / "legacy"
+        plists = sorted(folder.glob("*.plist")) if folder.is_dir() else []
+        if not plists:
+            raise InstallError("没有找到被替换的旧版本（%s 为空）。" % folder)
+        self.uninstall_clash_first()
+        self.run(["launchctl", "bootout", self.domain, str(self.paths.plist)])
+        if self.paths.plist.exists():
+            os.replace(str(self.paths.plist), str(folder / ("new-" + self.paths.plist.name)))
+        if not self.wait_port():
+            raise InstallError("端口 %d 没有释放，旧版没有启动。" % PORT)
+        for plist in plists:
+            target = self.paths.agents / plist.name
+            os.replace(str(plist), str(target))
+            self.bootstrap(target)
+        say("已回到旧版本（%s），开机也会自动运行旧版本。" % "、".join(p.stem for p in plists))
+        say("新版本的文件保留在 %s，再次运行 install.command 即可重新升级。" % self.paths.app)
+
+    def uninstall_clash_first(self):
+        applied = read_json(self.paths.app / "clash-applied.json") or {}
+        if applied.get("groups") and not self.service_factory and not self.clash_socket():
+            raise InstallError("Clash Verge 没有运行，无法先撤销稳航写入 Clash 的专线。请打开 Clash Verge 后再运行一次。")
+        self.run(["launchctl", "bootout", self.domain, str(self.paths.plist)])
+        try:
+            removed = self.remove_clash_changes()
+        except InstallError:
+            raise
+        except Exception as error:
+            raise InstallError("撤销 Clash 里的专线失败（%s）。稳航已停止，修复后可再运行一次。" % error)
+        if removed:
+            say("已从 Clash 撤销：%s；原有的分组和规则已恢复。" % "、".join(removed))
+
     def uninstall(self, purge=False):
         applied = read_json(self.paths.app / "clash-applied.json") or {}
         if applied.get("groups") and not self.service_factory and not self.clash_socket():
@@ -551,7 +644,7 @@ def unix_controller(socket_path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="稳航 SteadyRoute 安装器")
-    parser.add_argument("command", choices=("install", "uninstall", "status"))
+    parser.add_argument("command", choices=("install", "uninstall", "status", "rollback"))
     parser.add_argument("--no-open", action="store_true", help="装好后不自动打开看板")
     parser.add_argument("--purge", action="store_true", help="卸载时连日志一起删除")
     args = parser.parse_args(argv)
@@ -570,6 +663,8 @@ def main(argv=None):
             installer.install(open_dashboard=not args.no_open)
         elif args.command == "uninstall":
             installer.uninstall(purge=args.purge)
+        elif args.command == "rollback":
+            installer.back_to_old()
         else:
             return installer.report()
     except InstallError as error:

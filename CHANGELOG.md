@@ -38,6 +38,8 @@
   新装、升级、换电脑都运行 `install.command`（`scripts/installer.py`）。LaunchAgent 改为
   `com.steadyroute`，程序目录 `~/Library/Application Support/SteadyRoute`，日志
   `~/Library/Logs/SteadyRoute`。
+- 安装时先做只读检查并打印结果：Clash 内核版本，以及从旧版升级时“升级这些线路”将写入的分组成员与规则
+  （用本机 Clash 内核校验，不改动 Clash）。新增 `rollback.command`：撤销写入 Clash 的内容并回到升级前的版本。
 - 旧版自动迁移：安装器识别运行 `weighted_router.py` 的旧 LaunchAgent（包括 0.5.0 以前的固定配置版与
   0.5.0 分享版），带过状态、节点历史和日志，把旧设置转换为新格式；新服务健康后才停用旧自启，失败则
   重新启动旧版。台湾 / 香港固定线路作为迁移建议出现在设置页，确认后改为同名、自动筛选的家宽专线。
