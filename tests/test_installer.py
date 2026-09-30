@@ -383,7 +383,7 @@ class ClashCheckTests(InstallerBase):
         clash_home, controller, _version = self.clash()
         before = {p: p.read_bytes() for p in clash_home.rglob("*") if p.is_file()}
         self.make_legacy()
-        self.install(controller=controller, core="/bin/true")
+        self.install(controller=controller, core=shutil.which("true"))
         text = "\n".join(self.printed)
         self.assertIn("检查（只读，不改动 Clash）", text)
         self.assertIn("Clash 内核 v1.19.31", text)
@@ -395,7 +395,7 @@ class ClashCheckTests(InstallerBase):
         _home, controller, version = self.clash()
         version[0] = "v1.19.20"
         self.make_legacy()
-        self.install(controller=controller, core="/bin/true")
+        self.install(controller=controller, core=shutil.which("true"))
         self.assertTrue(any("v1.19.27" in line for line in self.printed), self.printed)
         self.assertTrue(self.plist.exists())
 
