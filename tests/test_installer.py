@@ -302,6 +302,8 @@ class MigrationTests(InstallerBase):
         self.assertEqual(sorted(config["migration"]["legacy_group_names"]),
                          ["SteadyRoute 发现·台湾家宽", "SteadyRoute 发现·香港家宽"])
         self.assertEqual(config["auto_lock"]["group_business_urls"]["香港家宽自动备援"], ["https://grok.com/cdn-cgi/trace"])
+        self.assertEqual(config["auto_lock"]["include_groups"], ["AI 台湾家宽线路", "香港家宽自动备援"],
+                         "an upgrade keeps switching only what the old version switched")
         self.assertFalse(config.get("ai_line", {}).get("enabled"), "nothing goes into Clash before the user confirms")
         self.assertFalse(old_plist.exists())
         self.assertTrue((self.home / "Library/Application Support/SteadyRoute-backups/legacy" / old_plist.name).exists())

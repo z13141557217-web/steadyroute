@@ -3,7 +3,8 @@
 A line is a select group that includes every node of one country whose name marks it as
 residential (same detection as the router, see regions.py). It never falls back to DIRECT:
 Mihomo's default for an empty group is COMPATIBLE, which is a direct connection, so the group
-sets empty-fallback: REJECT. The AI line also disables UDP so QUIC cannot leave through
+sets empty-fallback: REJECT. UDP stays on (net.coffee: "确保你的配置开启了 UDP 代理"), so NTP,
+QUIC and WebRTC leave through the same residential exit instead of being refused or leaking through
 another exit, and gets the AI rules (ai_rules.py) in front of every rule of the user's own.
 
 plan() computes everything without touching a file; apply() / disable() go through
@@ -67,8 +68,6 @@ def group_definition(name, code, ai):
         "filter": line_filter(code), "exclude-filter": EXCLUDE_FILTER, "exclude-type": "direct",
         "empty-fallback": "REJECT", "interrupt-exist-connections": False,
     }
-    if ai:
-        group["disable-udp"] = True
     return group
 
 

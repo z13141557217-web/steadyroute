@@ -245,6 +245,28 @@ class SettingsServiceTests(ServiceBase):
         self.clash.extra_groups = ["AI 家宽专线"]
         self.assertEqual(self.service.apply({"ai_line": {"enabled": True, "country": "JP"}})["action"], "apply")
 
+    def test_upgraded_setup_switches_only_the_groups_turned_on(self):
+        self.config_path.write_text(json.dumps(dict(BASE_CONFIG, auto_lock={
+            "exclude_groups": [], "include_groups": ["AI 台湾家宽线路"],
+            "business_test_urls": ["https://www.gstatic.com/generate_204"]})), encoding="utf-8")
+        rows = {row["name"]: row["status"] for row in self.service.snapshot()["group_details"]}
+        self.assertEqual(rows, {"AI 台湾家宽线路": "switching", "家宽出口": "excluded"})
+        before = self.files()
+        result = self.service.apply({"takeover": {"group": "家宽出口", "on": True}})
+        self.assertFalse(result["clash_change"])
+        self.assertEqual(self.files(), before)
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))["auto_lock"]
+        self.assertEqual((saved["include_groups"], saved["exclude_groups"]), (["AI 台湾家宽线路", "家宽出口"], []))
+        self.service.apply({"takeover": {"group": "AI 台湾家宽线路", "on": False}})
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))["auto_lock"]
+        self.assertEqual((saved["include_groups"], saved["exclude_groups"]), (["家宽出口"], ["AI 台湾家宽线路"]))
+        # turning the AI line on puts its group back in SteadyRoute's hands
+        self.service.apply({"takeover": {"group": "AI 台湾家宽线路", "on": True}})
+        self.clash.extra_groups = ["AI 家宽专线"]
+        self.service.apply({"ai_line": {"enabled": True, "country": "JP"}})
+        saved = json.loads(self.config_path.read_text(encoding="utf-8"))["auto_lock"]
+        self.assertIn("AI 家宽专线", saved["include_groups"])
+
     def test_unknown_setting_is_refused(self):
         with self.assertRaises(clash_profile.ProfileError):
             self.service.apply({"mode": "active"})

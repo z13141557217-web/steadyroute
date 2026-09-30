@@ -417,7 +417,8 @@ function render() {
       : check.error ? `核对失败：${esc(check.error)}`
       : `<b>${check.ok} / ${check.total}</b> 项 AI 地址经${esc(label)}家宽出口${full ? '' : '，其余见详情'}`;
     result = `<span class="dot${full || !check ? '' : ' warn'}"></span><span>${text}</span>
-      <span class="links"><button type="button" id="recheck">重新核对</button><a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">检测出口 IP ↗</a></span>`;
+      <span class="links"><button type="button" id="recheck">重新核对</button><a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">出口 IP ↗</a><a href="https://ip.net.coffee/dns/" target="_blank" rel="noopener noreferrer">DNS 泄露 ↗</a><a href="https://ip.net.coffee/webrtc/" target="_blank" rel="noopener noreferrer">WebRTC ↗</a></span>`;
+    if (s.ipv6) result += '<span class="warnline" style="flex-basis:100%">Clash 已开启 IPv6；ip.net.coffee 建议关闭 IPv6 后再访问 Claude。</span>';
   } else if (l.enabled) {
     result = '<span class="dot warn"></span><span>设置已保存，尚未写入 Clash；确认 Clash Verge 正在运行后重新选择国家。</span>';
   }
@@ -425,7 +426,8 @@ function render() {
   const managed = s.managed_lines || [];
   $('#ai-facts').innerHTML = [
     `<div>Clash 中的分组：<b>${esc(l.group_name || 'AI 家宽专线')}</b>${live() ? ` · ${liveRules()} 条 AI 规则排在所有规则之前 · ${esc(ago(s.applied.at))}写入` : ''}</div>`,
-    '<div>只包含所选国家的家宽节点，订阅更新后自动跟随；节点全部不可用时拒绝连接，不会改走直连或其他国家；禁用 UDP，避免 QUIC 绕过出口。</div>',
+    '<div>只包含所选国家的家宽节点，订阅更新后自动跟随；节点全部不可用时拒绝连接，不会改走直连或其他国家。</div>',
+    '<div>按 ip.net.coffee 的要求：规则排在最前；UDP 与 NTP 时间同步同样经专线出口；只在节点故障时切换，出口 IP 尽量不变。</div>',
     managed.length ? `<div>其他家宽专线：${managed.map(x => `<b>${esc(x.group_name)}</b>（${esc(countryLabel(x.country))}家宽）`).join('、')}</div>` : '',
     (s.applied && (s.applied.dropped || []).length) ? `<div class="warnline">当前 Clash 内核缺少数据库，已跳过：${s.applied.dropped.map(x => esc(x.join(','))).join('、')}</div>` : '',
   ].join('');
@@ -613,8 +615,7 @@ $('#manual').addEventListener('click', e => {
 $('#groups').addEventListener('change', e => {
   const g = e.target.dataset.group;
   if (!g) return;
-  const now = snap.exclude_groups || [];
-  submit({ exclude_groups: e.target.checked ? now.filter(x => x !== g) : now.concat([g]) },
+  submit({ takeover: { group: g, on: e.target.checked } },
          e.target.checked ? `「${g}」已恢复自动切换。` : `「${g}」已关闭自动切换，保持 Clash 自身的选择。`);
 });
 $('#migration-accept').addEventListener('click', () => submit({ migration: 'accept' }, '线路已升级。'));

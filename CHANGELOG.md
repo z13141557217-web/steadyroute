@@ -11,10 +11,11 @@
 - AI 家宽专线（可选）：设置页选择国家后，稳航把分组与规则写入 Clash Verge 当前订阅的扩展分组 /
   扩展规则文件（`profiles.yaml` → `option.groups` / `option.rules`，标记块内的 `prepend`），更新订阅
   不丢失。分组为 select + `include-all-proxies` + 国家与家宽双重筛选，`empty-fallback: REJECT`
-  （默认的 COMPATIBLE 等于直连），`disable-udp`；香港、澳门、俄罗斯、中国大陆不可选。
-  - 规则按优先级排在用户规则之前：① ip.net.coffee 的 Claude（22 条，含 IP 段与 ASN 399358）与
+  （默认的 COMPATIBLE 等于直连，因此要求内核 mihomo ≥ v1.19.27，旧内核拒绝写入）；按 net.coffee 开启 UDP 代理；
+  只在节点故障时切换（不做“更快就换”），出口 IP 尽量不变；香港、澳门、俄罗斯、中国大陆不可选。
+  - 规则按优先级排在用户规则之前：① ip.net.coffee 的 Claude（22 条，含 IP 段与 ASN 399358，以及 `GEOSITE,category-ntp`）与
     ChatGPT / Codex（`GEOSITE,openai` + 12 条）；② `GEOSITE,category-ai-!cn`；③ AI 桌面 App 进程名；
-    ④ 设置页手动添加的域名。不采用 net.coffee 的 NTP 规则（专线禁用 UDP）。
+    ④ 设置页手动添加的域名。net.coffee 的规则原样采用，包括 NTP 走代理出口。
   - 每次写入：Clash 内核校验（`verge-mihomo -t`）→ 备份 → 写入三个文件 → 重载 → 核对分组 → 任一步失败
     完整恢复并重新选回原节点。内核缺少数据库时跳过对应可选规则并在设置页注明。
   - 每周同步 net.coffee 规则（失败后 6 小时重试，连续失败 3 次后每天一次；设置页可立即同步）（数量范围、核心域名、规则类型、单次移除不超过一半等检查，失败保留现有
@@ -40,6 +41,7 @@
 - 旧版自动迁移：安装器识别运行 `weighted_router.py` 的旧 LaunchAgent（包括 0.5.0 以前的固定配置版与
   0.5.0 分享版），带过状态、节点历史和日志，把旧设置转换为新格式；新服务健康后才停用旧自启，失败则
   重新启动旧版。台湾 / 香港固定线路作为迁移建议出现在设置页，确认后改为同名、自动筛选的家宽专线。
+  迁移后只自动切换旧版原本切换的两个分组，其他分组保持 Clash 自身的选择，需在设置页逐个开启。
 - 固定配置（手写节点列表）退役，所有安装都使用自动接管：Clash 中直接选中节点的分组全部接管，可在
   设置页排除。按分组的业务检测地址 `auto_lock.group_business_urls`。
 - 仓库去除个人信息：测试、模拟与示例数据中的节点名、分组名和本机路径改为通用名称。

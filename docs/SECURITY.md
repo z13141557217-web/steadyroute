@@ -42,9 +42,9 @@
 - 选路只在锁定国家的家宽节点之间进行；内置 DIRECT/COMPATIBLE/PASS/REJECT 名称在注册表
   再次过滤，不能成为节点身份。
 - AI 家宽专线使用 `empty-fallback: REJECT`（永不直连）、`exclude-type: direct` 和
-  `disable-udp`（QUIC 不能绕开家宽出口）；香港、澳门、俄罗斯、中国大陆不能作为 AI 专线国家。
+  UDP 代理开启（按 net.coffee，NTP、QUIC、WebRTC 与 TCP 同一出口）；内核低于 mihomo v1.19.27 时拒绝写入；香港、澳门、俄罗斯、中国大陆不能作为 AI 专线国家。
 - AI 规则同步只接受安全的规则类型：DOMAIN 系列、IP-CIDR / IP-CIDR6（IPv4 前缀不短于 /12，
-  IPv6 不短于 /24）、IP-ASN 和 GEOSITE（`cn`、`private`、`category-ntp`、`geolocation-!cn`
+  IPv6 不短于 /24）、IP-ASN 和 GEOSITE（`cn`、`private`、`geolocation-!cn`
   等宽泛分类一律拒绝）。每个来源规则数 3–200、锚点域名必须存在、单次删除不超过一半；
   不满足时保留当前规则。
 

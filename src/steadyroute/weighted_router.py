@@ -204,6 +204,9 @@ def refresh_auto_lock(state, proxy_data, now):
         per_group[line["group_name"]] = ai_line.business_urls(per_group.get(line["group_name"]))
         settings["group_business_urls"] = per_group
     policies, statuses, events = auto_lock.build_policies(proxy_data, state, now, settings)
+    for policy in policies:
+        if line.get("enabled") and policy["group_name"] == line.get("group_name"):
+            policy["failover_only"] = True
     # A country without residential nodes is shown but never routed.
     routed = [policy for policy in policies if policy["static_candidates"]]
     apply_policies(routed)
@@ -2085,6 +2088,15 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         return
 
     active = active_connections(group_name, connections)
+
+    # The AI line keeps its exit IP as long as the node works: no switch just for speed.
+    if (POLICY_BY_GROUP.get(group_name) or {}).get("failover_only"):
+        group_state["better_candidate"] = None
+        group_state["better_streak"] = 0
+        group_state["last_seen"] = current
+        log_routine((group_name, "keep"), "fixed:%s" % current,
+                    "%s: keep %s; the AI line switches only when the node fails" % (group_name, current))
+        return
 
     if now < float(group_state.get("manual_hold_until", 0)):
         group_state["last_seen"] = current

@@ -10,8 +10,9 @@ rule of the user's own):
 3. AI desktop apps and CLIs by process name.
 4. Domains the user added on the settings page.
 
-Not taken from net.coffee: GEOSITE,category-ntp. NTP needs UDP and the AI line disables UDP
-(so QUIC cannot bypass the residential exit); routing NTP there would break time sync.
+Everything on the two net.coffee pages is taken as it is, including the closing
+GEOSITE,category-ntp ("确保所有 NTP 时间同步请求也走代理出口"); the AI line proxies UDP, as the
+page asks, so NTP and QUIC leave through the same residential exit.
 """
 
 import html
@@ -37,6 +38,7 @@ NETCOFFEE_CLAUDE = (
     ("DOMAIN-SUFFIX", "intercom.io"), ("DOMAIN-SUFFIX", "intercomcdn.com"),
     ("DOMAIN", "cdn.usefathom.com"),
     ("IP-CIDR", "160.79.104.0/21"), ("IP-CIDR6", "2607:6bc0::/32"), ("IP-ASN", "399358"),
+    ("GEOSITE", "category-ntp"),
 )
 NETCOFFEE_GPT = (
     ("GEOSITE", "openai"),
@@ -52,10 +54,10 @@ COMMUNITY = (("GEOSITE", "category-ai-!cn"),)
 # to the domain lists: they also download extensions and packages.
 AI_PROCESSES = ("Claude", "Claude Helper", "claude", "ChatGPT", "codex")
 # Rules a Clash core may lack the database for; dropped (and reported) if validation fails.
-OPTIONAL = (("GEOSITE", "category-ai-!cn"), ("IP-ASN", "399358"))
+OPTIONAL = (("GEOSITE", "category-ai-!cn"), ("IP-ASN", "399358"), ("GEOSITE", "category-ntp"))
 
 ALLOWED_TYPES = {"DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "IP-CIDR", "IP-CIDR6", "IP-ASN", "GEOSITE"}
-NEVER_GEOSITE = {"cn", "geolocation-cn", "geolocation-!cn", "category-ntp", "private", "gfw", "tld-!cn"}
+NEVER_GEOSITE = {"cn", "geolocation-cn", "geolocation-!cn", "private", "gfw", "tld-!cn"}
 DOMAIN_RE = re.compile(r"^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$")
 ANCHORS = {
     "claude": {("DOMAIN-SUFFIX", "anthropic.com"), ("DOMAIN-SUFFIX", "claude.ai")},

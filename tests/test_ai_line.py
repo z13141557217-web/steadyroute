@@ -99,7 +99,7 @@ class FilterTests(unittest.TestCase):
     def test_group_never_falls_back_to_direct(self):
         group = ai_line.group_definition("AI 家宽专线", "TW", ai=True)
         self.assertEqual(group["empty-fallback"], "REJECT")   # Mihomo's default COMPATIBLE is a direct connection
-        self.assertTrue(group["disable-udp"])
+        self.assertNotIn("disable-udp", group, "net.coffee: UDP goes through the proxy too")
         self.assertTrue(group["include-all-proxies"])
         self.assertNotIn("disable-udp", ai_line.group_definition("香港家宽", "HK", ai=False))
 
@@ -114,7 +114,7 @@ class FilterTests(unittest.TestCase):
 
 
 class RulesTests(unittest.TestCase):
-    def test_netcoffee_rules_come_first_and_ntp_is_left_out(self):
+    def test_netcoffee_rules_come_first_including_ntp(self):
         lines, breakdown = ai_rules.build("AI 家宽专线", manual=[ai_rules.manual_entry("https://gemini.google.com/app")])
         self.assertEqual(lines[0], "DOMAIN-SUFFIX,anthropic.com,AI 家宽专线")
         self.assertIn("IP-CIDR,160.79.104.0/21,AI 家宽专线,no-resolve", lines)
@@ -122,8 +122,8 @@ class RulesTests(unittest.TestCase):
         self.assertIn("GEOSITE,openai,AI 家宽专线", lines)
         self.assertIn("GEOSITE,category-ai-!cn,AI 家宽专线", lines)
         self.assertEqual(lines[-1], "DOMAIN-SUFFIX,gemini.google.com,AI 家宽专线")
-        self.assertFalse(any("ntp" in line for line in lines))
-        self.assertEqual([b["count"] for b in breakdown], [22, 13, 1, len(ai_rules.AI_PROCESSES), 1])
+        self.assertEqual(lines[lines.index("IP-ASN,399358,AI 家宽专线,no-resolve") + 1], "GEOSITE,category-ntp,AI 家宽专线")
+        self.assertEqual([b["count"] for b in breakdown], [23, 13, 1, len(ai_rules.AI_PROCESSES), 1])
         self.assertLess(lines.index("DOMAIN-SUFFIX,chatgpt.com,AI 家宽专线"),
                         lines.index("GEOSITE,category-ai-!cn,AI 家宽专线"))
 
@@ -139,7 +139,7 @@ class RulesTests(unittest.TestCase):
         entries = ai_rules.parse_page(page)
         self.assertIn(("IP-ASN", "399358"), entries)
         self.assertIn(("DOMAIN-SUFFIX", "chatgpt.com"), entries)
-        self.assertNotIn(("GEOSITE", "category-ntp"), entries)
+        self.assertIn(("GEOSITE", "category-ntp"), entries)
 
     def test_unsafe_sync_is_refused(self):
         good = list(ai_rules.NETCOFFEE_CLAUDE)

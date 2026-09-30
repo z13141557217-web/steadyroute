@@ -166,6 +166,10 @@ def convert_legacy_config(old, default):
         else:
             lines.append({"group_name": name, "country": region})
     config.setdefault("auto_lock", {})["group_business_urls"] = per_group
+    # Conservative on upgrade: SteadyRoute keeps switching exactly the groups it switched before;
+    # every other group stays with Clash's own choice until the user turns it on in settings.
+    config["auto_lock"]["include_groups"] = [name for name in
+                                             ([ai["group_name"]] if ai else []) + [line["group_name"] for line in lines]]
     config["migration"] = {
         "from": "fixed", "at": int(time.time()),
         "ai_line": ai, "managed_lines": lines, "legacy_group_names": legacy,

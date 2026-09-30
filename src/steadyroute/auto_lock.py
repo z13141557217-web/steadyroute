@@ -43,7 +43,7 @@ def is_node(proxy):
     return bool(kind) and kind not in NON_NODE_TYPES
 
 
-def managed_groups(proxy_data, exclude=()):
+def managed_groups(proxy_data, exclude=(), only=None):
     """Select groups that currently point straight at a node, in subscription order.
 
     Skips GLOBAL, hidden groups, url-test / fallback groups (Clash picks their node itself),
@@ -51,9 +51,12 @@ def managed_groups(proxy_data, exclude=()):
     inner group's node is enough).
     """
     excluded = set(exclude) | SKIP_GROUPS
+    only = None if only is None else set(only)   # an upgraded older setup: just the groups turned on
     found = []
     for name, group in (proxy_data or {}).items():
         if not isinstance(name, str) or name in excluded or not isinstance(group, dict):
+            continue
+        if only is not None and name not in only:
             continue
         if str(group.get("type") or "").lower() != "selector" or group.get("hidden"):
             continue
@@ -121,7 +124,7 @@ def build_policies(proxy_data, state, now, settings=None):
     locks = state.setdefault("auto_lock", {})
     groups_state = state.get("groups", {})
     policies, statuses, events = [], {}, []
-    for group_name in managed_groups(proxy_data, settings.get("exclude_groups", ())):
+    for group_name in managed_groups(proxy_data, settings.get("exclude_groups", ()), settings.get("include_groups")):
         group = proxy_data[group_name]
         current = group.get("now")
         router_choice = (groups_state.get(group_name) or {}).get("last_router_selection")

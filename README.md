@@ -173,7 +173,7 @@ flowchart LR
 看板包括：
 
 - **顶部状态面板**：动态稳航图标（正常为蓝色，需留意为橙色，故障为红色）、各线路的实时延迟、24 小时切换次数（故障 / 回优）、内存当前值与峰值、累计检测轮数。
-- **线路卡片**（每行两张）：锁定国家、当前节点、热备、平均延迟、近 24 小时可用率、抖动、综合评分、活跃连接；AI 专线带“AI 专线”标记与“检测出口 IP”链接。未接管的分组单独列出原因。
+- **线路卡片**（每行两张）：锁定国家、当前节点、热备、平均延迟、近 24 小时可用率、抖动、综合评分、活跃连接；AI 专线带“AI 专线”标记与“检测出口 IP”链接；设置页另有网站建议的 DNS 泄露、WebRTC 检测链接。未接管的分组单独列出原因。
 - **延迟曲线**：可看 5 / 15 / 30 分钟。
   - 实线是当前节点，虚线是热备。
   - 红色实线标故障切换，绿色虚线标无损回优。
@@ -190,9 +190,9 @@ flowchart LR
 
 可选功能，在设置页 `/settings` 开启。写入 Clash 前列出分组成员与规则差异，确认后才生效。
 
-- **分组**：select 类型，自动包含所选国家的全部家宽节点（订阅更新后自动跟随），排除提示条目；`empty-fallback: REJECT`（Mihomo 默认的 COMPATIBLE 等于直连）；`disable-udp`，避免 QUIC 绕过专线出口。香港、澳门、俄罗斯、中国大陆不在 ChatGPT / Claude 的服务范围内，不可选。
+- **分组**：select 类型，自动包含所选国家的全部家宽节点（订阅更新后自动跟随），排除提示条目；`empty-fallback: REJECT`（Mihomo 默认的 COMPATIBLE 等于直连）；UDP 与 NTP 时间同步同样经专线出口（net.coffee 要求开启 UDP 代理、NTP 走代理出口）；只在节点故障时切换，出口 IP 尽量不变；需要 Clash 内核 mihomo v1.19.27 或更新（`empty-fallback` 从该版本起才生效，旧内核拒绝写入）。香港、澳门、俄罗斯、中国大陆不在 ChatGPT / Claude 的服务范围内，不可选。
 - **规则**（全部排在用户规则之前）：
-  1. [ip.net.coffee](https://ip.net.coffee/claude/) 的 Claude 分流规则（22 条，含 Anthropic IP 段与 ASN 399358）和 ChatGPT / Codex 分流规则（`GEOSITE,openai` + 12 条）。NTP 规则不采用（专线禁用 UDP）。
+  1. [ip.net.coffee](https://ip.net.coffee/claude/) 的 Claude 分流规则（22 条，含 Anthropic IP 段与 ASN 399358，以及网站列在最后的 `GEOSITE,category-ntp`）和 ChatGPT / Codex 分流规则（`GEOSITE,openai` + 12 条），与网站一致，不做删改。
   2. 社区合集 `GEOSITE,category-ai-!cn`（Gemini、Grok、Perplexity 等）。
   3. AI 桌面 App 与命令行（按进程名）。
   4. 设置页手动添加的域名。

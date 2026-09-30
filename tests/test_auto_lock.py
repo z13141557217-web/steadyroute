@@ -67,6 +67,8 @@ class ModuleTests(unittest.TestCase):
         proxies["hidden"] = {"type": "Selector", "now": US_RES[0], "all": US_RES, "hidden": True}
         self.assertEqual(auto_lock.managed_groups(proxies), [GROUP, AI_GROUP])
         self.assertEqual(auto_lock.managed_groups(proxies, exclude=[AI_GROUP]), [GROUP])
+        self.assertEqual(auto_lock.managed_groups(proxies, only=[AI_GROUP]), [AI_GROUP])
+        self.assertEqual(auto_lock.managed_groups(proxies, only=[]), [])
 
     def test_locks_to_current_country_with_residential_candidates_only(self):
         policies, statuses, events = self.build(friend_proxies())

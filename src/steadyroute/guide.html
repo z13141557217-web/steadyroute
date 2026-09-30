@@ -175,7 +175,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
       <section class="card gsec" id="takeover">
         <span class="k">03</span>
         <h2>接管哪些分组</h2>
-        <p>稳航看 Clash Verge 里每个<b>直接选中了某个节点</b>的分组（比如“🚀 节点选择”），按这个节点的国家锁定：选的是美国节点就锁美国，日本节点就锁日本。之后<b>只在这个国家的家宽节点之间切换</b>，铁律照样适用，不会跨国家。不想让稳航管的分组，在<a href="/settings#takeover">设置页</a>关闭它的“自动切换”即可。</p>
+        <p>稳航看 Clash Verge 里每个<b>直接选中了某个节点</b>的分组（比如“🚀 节点选择”），按这个节点的国家锁定：选的是美国节点就锁美国，日本节点就锁日本。之后<b>只在这个国家的家宽节点之间切换</b>，铁律照样适用，不会跨国家。不想让稳航管的分组，在<a href="/settings#takeover">设置页</a>关闭它的“自动切换”即可。从旧版升级时，只有旧版原本切换的两条线路保持开启，其他分组默认关闭，需要时再逐个打开。</p>
         <ul>
           <li><b>家宽怎么认</b>：节点名里带“家宽 / 住宅 / Residential / ISP / HiNet / HKT”等字样。普通机房节点不会被选中。</li>
           <li><b>手动换了国家</b>：在 Clash 里把分组换到别的国家，稳航当作你改主意了，改锁到新国家。看板上会显示“已改锁日本（原美国）”。</li>
@@ -192,7 +192,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <h2>AI 家宽专线（可选）</h2>
         <p>AI 服务会根据出口 IP 的国家和类型做风控。开启后，稳航在 Clash 里建一个只含所选国家家宽节点的分组，并把 AI 服务的规则放在你所有规则的最前面，ChatGPT、Claude 的网页、App、API 和命令行都从这里出口。在<a href="/settings#ai-line">设置页</a>第一项选一个国家即可；写入前会弹出改动前后的对比，确认后才生效。</p>
         <ul>
-          <li><b>不会漏到别处</b>：专线里的节点全部不可用时直接拒绝连接，不会改走直连或其他国家；专线禁用 UDP，避免 QUIC 绕过出口。</li>
+          <li><b>不会漏到别处</b>：专线里的节点全部不可用时直接拒绝连接，不会改走直连或其他国家。按 ip.net.coffee 的要求，UDP 与 NTP 时间同步也从专线出口；专线只在节点故障时切换，不会因为别的节点更快就换，出口 IP 尽量保持不变。</li>
           <li><b>规则从哪来</b>：第一优先级是 <a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">ip.net.coffee</a> 整理的 Claude 与 ChatGPT / Codex 分流规则（含 Anthropic 的 IP 段），其后是社区维护的 AI 服务合集（Gemini、Grok、Perplexity 等）、AI 桌面 App 和命令行，以及你在设置页手动添加的域名。规则每周自动同步；同步失败时继续用现有规则，6 小时后重试（连续失败 3 次后改为每天一次），设置页“高级信息”里也可以立即同步。</li>
           <li><b>写入安全</b>：写入前由 Clash 内核校验并自动备份，任何一步失败都会恢复原配置并选回原来的节点。内容写在 Clash Verge 当前订阅的扩展文件里，更新订阅不会丢失；切换订阅后稳航会在一小时内自动补上。</li>
           <li><b>可以随时撤销</b>：关闭开关或卸载稳航，专线和规则会完整撤销，Clash 恢复原样。</li>

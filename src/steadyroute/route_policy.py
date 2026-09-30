@@ -54,6 +54,9 @@ def validate_auto_lock_config(config):
     exclude = settings.get("exclude_groups", [])
     if not isinstance(exclude, list) or any(not isinstance(name, str) for name in exclude):
         raise PolicyConfigError("auto_lock.exclude_groups must be a string array")
+    include = settings.get("include_groups")
+    if include is not None and (not isinstance(include, list) or any(not isinstance(name, str) for name in include)):
+        raise PolicyConfigError("auto_lock.include_groups must be a string array")
     urls = settings.get("business_test_urls", [])
     if not isinstance(urls, list) or any(not isinstance(url, str) or not url.startswith("https://") for url in urls):
         raise PolicyConfigError("auto_lock.business_test_urls must be https URLs")

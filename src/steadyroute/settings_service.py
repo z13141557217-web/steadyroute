@@ -33,7 +33,7 @@ RETRY = 6 * HOUR
 # empty-fallback (the line refuses connections instead of going direct when no node matches)
 # arrived in mihomo v1.19.27; older cores ignore the key and fall back to COMPATIBLE = DIRECT.
 MIN_CORE = (1, 19, 27)
-EDITABLE = ("exclude_groups", "ai_line", "manual", "migration")
+EDITABLE = ("exclude_groups", "takeover", "ai_line", "manual", "migration")
 
 
 def _atomic_json(path, data):
@@ -64,10 +64,11 @@ def fetch_text(url, timeout=20):
         return response.read(2 * 1024 * 1024).decode("utf-8", "replace")
 
 
-def group_details(proxies, exclude):
-    """The groups SteadyRoute switches (or would, if not excluded), with the country each is locked to."""
+def group_details(proxies, exclude, include=None):
+    """The groups SteadyRoute switches (or could, once turned on), with the country each is locked to."""
     names = auto_lock.managed_groups(proxies)
-    names += [name for name in exclude if name not in names and name in proxies]
+    names += [name for name in list(exclude) + list(include or []) if name not in names and name in proxies
+              and not (proxies.get(name) or {}).get("hidden")]
     rows = []
     for name in names:
         current = (proxies.get(name) or {}).get("now")
@@ -78,7 +79,8 @@ def group_details(proxies, exclude):
         residential = sum(1 for node in members if known and ai_line.is_node(proxies.get(node))
                           and regions.region_of(node)[0] == code and regions.is_residential(node)
                           and not regions.is_notice(node))
-        status = ("excluded" if name in exclude else "unknown" if not known
+        off = name in exclude or (include is not None and name not in include)
+        status = ("excluded" if off else "unknown" if not known
                   else "no_residential" if not residential else "switching")
         rows.append({"name": name, "current": current, "country": code if known else None,
                      "country_label": regions.label(code) if known else None,
@@ -168,8 +170,17 @@ class SettingsService(object):
             config["managed_lines"] = list(suggested.get("managed_lines") or [])
             config["legacy_group_names"] = sorted(set(config.get("legacy_group_names") or []) |
                                                   set(suggested.get("legacy_group_names") or []))
+        settings = config.setdefault("auto_lock", {})
         if "exclude_groups" in changes:
-            config.setdefault("auto_lock", {})["exclude_groups"] = [str(name) for name in changes["exclude_groups"]]
+            settings["exclude_groups"] = [str(name) for name in changes["exclude_groups"]]
+        if "takeover" in changes:
+            change = changes["takeover"] or {}
+            name, on = str(change.get("group") or ""), bool(change.get("on"))
+            if not name:
+                raise clash_profile.ProfileError("缺少分组名称")
+            settings["exclude_groups"] = [g for g in settings.get("exclude_groups") or [] if g != name] + ([] if on else [name])
+            if settings.get("include_groups") is not None:
+                settings["include_groups"] = [g for g in settings["include_groups"] if g != name] + ([name] if on else [])
         if "ai_line" in changes:
             line = dict(config.get("ai_line") or {})
             line.update({key: value for key, value in changes["ai_line"].items()
@@ -185,6 +196,12 @@ class SettingsService(object):
                 if entry[1] not in cleaned:
                     cleaned.append(entry[1])
             config.setdefault("ai_rules", {})["manual"] = cleaned
+        if settings.get("include_groups") is not None:
+            # Lines SteadyRoute keeps in Clash are always its own to switch.
+            line = config.get("ai_line") or {}
+            ours = ([line["group_name"]] if line.get("enabled") and line.get("group_name") else []) + \
+                [item["group_name"] for item in config.get("managed_lines") or []]
+            settings["include_groups"] = settings["include_groups"] + [g for g in ours if g not in settings["include_groups"]]
         route_policy.validate_policy_config(config)
         return config
 
@@ -195,6 +212,7 @@ class SettingsService(object):
         result = {
             "profile": config.get("profile", "fixed"),
             "exclude_groups": (config.get("auto_lock") or {}).get("exclude_groups", []),
+            "include_groups": (config.get("auto_lock") or {}).get("include_groups"),
             "ai_line": config.get("ai_line") or {"enabled": False, "group_name": ai_line.DEFAULT_AI_GROUP},
             "managed_lines": config.get("managed_lines") or [],
             "manual": (config.get("ai_rules") or {}).get("manual", []),
@@ -221,7 +239,8 @@ class SettingsService(object):
             proxies = self.proxies()
             result["countries"] = ai_line.country_choices(proxies)
             result["groups"] = sorted(set(auto_lock.managed_groups(proxies)) | set(result["exclude_groups"]))
-            result["group_details"] = group_details(proxies, result["exclude_groups"])
+            result["group_details"] = group_details(proxies, result["exclude_groups"],
+                                                    (config.get("auto_lock") or {}).get("include_groups"))
             configs = self._get("/configs")
             result["ipv6"] = configs.get("ipv6")
             result["tun"] = (configs.get("tun") or {}).get("enable")

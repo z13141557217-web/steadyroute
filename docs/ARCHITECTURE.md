@@ -116,11 +116,10 @@ exclude-filter: 到期、剩余流量等信息条目
 exclude-type: direct
 empty-fallback: REJECT
 interrupt-exist-connections: false
-disable-udp: true
 ```
 
 `empty-fallback: REJECT` 保证没有可用节点时拒绝而不是直连（Mihomo 空组默认的 COMPATIBLE
-等于直连）。`disable-udp` 防止 QUIC 绕开家宽出口。香港、澳门、俄罗斯和中国大陆不在
+等于直连）。按 net.coffee 开启 UDP 代理（不设 `disable-udp`），NTP 与 QUIC 同样从家宽出口。写入前检查内核版本 ≥ mihomo v1.19.27（`empty-fallback` 从该版本起生效）。AI 专线的策略带 `failover_only`：只在故障时切换，不做性能回优。香港、澳门、俄罗斯和中国大陆不在
 ChatGPT / Claude 的服务地区内，不能作为 AI 专线国家。
 
 ### 规则优先级
@@ -134,7 +133,7 @@ ChatGPT / Claude 的服务地区内，不能作为 AI 专线国家。
 3. `PROCESS-NAME`：`Claude`、`Claude Helper`、`claude`、`ChatGPT`、`codex`。
 4. 设置页手动添加的域名（`DOMAIN-SUFFIX`）。
 
-net.coffee 中的 `GEOSITE,category-ntp` 有意不采用：NTP 走 UDP，而专线关闭了 UDP。
+net.coffee 的规则原样采用，包括最后的 `GEOSITE,category-ntp`（缺数据库时作为可选规则跳过并注明）。
 
 每周同步的安全检查：每个来源 3–200 条规则、锚点域名必须存在、只允许安全的规则类型、单次
 删除不超过一半。任一不满足时继续使用当前规则，并在设置页显示错误。
@@ -220,4 +219,4 @@ HTTP GET 只读取已编码字节，不连接 Mihomo、不扫描连接，也不�
 4. 状态、事件、趋势数据、日志和备份必须有容量上限。
 5. 发现失败不得等价为空集合；只有确认的成功空快照可以移除全部候选。
 6. 安装和升级不修改 Clash；对 Clash 的每次写入都先预览、经内核校验、可完整撤销。
-7. AI 专线永不回落 DIRECT，且不开放 UDP。
+7. AI 专线永不回落 DIRECT（内核版本不满足时拒绝写入）；UDP 与 NTP 与 TCP 同一出口。
