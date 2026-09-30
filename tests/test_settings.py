@@ -150,6 +150,14 @@ class SettingsServiceTests(ServiceBase):
         self.assertIn(("POST", "/configs/geo"), self.clash.calls)
         self.assertTrue(state["geo_updated_at"])
 
+    def test_nothing_in_clash_changes_before_the_ai_line_is_applied(self):
+        self.pages = self.pages_ok()
+        self.clock[0] += 8 * 86400
+        self.service.maintenance()
+        self.assertTrue(self.service.rules_state()["synced_at"])
+        self.assertNotIn(("POST", "/configs/geo"), self.clash.calls)
+        self.assertEqual([call for call in self.clash.calls if call[0] != "GET"], [])
+
     def test_failed_sync_keeps_the_rules_in_use(self):
         self.clock[0] += 8 * 86400
         self.service.maintenance()

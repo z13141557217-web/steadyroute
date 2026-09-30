@@ -343,7 +343,9 @@ class SettingsService(object):
             state.update({"failures": failures,
                           "next_check_at": int(now + (RETRY if failures < 3 else DAY)),
                           "last_error": "%s（%s）" % (str(error)[:200], time.strftime("%Y-%m-%d %H:%M", time.localtime(now)))})
-        if now - state.get("geo_updated_at", 0) >= WEEK:
+        # Only once the user has put the AI line into Clash: the geodata update changes data
+        # every GEOIP / GEOSITE rule of theirs uses, so nothing is refreshed on install alone.
+        if self.applied().get("groups") and now - state.get("geo_updated_at", 0) >= WEEK:
             try:
                 status, body = self.controller("POST", "/configs/geo", {"path": "", "payload": ""})
                 if status in (200, 204):
