@@ -20,12 +20,15 @@ try:
     import ai_rules
     import auto_lock
     import clash_profile
+    import regions
     import route_policy
 except ModuleNotFoundError:  # pragma: no cover
-    from . import ai_check, ai_line, ai_rules, auto_lock, clash_profile, route_policy
+    from . import ai_check, ai_line, ai_rules, auto_lock, clash_profile, regions, route_policy
 
 HOUR = 3600
-WEEK = 7 * 86400
+DAY = 86400
+WEEK = 7 * DAY
+RETRY = 6 * HOUR
 EDITABLE = ("exclude_groups", "ai_line", "manual", "migration")
 
 
@@ -55,6 +58,26 @@ def fetch_text(url, timeout=20):
     request = urllib.request.Request(url, headers={"User-Agent": "SteadyRoute (+https://github.com/)"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read(2 * 1024 * 1024).decode("utf-8", "replace")
+
+
+def group_details(proxies, exclude):
+    """The groups SteadyRoute switches (or would, if not excluded), with the country each is locked to."""
+    names = auto_lock.managed_groups(proxies)
+    names += [name for name in exclude if name not in names and name in proxies]
+    rows = []
+    for name in names:
+        current = (proxies.get(name) or {}).get("now")
+        code = regions.region_of(current)[0] if current and ai_line.is_node(proxies.get(current)) else None
+        known = code and code != regions.OTHER_REGION[0]
+        residential = sum(1 for node, proxy in proxies.items() if known and ai_line.is_node(proxy)
+                          and regions.region_of(node)[0] == code and regions.is_residential(node)
+                          and not regions.is_notice(node))
+        status = ("excluded" if name in exclude else "unknown" if not known
+                  else "no_residential" if not residential else "switching")
+        rows.append({"name": name, "current": current, "country": code if known else None,
+                     "country_label": regions.label(code) if known else None,
+                     "residential": residential, "status": status})
+    return rows
 
 
 class SettingsService(object):
@@ -161,6 +184,8 @@ class SettingsService(object):
             "rules_source": {
                 "name": "ip.net.coffee", "snapshot_date": ai_rules.SNAPSHOT_DATE,
                 "synced_at": rules_state.get("synced_at"), "checked_at": rules_state.get("checked_at"),
+                "next_check_at": self.next_check_at(rules_state) if rules_state.get("checked_at") else None,
+                "failures": rules_state.get("failures") or 0,
                 "last_error": rules_state.get("last_error"), "last_change": rules_state.get("last_change"),
                 "urls": [ai_rules.NETCOFFEE_CLAUDE_URL, ai_rules.NETCOFFEE_GPT_URL],
             },
@@ -177,6 +202,7 @@ class SettingsService(object):
             proxies = self.proxies()
             result["countries"] = ai_line.country_choices(proxies)
             result["groups"] = sorted(set(auto_lock.managed_groups(proxies)) | set(result["exclude_groups"]))
+            result["group_details"] = group_details(proxies, result["exclude_groups"])
             configs = self._get("/configs")
             result["ipv6"] = configs.get("ipv6")
             result["tun"] = (configs.get("tun") or {}).get("enable")
@@ -283,51 +309,85 @@ class SettingsService(object):
         return ai_check.run(rules, proxies, runtime, str(self.target.home), group, line.get("country") if group else None)
 
     # ------------------------------------------------------------ maintenance
+    def next_check_at(self, state):
+        return state.get("next_check_at") or (state.get("checked_at", 0) + WEEK)
+
+    def sync(self, now, state):
+        """One net.coffee sync plus a geodata update when due. Updates `state`; True if the rules changed.
+
+        A week after a good sync; after a failed one, again in 6 hours, and daily once three in a
+        row have failed, so a Mac that was offline at the wrong moment does not wait a week.
+        """
+        changed = False
+        state["checked_at"] = int(now)
+        try:
+            claude = ai_rules.check_source("claude", ai_rules.parse_page(self.fetch(ai_rules.NETCOFFEE_CLAUDE_URL)),
+                                           state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)
+            gpt = ai_rules.check_source("gpt", ai_rules.parse_page(self.fetch(ai_rules.NETCOFFEE_GPT_URL)),
+                                        state.get("gpt") or ai_rules.NETCOFFEE_GPT)
+            gpt = gpt if ("GEOSITE", "openai") in gpt else [("GEOSITE", "openai")] + gpt
+            before = [tuple(i) for i in (state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)] + \
+                     [tuple(i) for i in (state.get("gpt") or ai_rules.NETCOFFEE_GPT)]
+            delta = ai_rules.diff(before, claude + gpt)
+            state.update({"claude": [list(i) for i in claude], "gpt": [list(i) for i in gpt],
+                          "synced_at": int(now), "last_error": None, "failures": 0,
+                          "next_check_at": int(now + WEEK)})
+            if delta["added"] or delta["removed"]:
+                state["last_change"] = {"at": int(now), "added": [list(i) for i in delta["added"]],
+                                        "removed": [list(i) for i in delta["removed"]]}
+                changed = True
+        except Exception as error:   # keep the list in use; show the reason on the page
+            failures = int(state.get("failures") or 0) + 1
+            state.update({"failures": failures,
+                          "next_check_at": int(now + (RETRY if failures < 3 else DAY)),
+                          "last_error": "%s（%s）" % (str(error)[:200], time.strftime("%Y-%m-%d %H:%M", time.localtime(now)))})
+        if now - state.get("geo_updated_at", 0) >= WEEK:
+            try:
+                status, body = self.controller("POST", "/configs/geo", {"path": "", "payload": ""})
+                if status in (200, 204):
+                    state["geo_updated_at"], state["geo_error"] = int(now), None
+                else:
+                    state["geo_error"] = "HTTP %s %s" % (status, str(body)[:120])
+            except Exception as error:
+                state["geo_error"] = str(error)[:200]
+        _atomic_json(self.rules_path, state)
+        return changed
+
+    def reapply(self, config, applied, reason):
+        manager = self.manager(config, applied)
+        with self.lock:
+            _plan, new_applied = manager.apply()
+            _atomic_json(self.applied_path, new_applied)
+        self.log("AI line re-applied (%s)" % reason)
+
+    def sync_now(self):
+        """The settings page's 立即同步: sync at once and write new rules into Clash if they changed."""
+        self.check_writable()
+        now = self.clock()
+        state = self.rules_state()
+        changed = self.sync(now, state)
+        config, applied = self.config(), self.applied()
+        if changed and self._wants_lines(config) and applied.get("groups"):
+            self.reapply(config, applied, "rules updated")
+        state = self.rules_state()
+        return {"ok": not state.get("last_error"), "changed": changed, "error": state.get("last_error"),
+                "last_change": state.get("last_change") if changed else None}
+
     def maintenance(self):
-        """Hourly: self-heal. Weekly: net.coffee sync and geodata update. Never raises."""
+        """Hourly: self-heal, and the net.coffee sync when it is due. Never raises."""
         now = self.clock()
         state = self.rules_state()
         config = self.config()
         applied = self.applied()
         enabled = self._wants_lines(config) and applied.get("groups")
         changed = False
-        if now - state.get("checked_at", 0) >= WEEK:
-            state["checked_at"] = int(now)
-            try:
-                claude = ai_rules.check_source("claude", ai_rules.parse_page(self.fetch(ai_rules.NETCOFFEE_CLAUDE_URL)),
-                                               state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)
-                gpt = ai_rules.check_source("gpt", ai_rules.parse_page(self.fetch(ai_rules.NETCOFFEE_GPT_URL)),
-                                            state.get("gpt") or ai_rules.NETCOFFEE_GPT)
-                gpt = gpt if ("GEOSITE", "openai") in gpt else [("GEOSITE", "openai")] + gpt
-                before = [tuple(i) for i in (state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)] + \
-                         [tuple(i) for i in (state.get("gpt") or ai_rules.NETCOFFEE_GPT)]
-                delta = ai_rules.diff(before, claude + gpt)
-                state.update({"claude": [list(i) for i in claude], "gpt": [list(i) for i in gpt],
-                              "synced_at": int(now), "last_error": None})
-                if delta["added"] or delta["removed"]:
-                    state["last_change"] = {"at": int(now), "added": [list(i) for i in delta["added"]],
-                                            "removed": [list(i) for i in delta["removed"]]}
-                    changed = True
-            except Exception as error:   # keep the list in use; show the reason on the page
-                state["last_error"] = "%s（%s）" % (str(error)[:200], time.strftime("%Y-%m-%d", time.localtime(now)))
-            if now - state.get("geo_updated_at", 0) >= WEEK:
-                try:
-                    status, body = self.controller("POST", "/configs/geo", {"path": "", "payload": ""})
-                    if status in (200, 204):
-                        state["geo_updated_at"], state["geo_error"] = int(now), None
-                    else:
-                        state["geo_error"] = "HTTP %s %s" % (status, str(body)[:120])
-                except Exception as error:
-                    state["geo_error"] = str(error)[:200]
-            _atomic_json(self.rules_path, state)
+        if now >= self.next_check_at(state):
+            changed = self.sync(now, state)
         if enabled and (changed or now - state.get("healed_at", 0) >= HOUR):
             try:
                 manager = self.manager(config, applied)
                 if changed or not manager.healthy():
-                    with self.lock:
-                        _plan, new_applied = manager.apply()
-                        _atomic_json(self.applied_path, new_applied)
-                    self.log("AI line re-applied (%s)" % ("rules updated" if changed else "not in effect"))
+                    self.reapply(config, applied, "rules updated" if changed else "not in effect")
             except Exception as error:
                 self.log("AI line maintenance failed: %s" % error)
             state = self.rules_state()

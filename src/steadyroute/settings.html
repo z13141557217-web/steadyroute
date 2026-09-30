@@ -6,18 +6,19 @@
 <title>设置 · 稳航 SteadyRoute</title>
 <link rel="stylesheet" href="/assets/pages.css">
 <style>
-.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 16px 22px; border-bottom: 1px solid var(--hair); }
-.card-head h2 { font-family: var(--display); font-size: 16px; font-weight: 650; display: flex; align-items: center; gap: 10px; }
-.card-head p { color: var(--ink-3); font-size: 12.5px; margin-top: 2px; }
-.card-body { padding: 16px 22px 20px; display: grid; gap: 16px; }
-.row { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 6px 18px; align-items: start; }
-.row > span { font-size: 12.5px; color: var(--ink-3); padding-top: 6px; }
-.row > div { min-width: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.65; }
-.row .plain { padding-top: 5px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 18px 22px 14px; }
+.card-head h2 { font-family: var(--display); font-size: 16.5px; font-weight: 650; display: flex; align-items: center; gap: 10px; }
+.card-head p { color: var(--ink-3); font-size: 13px; margin-top: 4px; max-width: 70ch; }
+.card-body { padding: 0 22px 20px; display: grid; gap: 14px; }
+.step {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; flex: 0 0 auto;
+  font-family: var(--display); font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+}
 .hint { font-size: 12px; color: var(--ink-4); line-height: 1.6; }
 .warnline { color: var(--warn); }
 .badline { color: var(--bad); }
 .okline { color: var(--good); }
+.pad { padding: 0 22px 20px; }
 
 .btn {
   height: 34px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--hair-2); background: var(--surface);
@@ -26,9 +27,70 @@
 .btn:hover { color: var(--ink); border-color: var(--accent-line); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .btn.primary:hover { background: var(--accent-2); color: #fff; }
+.btn.small { height: 28px; padding: 0 10px; font-size: 12px; margin-top: 8px; }
 .btn:disabled { opacity: .5; cursor: default; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
+/* ① the one real choice: a row of country cards, "不使用" first */
+.choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.choice {
+  position: relative; display: grid; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--hair-2); background: var(--surface-2); color: var(--ink-2); font: inherit; min-width: 0;
+  transition: border-color .15s, background .15s;
+}
+.choice b { font-size: 14px; font-weight: 600; color: var(--ink); }
+.choice small { font-size: 12px; color: var(--ink-3); }
+.choice:hover:not(:disabled) { border-color: var(--accent-line); }
+.choice[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent-line); }
+.choice[aria-checked="true"] b { color: var(--accent); }
+.choice[aria-checked="true"]::after {
+  content: "✓"; position: absolute; top: 10px; right: 12px; font-size: 13px; font-weight: 700; color: var(--accent);
+}
+.choice:disabled { cursor: not-allowed; opacity: .55; }
+.result { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; font-size: 13.5px; color: var(--ink-2); padding: 10px 14px; border-radius: 12px; background: var(--sunken); }
+.result:empty { display: none; }
+.result b { font-family: var(--display); font-weight: 650; }
+.result .links { display: inline-flex; gap: 14px; margin-left: auto; font-size: 12.5px; }
+.result .links button { border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+
+details.more > summary { cursor: pointer; font-size: 12.5px; color: var(--ink-3); list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "›"; display: inline-block; transition: transform .15s; font-size: 14px; }
+details.more[open] > summary::before { transform: rotate(90deg); }
+details.more > summary:hover { color: var(--ink); }
+details.more > :not(summary) { margin-top: 10px; }
+.facts { display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); line-height: 1.65; }
+.facts b { color: var(--ink); font-weight: 600; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips:empty { display: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 6px 0 11px; border-radius: 9px;
+  border: 1px solid var(--hair-2); background: var(--surface-2); color: var(--ink-2); font-family: var(--mono); font-size: 12.5px;
+}
+.chip button { border: 0; background: transparent; color: var(--ink-4); cursor: pointer; width: 22px; height: 22px; border-radius: 6px; font-size: 14px; }
+.chip button:hover { color: var(--bad); background: var(--bad-soft); }
+.add { display: flex; gap: 8px; flex-wrap: wrap; }
+.add input {
+  flex: 1 1 240px; min-width: 0; height: 36px; border-radius: 10px; border: 1px solid var(--hair-2); background: var(--surface-2);
+  padding: 0 12px; font: inherit; font-size: 13.5px; color: var(--ink);
+}
+.add input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.prio { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
+.prio li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 10px 14px; border-top: 1px solid var(--hair); font-size: 13px; }
+.prio li:first-child { border-top: 0; }
+.prio b { font-weight: 600; color: var(--ink); }
+.prio small { display: block; color: var(--ink-4); font-size: 11.5px; margin-top: 1px; }
+.prio .c { font-family: var(--display); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+
+/* ③ one row per group, a switch on the right */
+.groups { display: grid; border-top: 1px solid var(--hair); }
+.grow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 12px 22px; border-bottom: 1px solid var(--hair); }
+.grow:last-child { border-bottom: 0; }
+.grow b { font-weight: 600; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.grow small { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+.grow small.warn { color: var(--warn); }
 .switch { position: relative; width: 44px; height: 26px; flex: 0 0 auto; }
 .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
 .switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--hair-2); transition: background .15s; pointer-events: none; }
@@ -36,67 +98,43 @@
 .switch input:checked + i { background: var(--accent); }
 .switch input:checked + i::after { transform: translateX(18px); }
 .switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
-.switch-line { display: flex; align-items: center; gap: 12px; }
-
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; font-size: 13px;
-  border: 1px solid var(--hair-2); background: var(--surface-2); color: var(--ink-2); cursor: pointer;
-}
-.chip small { color: var(--ink-4); font-size: 11.5px; }
-.chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; box-shadow: 0 0 0 1px var(--accent-line); }
-.chip:disabled { cursor: not-allowed; opacity: .55; }
-.chip.tag { cursor: default; height: 28px; padding: 0 6px 0 10px; font-family: var(--mono); font-size: 12.5px; }
-.chip.tag button { border: 0; background: transparent; color: var(--ink-4); cursor: pointer; width: 20px; height: 20px; border-radius: 5px; }
-.chip.tag button:hover { color: var(--bad); background: var(--bad-soft); }
-.add { display: flex; gap: 8px; flex-wrap: wrap; }
-.add input {
-  flex: 1 1 220px; min-width: 0; height: 34px; border-radius: 10px; border: 1px solid var(--hair-2); background: var(--surface-2);
-  padding: 0 10px; font: inherit; font-size: 13px; color: var(--ink);
-}
-.add input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-
-.prio { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
-.prio li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 10px 14px; border-top: 1px solid var(--hair); font-size: 13px; }
-.prio li:first-child { border-top: 0; }
-.prio .n { font-family: var(--display); font-weight: 700; color: var(--accent); }
-.prio b { font-weight: 600; color: var(--ink); }
-.prio small { display: block; color: var(--ink-4); font-size: 11.5px; margin-top: 1px; }
-.prio .c { font-family: var(--display); font-weight: 600; color: var(--ink-2); white-space: nowrap; }
-
-.groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; }
-.groups label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); padding: 5px 0; min-width: 0; cursor: pointer; }
-.groups label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.groups input { accent-color: var(--accent); width: 15px; height: 15px; flex: 0 0 auto; }
 
 .banner { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line), var(--shadow-2); }
-.banner .card-body { gap: 12px; }
 .lines { display: grid; gap: 6px; }
-.lines div { font-size: 13px; color: var(--ink-2); }
+.lines div { font-size: 13.5px; color: var(--ink-2); }
 .lines b { color: var(--ink); font-weight: 600; }
 
-.compare { width: 100%; border-collapse: collapse; min-width: 0; font-size: 13px; }
+details.advanced > summary { list-style: none; cursor: pointer; padding: 16px 22px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+details.advanced > summary::-webkit-details-marker { display: none; }
+details.advanced > summary span { font-family: var(--display); font-size: 15px; font-weight: 650; color: var(--ink-2); }
+details.advanced > summary span::before { content: "› "; display: inline-block; transition: transform .15s; }
+details.advanced[open] > summary span::before { transform: rotate(90deg); }
+details.advanced > summary small { font-size: 12px; color: var(--ink-4); }
+.row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 18px; align-items: start; font-size: 13px; color: var(--ink-2); line-height: 1.65; }
+.row > span { font-size: 12.5px; color: var(--ink-3); }
+.row > div { min-width: 0; }
+
+.compare { width: 100%; border-collapse: collapse; font-size: 13px; }
 .compare th, .compare td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--hair); vertical-align: top; }
 .compare th { font-size: 11.5px; color: var(--ink-3); font-weight: 500; background: var(--surface-2); }
 .compare td:first-child { color: var(--ink-3); white-space: nowrap; }
 .compare td.after { color: var(--ink); font-weight: 600; }
 .compare .arrow { color: var(--ink-4); padding-inline: 0; width: 18px; }
+.plain { font-size: 13.5px; color: var(--ink); line-height: 1.7; }
 
 .table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; min-width: 720px; }
-th, td { padding: 8px 14px; text-align: left; vertical-align: top; font-size: 12.5px; }
-th { font-size: 11.5px; font-weight: 500; color: var(--ink-3); background: var(--surface-2); border-bottom: 1px solid var(--hair); white-space: nowrap; }
-td { border-bottom: 1px solid var(--hair); color: var(--ink-2); }
-tbody tr:last-child td { border-bottom: 0; }
-td.mono, .mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+#check-table table { width: 100%; border-collapse: collapse; min-width: 720px; }
+#check-table th, #check-table td { padding: 7px 12px; text-align: left; vertical-align: top; font-size: 12.5px; }
+#check-table th { font-size: 11.5px; font-weight: 500; color: var(--ink-3); background: var(--surface-2); border-bottom: 1px solid var(--hair); white-space: nowrap; }
+#check-table td { border-bottom: 1px solid var(--hair); color: var(--ink-2); }
+.mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 td.res { white-space: nowrap; font-weight: 600; }
 tr.bad td { background: color-mix(in srgb, var(--bad-soft) 60%, transparent); }
 .chain { color: var(--ink-3); overflow-wrap: anywhere; }
 .chain b { color: var(--ink); font-weight: 560; }
-.score { font-family: var(--display); font-size: 22px; font-weight: 650; }
 
 dialog {
-  width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--hair-2); border-radius: 18px;
+  width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--hair-2); border-radius: 18px;
   background: var(--surface); color: var(--ink); box-shadow: var(--pop);
 }
 dialog::backdrop { background: rgba(8, 12, 18, .45); }
@@ -119,17 +157,18 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
 .toast.bad { background: var(--bad); color: #fff; }
 
 @media (max-width: 720px) {
-  .row { grid-template-columns: 1fr; gap: 4px; }
-  .row > span { padding-top: 0; }
-  .card-head, .card-body { padding-inline: 16px; }
-  table { min-width: 0; }
-  thead { display: none; }
-  tbody tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 14px; border-bottom: 1px solid var(--hair); }
-  tbody td { border: 0 !important; padding: 0; }
-  tbody td.svc { display: none; }
-  tbody td.rule { grid-column: 1; }
-  tbody td.res { grid-column: 2; grid-row: 1; text-align: right; }
-  tbody td.hit, tbody td.chain { grid-column: 1 / -1; }
+  .card-head, .card-body, .pad { padding-inline: 16px; }
+  .grow, details.advanced > summary { padding-inline: 16px; }
+  .choices { grid-template-columns: 1fr 1fr; }
+  .row { grid-template-columns: 1fr; gap: 2px; }
+  .result .links { margin-left: 0; }
+  #check-table table { min-width: 0; }
+  #check-table thead { display: none; }
+  #check-table tbody tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 12px; border-bottom: 1px solid var(--hair); }
+  #check-table tbody td { border: 0 !important; padding: 0; }
+  #check-table td.svc { display: none; }
+  #check-table td.res { grid-column: 2; grid-row: 1; text-align: right; }
+  #check-table td.hit, #check-table td.chain { grid-column: 1 / -1; }
 }
 </style>
 </head>
@@ -165,9 +204,9 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
 <main class="wrap">
   <section class="page-head">
     <div>
-      <p class="eyebrow">AI 家宽专线 · AI 域名规则 · 接管范围 · 分流体检</p>
+      <p class="eyebrow">可选设置</p>
       <h1>设置</h1>
-      <p class="lead">改动即时生效。会写入 Clash 的改动先弹出改动前后的对比，确认后才写入；写入前自动备份并由 Clash 内核校验，失败即恢复原配置。关闭专线即可完整撤销。</p>
+      <p class="lead" id="overview">稳航安装后即自动工作，以下均为可选项。</p>
     </div>
     <span class="meta" id="meta">正在读取…</span>
   </section>
@@ -180,108 +219,84 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
   <section class="card banner" id="migration" hidden aria-labelledby="migration-title">
     <div class="card-head">
       <div>
-        <h2 id="migration-title">旧版线路待迁移</h2>
-        <p>旧版固定节点列表改为自动筛选同国家的家宽节点；分组名称不变，Clash 中引用这些分组的规则继续有效。</p>
+        <h2 id="migration-title">检测到旧版的线路</h2>
+        <p>升级后，这些线路会自动包含订阅中新增的同国家家宽节点；名称不变，其他规则不受影响。</p>
       </div>
     </div>
     <div class="card-body">
       <div class="lines" id="migration-lines"></div>
       <div class="actions">
-        <button class="btn primary" type="button" id="migration-accept">预览迁移</button>
-        <button class="btn" type="button" id="migration-dismiss">暂不迁移</button>
+        <button class="btn primary" type="button" id="migration-accept">升级这些线路</button>
+        <button class="btn" type="button" id="migration-dismiss">保持原样</button>
       </div>
-      <p class="hint">暂不迁移时，旧分组保持原样，稳航照常接管其中的节点切换；之后可在本页开启 AI 家宽专线。</p>
     </div>
   </section>
 
   <section class="card" id="ai-line" aria-labelledby="ai-title">
     <div class="card-head">
       <div>
-        <h2 id="ai-title">AI 家宽专线 <span class="pill" id="ai-state">—</span></h2>
-        <p>一个只含所选国家家宽节点的分组，ChatGPT、Claude 等 AI 服务的规则排在所有规则之前。</p>
+        <h2 id="ai-title"><span class="step">1</span>AI 服务从哪个国家出口</h2>
+        <p>选择国家后，ChatGPT、Claude、Gemini 等 AI 服务固定从该国家的家宽节点出口，不会跳到其他国家。</p>
       </div>
-      <label class="switch-line"><span class="muted" id="ai-switch-label">启用</span>
-        <span class="switch"><input type="checkbox" id="ai-enabled" aria-labelledby="ai-switch-label"><i></i></span>
-      </label>
     </div>
     <div class="card-body">
-      <div class="row">
-        <span>出口国家</span>
-        <div>
-          <div class="chips" id="countries" role="group" aria-label="出口国家"></div>
-          <p class="hint" id="countries-hint" style="margin-top:6px">香港、澳门等地区不在 ChatGPT / Claude 的服务范围内，不能用作 AI 专线。</p>
+      <div class="choices" id="choices" role="radiogroup" aria-label="AI 服务出口国家"></div>
+      <div class="result" id="ai-result" aria-live="polite"></div>
+      <details class="more" id="check">
+        <summary>查看每一项 AI 地址的去向</summary>
+        <div class="table-wrap" id="check-table">
+          <table>
+            <thead><tr><th>服务</th><th>地址</th><th>命中的规则</th><th>分组 → 出口节点</th><th>结果</th></tr></thead>
+            <tbody id="check-rows"></tbody>
+          </table>
         </div>
-      </div>
-      <div class="row"><span>分组名称</span><div class="plain"><b id="ai-group">—</b></div></div>
-      <div class="row"><span>当前状态</span><div class="plain" id="ai-applied">—</div></div>
-      <div class="row">
-        <span>保护</span>
-        <div class="plain">专线内节点全部不可用时拒绝连接，不会改走直连或其他国家；禁用 UDP，避免 QUIC 绕过专线出口。</div>
-      </div>
-      <div class="row" id="managed-row" hidden><span>其他家宽专线</span><div class="plain" id="managed"></div></div>
-      <div class="actions">
-        <a class="btn" href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">检测出口 IP ↗</a>
-        <a class="btn" href="#check">AI 分流体检</a>
-      </div>
+      </details>
+      <details class="more">
+        <summary>技术细节</summary>
+        <div class="facts" id="ai-facts"></div>
+      </details>
     </div>
   </section>
 
-  <section class="card" id="rules" aria-labelledby="rules-title">
+  <section class="card" id="sites" aria-labelledby="sites-title" hidden>
     <div class="card-head">
       <div>
-        <h2 id="rules-title">AI 域名规则</h2>
-        <p>按优先级自动汇总，无需手动维护；规则列表每周自动同步，异常时保留正在使用的版本。</p>
+        <h2 id="sites-title"><span class="step">2</span>还有哪些网站也走 AI 专线</h2>
+        <p>ChatGPT、Claude、Gemini、Grok、Perplexity 等已自动包含，只需添加列表之外的网站。</p>
       </div>
     </div>
     <div class="card-body">
-      <ol class="prio" id="prio"></ol>
-      <div class="row"><span>规则来源</span><div class="plain" id="source">—</div></div>
-      <div class="row"><span>地理数据库</span><div class="plain" id="geo">—</div></div>
-      <div class="row"><span>Clash 网络</span><div class="plain" id="net">—</div></div>
-      <div class="row">
-        <span>手动添加的域名</span>
-        <div>
-          <div class="chips" id="manual" aria-live="polite"></div>
-          <form class="add" id="manual-form" style="margin-top:8px">
-            <input id="manual-input" type="text" placeholder="例如 gemini.google.com" autocomplete="off" aria-label="要添加的域名">
-            <button class="btn" type="submit">添加</button>
-          </form>
-          <p class="hint" style="margin-top:6px">按后缀匹配：添加 example.com 同时覆盖其所有子域名。</p>
-        </div>
-      </div>
+      <form class="add" id="manual-form">
+        <input id="manual-input" type="text" placeholder="网址或域名，例如 poe.com" autocomplete="off" aria-label="要添加的网站">
+        <button class="btn" type="submit">添加</button>
+      </form>
+      <div class="chips" id="manual" aria-live="polite"></div>
+      <details class="more">
+        <summary>查看已自动包含的内容</summary>
+        <ol class="prio" id="prio"></ol>
+      </details>
     </div>
   </section>
 
   <section class="card" id="takeover" aria-labelledby="takeover-title">
     <div class="card-head">
       <div>
-        <h2 id="takeover-title">接管范围</h2>
-        <p>稳航接管 Clash 中所有直接选中节点的分组。勾选的分组不接管，保持 Clash 自身的选择。</p>
+        <h2 id="takeover-title"><span class="step" id="takeover-step">2</span>哪些分组由稳航自动切换</h2>
+        <p>每个分组锁定当前节点所在的国家，只在该国家的家宽节点之间切换。关闭后，该分组保持 Clash 自身的选择。</p>
       </div>
     </div>
+    <div class="groups" id="groups"><p class="muted pad">正在读取分组…</p></div>
+  </section>
+
+  <details class="card advanced" id="advanced">
+    <summary><span>高级信息</span><small>规则来源与同步、地理数据库、Clash 网络、写入位置</small></summary>
     <div class="card-body">
-      <div class="groups" id="groups"><span class="muted">正在读取分组…</span></div>
+      <div class="row"><span>规则来源</span><div><div id="source">—</div><button class="btn small" type="button" id="sync-now">立即同步</button></div></div>
+      <div class="row"><span>地理数据库</span><div id="geo">—</div></div>
+      <div class="row"><span>Clash 网络</span><div id="net">—</div></div>
+      <div class="row"><span>写入位置</span><div id="where">—</div></div>
     </div>
-  </section>
-
- </div>
-
-  <section class="card" id="check" aria-labelledby="check-title">
-    <div class="card-head">
-      <div>
-        <h2 id="check-title">AI 分流体检</h2>
-        <p>按 Clash 当前生效的规则逐条推演 ip.net.coffee 列出的 AI 域名与 IP 段，核对命中的分组与最终出口国家。只读，不产生任何网络请求。</p>
-      </div>
-      <button class="btn primary" type="button" id="run-check">开始体检</button>
-    </div>
-    <div class="card-body" id="check-summary"><p class="muted">尚未体检。</p></div>
-    <div class="table-wrap" id="check-table" hidden>
-      <table>
-        <thead><tr><th>服务</th><th>规则</th><th>命中</th><th>分组 → 出口节点</th><th>结果</th></tr></thead>
-        <tbody id="check-rows"></tbody>
-      </table>
-    </div>
-  </section>
+  </details>
 </main>
 
 <dialog id="dlg" aria-labelledby="dlg-title">
@@ -301,6 +316,8 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const now = () => Date.now() / 1000;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const pad = n => String(n).padStart(2, '0');
 function ago(t) {
   if (!t) return '';
   const s = Math.max(0, Math.round(now() - t));
@@ -312,7 +329,12 @@ function ago(t) {
 function day(t) {
   if (!t) return '';
   const d = new Date(t * 1000);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function when(t) {
+  if (!t) return '';
+  const d = new Date(t * 1000);
+  return `${day(t)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /* ---- status pill, same wording as the dashboard ---- */
@@ -350,26 +372,24 @@ function toast(text, bad) {
 }
 
 /* ---- state ---- */
-let snap = null, draft = null;
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-function fromSnap(s) {
-  return {
-    enabled: !!(s.ai_line && s.ai_line.enabled),
-    country: (s.ai_line && s.ai_line.country) || null,
-    manual: (s.manual || []).slice(),
-    exclude: (s.exclude_groups || []).slice().sort(),
-  };
-}
+let snap = null, check = null, pending = null, busy = false;
 const countryLabel = code => {
-  const c = (snap.countries || []).find(x => x.code === code);
-  return c ? c.label : (snap.unsupported || {})[code] || code || '';
+  const c = ((snap && snap.countries) || []).find(x => x.code === code);
+  return c ? c.label : ((snap && snap.unsupported) || {})[code] || code || '';
 };
+const line = () => (snap && snap.ai_line) || {};
+const live = () => !!(line().enabled && ((snap.applied && snap.applied.groups) || []).includes(line().group_name));
+const liveRules = () => live() ? snap.applied_rule_count : 0;
 
 /* ---- render ---- */
 function render() {
   if (!snap) return;
-  const s = snap;
-  $('#meta').textContent = s.applied && s.applied.at ? `上次写入 Clash：${ago(s.applied.at)}` : '尚未写入 Clash';
+  const s = snap, l = line();
+  $('#meta').textContent = s.applied && s.applied.at ? `上次写入 Clash：${ago(s.applied.at)}` : '';
+
+  const details = s.group_details || [];
+  const switching = details.filter(g => g.status === 'switching').length;
+  $('#overview').textContent = `稳航安装后即自动工作，以下均为可选项。当前自动切换 ${switching} 个分组；AI 专线${live() ? `从${countryLabel(l.country)}家宽出口` : '未启用'}。`;
 
   const notes = [];
   if (s.clash && !s.clash.ok) notes.push(`<b>无法写入 Clash：</b>${esc(s.clash.error)}`);
@@ -383,281 +403,272 @@ function render() {
   $('#migration').hidden = !m;
   if (m) {
     const rows = [];
-    if (m.ai_line) rows.push(`<div><b>${esc(m.ai_line.group_name)}</b> → AI 家宽专线 · ${esc(countryLabel(m.ai_line.country))}家宽 · 自动筛选</div>`);
-    (m.managed_lines || []).forEach(l => rows.push(`<div><b>${esc(l.group_name)}</b> → ${esc(countryLabel(l.country))}家宽 · 自动筛选</div>`));
-    if ((m.legacy_group_names || []).length) rows.push(`<div class="muted">旧版辅助分组将移除：${m.legacy_group_names.map(esc).join('、')}</div>`);
+    if (m.ai_line) rows.push(`<div><b>${esc(m.ai_line.group_name)}</b>：固定节点列表 → ${esc(countryLabel(m.ai_line.country))}家宽，自动包含新节点；作为 AI 专线</div>`);
+    (m.managed_lines || []).forEach(x => rows.push(`<div><b>${esc(x.group_name)}</b>：固定节点列表 → ${esc(countryLabel(x.country))}家宽，自动包含新节点</div>`));
+    if ((m.legacy_group_names || []).length) rows.push(`<div class="muted">不再需要的旧版辅助分组将移除：${m.legacy_group_names.map(esc).join('、')}</div>`);
     $('#migration-lines').innerHTML = rows.join('');
   }
 
-  /* AI line */
-  const line = s.ai_line || {};
-  const on = draft.enabled;
-  $('#ai-enabled').checked = on;
-  const applied = (s.applied && s.applied.groups) || [];
-  const live = line.enabled && applied.includes(line.group_name);
-  const st = $('#ai-state');
-  st.className = live ? 'pill mon' : 'pill view';
-  st.textContent = live ? `已启用 · ${countryLabel(line.country)}` : line.enabled ? '待写入' : '未启用';
-  $('#ai-group').textContent = line.group_name || 'AI 家宽专线';
+  /* ① the choice */
+  const selected = pending || (l.enabled && l.country ? l.country : 'off');
   const countries = (s.countries || []).slice();
-  if (draft.country && !countries.some(c => c.code === draft.country)) {
-    countries.unshift({ code: draft.country, label: countryLabel(draft.country), residential: 0, ai_ok: !(draft.country in (s.unsupported || {})) });
+  if (l.country && !countries.some(c => c.code === l.country)) {
+    countries.unshift({ code: l.country, label: countryLabel(l.country), residential: 0, ai_ok: !(l.country in (s.unsupported || {})) });
   }
-  const chipHtml = countries.length ? countries.map(c => {
-    const pressed = on && draft.country === c.code;
-    const why = c.ai_ok ? `${c.residential} 个家宽节点` : 'AI 服务不支持该地区';
-    return `<button class="chip" type="button" data-country="${esc(c.code)}" aria-pressed="${pressed}" ${c.ai_ok ? '' : 'disabled'} title="${esc(why)}">${esc(c.label)}<small>${c.ai_ok ? `${c.residential} 个家宽` : '不支持'}</small></button>`;
-  }).join('') : '<span class="muted">订阅中没有识别到家宽节点。</span>';
-  const box = $('#countries');
-  if (box.__html !== chipHtml) { box.innerHTML = chipHtml; box.__html = chipHtml; }
-  $('#ai-applied').innerHTML = live
-    ? `<span class="okline">已写入 Clash</span> · ${s.applied_rule_count} 条规则 · ${esc(ago(s.applied.at))}` +
-      ((s.applied.dropped || []).length ? `<br><span class="warnline">当前 Clash 内核缺少数据库，已跳过：${s.applied.dropped.map(x => esc(x.join(','))).join('、')}</span>` : '')
-    : line.enabled ? '<span class="warnline">设置已保存，尚未写入 Clash</span>' : '未写入 Clash';
-  const managed = s.managed_lines || [];
-  $('#managed-row').hidden = !managed.length;
-  $('#managed').innerHTML = managed.map(l => `<div><b>${esc(l.group_name)}</b> · ${esc(countryLabel(l.country))}家宽 · 自动筛选</div>`).join('');
+  const cards = [`<button class="choice" type="button" role="radio" data-country="off" aria-checked="${selected === 'off'}"><b>不使用</b><small>按 Clash 原有规则分流</small></button>`]
+    .concat(countries.map(c => `<button class="choice" type="button" role="radio" data-country="${esc(c.code)}" aria-checked="${selected === c.code}" ${c.ai_ok ? '' : 'disabled'}>
+      <b>${esc(c.label)}</b><small>${c.ai_ok ? `${c.residential} 个家宽节点` : 'ChatGPT / Claude 不支持该地区'}</small></button>`));
+  const box = $('#choices'), html = cards.join('');
+  if (box.__html !== html) { box.innerHTML = html; box.__html = html; }
 
-  /* rules */
-  const ai = s.ai_rules_counts || {};
-  const src = s.rules_source || {};
+  let result = '';
+  if (live()) {
+    const label = countryLabel(l.country);
+    const summary = !check ? '正在检查…'
+      : check.error ? `<span class="warnline">检查失败：${esc(check.error)}</span>`
+      : check.ok === check.total ? `<b class="okline">${check.ok} / ${check.total}</b> 项 AI 地址经${esc(label)}家宽出口`
+      : `<b class="warnline">${check.ok} / ${check.total}</b> 项 AI 地址经${esc(label)}家宽出口；其余 ${check.total - check.ok} 项见下方明细`;
+    result = `<span class="okline">✓ 已生效</span><span>${summary}</span><span class="links"><button type="button" id="recheck">重新检查</button><a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">检测出口 IP ↗</a></span>`;
+    if ((s.applied.dropped || []).length) result += `<span class="warnline">当前 Clash 内核缺少数据库，已跳过：${s.applied.dropped.map(x => esc(x.join(','))).join('、')}</span>`;
+  } else if (l.enabled) {
+    result = '<span class="warnline">设置已保存，尚未写入 Clash；请确认 Clash Verge 正在运行后重新选择国家。</span>';
+  }
+  $('#ai-result').innerHTML = result;
+  $('#check').hidden = !(live() && check && !check.error);
+  const managed = s.managed_lines || [];
+  $('#ai-facts').innerHTML = [
+    `<div>Clash 中的分组名称：<b>${esc(l.group_name || 'AI 家宽专线')}</b>${live() ? ` · ${liveRules()} 条 AI 规则排在所有规则之前` : ''}</div>`,
+    '<div>专线只包含所选国家的家宽节点，订阅更新后自动跟随；节点全部不可用时拒绝连接，不会改走直连或其他国家。</div>',
+    '<div>专线禁用 UDP，避免 QUIC 绕过专线出口。</div>',
+    managed.length ? `<div>其他家宽专线：${managed.map(x => `<b>${esc(x.group_name)}</b>（${esc(countryLabel(x.country))}家宽）`).join('、')}</div>` : '',
+  ].join('');
+
+  /* ② sites */
+  $('#sites').hidden = !l.enabled;
+  $('#takeover-step').textContent = l.enabled ? '3' : '2';
+  $('#manual').innerHTML = (s.manual || []).map((d, i) => `<span class="chip">${esc(d)}<button type="button" data-remove="${i}" aria-label="移除 ${esc(d)}">×</button></span>`).join('');
+  const counts = s.ai_rules_counts || {};
   $('#prio').innerHTML = [
-    ['ip.net.coffee', 'Claude 与 ChatGPT / Codex 分流规则大全（含 Anthropic IP 段与 ASN）', ai.netcoffee ?? '35'],
-    ['社区合集', 'GEOSITE category-ai-!cn：Gemini、Grok、Perplexity 等其他 AI 服务', ai.community ?? '1'],
-    ['AI 桌面 App', '按进程名：Claude、ChatGPT、Codex 命令行', ai.processes ?? '5'],
-    ['手动添加', '本页添加的域名', draft.manual.length],
-  ].map(([t, d, c], i) => `<li><span class="n">${i + 1}</span><span><b>${esc(t)}</b><small>${esc(d)}</small></span><span class="c">${esc(c)} 条</span></li>`).join('');
-  let source = `规则快照 ${esc(src.snapshot_date || '')}`;
-  source += src.synced_at ? ` · 上次同步 ${esc(day(src.synced_at))}` : ' · 尚未在线同步';
-  source += ' · 每周自动同步';
+    ['ip.net.coffee 整理的 Claude 与 ChatGPT / Codex 规则', '含 Anthropic 的 IP 段；每周自动同步', counts.netcoffee],
+    ['社区维护的 AI 服务合集', 'Gemini、Grok、Perplexity 等', counts.community],
+    ['AI 桌面 App 与命令行', 'Claude、ChatGPT、Codex', counts.processes],
+    ['本页添加的网站', '', (s.manual || []).length],
+  ].map(([t, d, c]) => `<li><span><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ''}</span><span class="c">${esc(c ?? '—')} 条</span></li>`).join('');
+
+  /* ③ groups */
+  $('#groups').innerHTML = details.length ? details.map(g => {
+    const on = g.status !== 'excluded';
+    const where = g.country_label ? `${g.country_label}家宽` : '';
+    const text = g.status === 'switching' ? `${esc(where)} · ${g.residential} 个节点`
+      : g.status === 'excluded' ? `已关闭，保持 Clash 自身的选择${where ? `（当前在${esc(g.country_label)}）` : ''}`
+      : g.status === 'no_residential' ? `<span class="warn">订阅中没有${esc(g.country_label)}家宽节点，暂不切换</span>`
+      : '<span class="warn">当前节点的国家无法识别，暂不切换</span>';
+    return `<div class="grow"><div><b>${esc(g.name)}</b><small${g.status === 'switching' || g.status === 'excluded' ? '' : ' class="warn"'}>${text}</small></div>
+      <label class="switch" title="${on ? '自动切换中' : '已关闭'}"><input type="checkbox" data-group="${esc(g.name)}" ${on ? 'checked' : ''} aria-label="${esc(g.name)} 自动切换"><i></i></label></div>`;
+  }).join('') : '<p class="muted pad">Clash 中暂无直接选中节点的分组。</p>';
+
+  /* advanced */
+  const src = s.rules_source || {};
+  let source = `规则快照 ${esc(src.snapshot_date || '')} · ${src.synced_at ? `上次同步 ${esc(day(src.synced_at))}` : '尚未在线同步'}`;
+  if (src.next_check_at) source += ` · 下次 ${esc(when(src.next_check_at))}`;
   if (src.last_change) source += `<br><span class="muted">${esc(day(src.last_change.at))} 更新：新增 ${src.last_change.added.length} 条，移除 ${src.last_change.removed.length} 条</span>`;
-  if (src.last_error) source += `<br><span class="warnline">最近一次同步未采用：${esc(src.last_error)}（继续使用现有规则）</span>`;
+  if (src.last_error) source += `<br><span class="warnline">上次尝试未成功：${esc(src.last_error)}；继续使用现有规则${src.next_check_at ? `，将于 ${esc(when(src.next_check_at))} 重试` : ''}</span>`;
   $('#source').innerHTML = source;
   const geo = s.geo || {};
-  $('#geo').innerHTML = (geo.updated_at ? `上次更新 ${esc(day(geo.updated_at))} · 每周自动更新` : '每周自动更新') +
-    (geo.last_error ? `<br><span class="warnline">最近一次更新失败：${esc(geo.last_error)}</span>` : '');
+  $('#geo').innerHTML = (geo.updated_at ? `上次更新 ${esc(day(geo.updated_at))} · 随规则每周更新` : '随规则每周更新') +
+    (geo.last_error ? `<br><span class="warnline">上次更新失败：${esc(geo.last_error)}</span>` : '');
   const net = [];
   if (s.tun != null) net.push(`TUN 模式${s.tun ? '开启' : '关闭'}`);
   if (s.ipv6 != null) net.push(`IPv6 ${s.ipv6 ? '开启' : '关闭'}`);
   $('#net').innerHTML = net.length ? esc(net.join(' · ')) + (s.tun === false
     ? '<br><span class="warnline">TUN 模式关闭时，只有走系统代理的应用会经过专线；AI 桌面 App 与命令行可能直连。</span>' : '') : '—';
-  const manualHtml = draft.manual.length
-    ? draft.manual.map((d, i) => `<span class="chip tag">${esc(d)}<button type="button" data-remove="${i}" aria-label="移除 ${esc(d)}">×</button></span>`).join('')
-    : '<span class="muted">暂无</span>';
-  $('#manual').innerHTML = manualHtml;
-
-  /* groups */
-  const groups = s.groups || [];
-  $('#groups').innerHTML = groups.length ? groups.map(g =>
-    `<label title="${esc(g)}"><input type="checkbox" data-group="${esc(g)}" ${draft.exclude.includes(g) ? 'checked' : ''}><span>${esc(g)}</span></label>`).join('')
-    : '<span class="muted">Clash 中暂无直接选中节点的分组。</span>';
+  $('#where').textContent = s.clash && s.clash.profile_uid
+    ? `Clash Verge 当前订阅（${s.clash.profile_uid}）的扩展分组与扩展规则文件，稳航标记块内；更新订阅不会丢失。` : '—';
 }
 
-/* ---- preview → confirm → apply ---- */
-function linePreview(l) {
-  const kept = l.after.filter(n => !l.added.includes(n));
-  const items = l.added.map(n => `<li class="add">${esc(n)}</li>`)
-    .concat(l.removed.map(n => `<li class="del">${esc(n)}</li>`))
-    .concat(kept.map(n => `<li class="keep">${esc(n)}</li>`));
-  const head = `${esc(l.group)} <span class="pill ${l.ai ? 'mon' : 'res'}">${l.ai ? 'AI 专线' : '家宽专线'}</span><span class="muted">${esc(l.country_label)}家宽 · ${l.after.length} 个节点${l.exists ? '' : ' · 新建'}</span>`;
-  const empty = l.after.length ? '' : '<p class="badline">当前订阅中没有匹配的节点：分组会拒绝所有连接，直到出现该国家的家宽节点。</p>';
-  return `<div class="diff"><h4>${head}</h4>${empty}<ul>${items.join('')}</ul></div>`;
-}
-const aiLabel = (enabled, country) => enabled && country ? `已启用 · ${countryLabel(country)}家宽` : '未启用';
-function liveRules() {
-  const line = snap.ai_line || {};
-  return line.enabled && ((snap.applied && snap.applied.groups) || []).includes(line.group_name) ? snap.applied_rule_count : 0;
-}
-/* 改动前 → 改动后, one row per thing that changes. */
+/* ---- the confirmation: 改动前 → 改动后, in plain words first ---- */
 function compareHtml(body, plan) {
-  const rows = [];
-  const line = snap.ai_line || {};
+  const rows = [], l = line();
   const migrating = body.migration === 'accept';
-  if (body.ai_line) {
-    const after = body.ai_line.enabled ? (body.ai_line.country || line.country) : null;
-    rows.push(['AI 家宽专线', aiLabel(line.enabled, line.country), aiLabel(!!after, after)]);
-  }
-  if (migrating && snap.migration && snap.migration.ai_line) {
-    rows.push(['AI 家宽专线', '未启用', aiLabel(true, snap.migration.ai_line.country)]);
-  }
-  (plan.lines || []).forEach(l => {
-    const before = !l.exists ? '不存在' : migrating ? `固定列表 · ${l.before.length} 个节点` : `${l.before.length} 个节点`;
-    const after = `${l.country_label}家宽 · 自动筛选 · ${l.after.length} 个节点`;
-    if (migrating || !l.exists || !same(l.before, l.after)) rows.push([`分组「${l.group}」`, before, after]);
+  const aiLabel = (on, country) => on && country ? `${countryLabel(country)}家宽` : '不使用';
+  if (body.ai_line) rows.push(['AI 服务出口', aiLabel(live(), l.country), aiLabel(body.ai_line.enabled, body.ai_line.country)]);
+  if (migrating && snap.migration && snap.migration.ai_line) rows.push(['AI 服务出口', '不使用', aiLabel(true, snap.migration.ai_line.country)]);
+  (plan.lines || []).forEach(x => {
+    const before = !x.exists ? '不存在' : migrating ? `固定列表 · ${x.before.length} 个节点` : `${x.before.length} 个节点`;
+    if (migrating || !x.exists || !same(x.before, x.after)) rows.push([`分组「${x.group}」`, before, `${x.country_label}家宽 · ${x.after.length} 个节点`]);
   });
-  (plan.restored || []).forEach(name => rows.push([`分组「${name}」`, 'AI 家宽专线', '恢复原来的定义']));
-  (plan.remove_groups || []).forEach(name => rows.push([`分组「${name}」`, '稳航专线', '移除（恢复原有配置）']));
+  (plan.restored || []).forEach(name => rows.push([`分组「${name}」`, 'AI 专线', '恢复原来的定义']));
+  (plan.remove_groups || []).forEach(name => rows.push([`分组「${name}」`, '稳航专线', '移除']));
   const rulesAfter = plan.action === 'disable' ? 0 : (plan.rule_count || 0);
-  if (rulesAfter !== liveRules() || migrating) rows.push(['AI 规则（排在最前）', `${liveRules()} 条`, `${rulesAfter} 条`]);
+  if (rulesAfter !== liveRules() || migrating) rows.push(['AI 规则', `${liveRules()} 条`, `${rulesAfter} 条`]);
   if (body.manual) {
     const before = snap.manual || [];
-    const added = body.manual.filter(d => !before.includes(d)), removed = before.filter(d => !body.manual.includes(d));
-    rows.push(['手动添加的域名', `${before.length} 个`, `${body.manual.length} 个` + added.map(d => `（+ ${d}）`).join('') + removed.map(d => `（− ${d}）`).join('')]);
+    rows.push(['添加的网站', `${before.length} 个`, `${body.manual.length} 个`]);
   }
   if (!rows.length) return '';
   return `<div class="table-wrap"><table class="compare"><thead><tr><th>项目</th><th>改动前</th><th class="arrow"></th><th>改动后</th></tr></thead><tbody>${
     rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td class="arrow">→</td><td class="after">${esc(r[2])}</td></tr>`).join('')}</tbody></table></div>`;
 }
-function planHtml(plan) {
+function plainHtml(body, plan) {
+  const exit = code => `之后 ChatGPT、Claude 等 AI 服务固定从${countryLabel(code)}家宽出口。${countryLabel(code)}家宽全部不可用时，这些网站会暂时无法访问，不会改走其他国家。`;
+  let text = '';
+  if (body.migration === 'accept') {
+    const ai = snap.migration && snap.migration.ai_line;
+    text = (ai ? exit(ai.country) : '') + '升级后的线路会自动包含订阅中新增的同国家家宽节点。';
+  } else if (body.ai_line && body.ai_line.enabled) {
+    text = exit(body.ai_line.country);
+  } else if (body.ai_line) {
+    text = '之后 AI 服务按 Clash 原有规则分流。' + ((plan.restored || []).length ? `分组「${plan.restored.join('」「')}」恢复为启用专线之前的定义，引用它的规则继续有效。` : '');
+  } else if (body.manual) {
+    const before = snap.manual || [];
+    const added = body.manual.filter(d => !before.includes(d)), removed = before.filter(d => !body.manual.includes(d));
+    text = added.length ? `之后 ${added.join('、')} 及其子域名也从 AI 专线出口。` : `之后 ${removed.join('、')} 不再经过 AI 专线。`;
+  }
+  return text ? `<p class="plain">${esc(text)}</p>` : '';
+}
+function linePreview(x) {
+  const kept = x.after.filter(n => !x.added.includes(n));
+  const items = x.added.map(n => `<li class="add">${esc(n)}</li>`)
+    .concat(x.removed.map(n => `<li class="del">${esc(n)}</li>`))
+    .concat(kept.map(n => `<li class="keep">${esc(n)}</li>`));
+  const empty = x.after.length ? '' : '<p class="badline">当前订阅中没有匹配的节点：分组会拒绝所有连接，直到出现该国家的家宽节点。</p>';
+  return `<div class="diff"><h4>${esc(x.group)} <span class="muted">${esc(x.country_label)}家宽 · ${x.after.length} 个节点</span></h4>${empty}<ul>${items.join('')}</ul></div>`;
+}
+function techHtml(plan) {
   if (plan.action === 'disable') {
-    const parts = [];
-    if ((plan.remove_groups || []).length) parts.push(`<li class="del">分组：${plan.remove_groups.map(esc).join('、')}</li>`);
-    if (plan.remove_rules) parts.push(`<li class="del">${plan.remove_rules} 条 AI 规则</li>`);
-    if (plan.restore) parts.push(`<li class="add">恢复 ${plan.restore} 个原有分组</li>`);
-    return `<div class="diff"><h4>从 Clash 撤销稳航写入的内容</h4><ul>${parts.join('') || '<li class="keep">没有需要撤销的内容</li>'}</ul></div>`;
+    return `<div class="diff"><ul>${(plan.remove_groups || []).map(n => `<li class="del">分组 ${esc(n)}</li>`).join('')}${plan.remove_rules ? `<li class="del">${plan.remove_rules} 条 AI 规则</li>` : ''}${plan.restore ? `<li class="add">恢复 ${plan.restore} 个原有分组</li>` : ''}</ul></div>`;
   }
-  /* Lines that stay exactly as they are add nothing to the decision. */
-  let html = plan.lines.filter(l => !l.exists || !same(l.before, l.after)).map(linePreview).join('');
-  if ((plan.restored || []).length) {
-    html += `<div class="diff"><h4>恢复原来的分组定义</h4><ul>${plan.restored.map(n => `<li class="add">${esc(n)}</li>`).join('')}</ul><p class="hint">该分组名称可能被原有规则引用，因此放回启用专线之前的定义。</p></div>`;
-  }
-  if ((plan.removed_legacy || []).length) {
-    html += `<div class="diff"><h4>替换旧版分组</h4><ul>${plan.removed_legacy.map(n => `<li class="del">${esc(n)}（旧定义）</li>`).join('')}</ul><p class="hint">同名分组以新定义替换；关闭专线时恢复旧定义。</p></div>`;
-  }
+  let html = (plan.lines || []).filter(x => !x.exists || !same(x.before, x.after)).map(linePreview).join('');
+  if ((plan.removed_legacy || []).length) html += `<div class="diff"><h4>替换的旧定义</h4><ul>${plan.removed_legacy.map(n => `<li class="del">${esc(n)}</li>`).join('')}</ul></div>`;
   if (plan.rule_count) {
     html += `<div class="diff"><h4>AI 规则 · ${plan.rule_count} 条，排在所有规则之前</h4><ul>${(plan.rule_breakdown || []).map(b => `<li class="keep">${esc(b.source)}：${b.count} 条</li>`).join('')}</ul>
       <p class="hint mono">${(plan.rules_sample || []).map(esc).join('<br>')}${plan.rule_count > (plan.rules_sample || []).length ? '<br>…' : ''}</p></div>`;
   }
-  html += `<p class="hint">写入 Clash Verge 当前订阅（${esc(plan.profile_uid)}）的扩展分组与扩展规则文件；更新订阅不会丢失。</p>`;
-  return html;
+  return html + `<p class="hint">写入 Clash Verge 当前订阅（${esc(plan.profile_uid || '')}）的扩展分组与扩展规则文件。</p>`;
 }
 function confirmDialog(title, sub, body, ok) {
   const d = $('#dlg');
   $('#dlg-title').textContent = title;
   $('#dlg-sub').textContent = sub;
   $('#dlg-body').innerHTML = body;
-  $('#dlg-ok').textContent = ok || '确认写入';
-  $('#dlg-ok').disabled = false;
+  $('#dlg-ok').textContent = ok;
   return new Promise(resolve => {
-    const done = value => { d.close(); $('#dlg-ok').onclick = $('#dlg-cancel').onclick = null; d.onclose = null; resolve(value); };
+    const done = value => { d.onclose = null; $('#dlg-ok').onclick = $('#dlg-cancel').onclick = null; d.close(); resolve(value); };
     $('#dlg-ok').onclick = () => done(true);
     $('#dlg-cancel').onclick = () => done(false);
     d.onclose = () => resolve(false);
     d.showModal();
   });
 }
-function resultText(r) {
-  if (!r.clash_change) return '设置已保存。';
-  if (r.action === 'disable') return '已从 Clash 撤销专线与 AI 规则，原有配置已恢复。';
-  let t = `已写入 Clash：${(r.groups || []).join('、')} · ${r.rule_count} 条规则。`;
-  if ((r.dropped || []).length) t += ` 当前内核缺少数据库，已跳过 ${r.dropped.map(x => x.join(',')).join('、')}。`;
-  return t;
-}
-/* Every change applies at once; a change to Clash first shows 改动前 → 改动后 in a dialog. */
-let busy = false;
-async function submit(body, done) {
+
+/* Every change applies at once; a change to Clash first shows 改动前 → 改动后. */
+async function submit(body, message) {
   if (busy) return;
   busy = true;
   try {
     const plan = await post('/api/settings/preview', body);
     if (plan.clash_change) {
-      const off = plan.action === 'disable';
-      const sub = off ? '以下内容将从 Clash 撤销，恢复原有配置。' : '以下改动将写入 Clash；写入前自动备份，内核校验失败会自动恢复。';
-      const ok = await confirmDialog(off ? '确认撤销' : '确认写入 Clash', sub, compareHtml(body, plan) + planHtml(plan), off ? '确认撤销' : '确认写入');
+      const off = (body.ai_line && !body.ai_line.enabled) || plan.action === 'disable';
+      const html = plainHtml(body, plan) + compareHtml(body, plan) +
+        `<details class="more"><summary>技术细节</summary>${techHtml(plan)}</details>`;
+      const ok = await confirmDialog(off ? '确认关闭 AI 专线' : '确认写入 Clash', '写入前自动备份并由 Clash 内核校验，失败会自动恢复原配置。', html, off ? '确认关闭' : '确认写入');
       if (!ok) { toast('已取消，未作改动。'); return; }
     }
     const result = await post('/api/settings/apply', body);
-    const text = typeof done === 'function' ? done(result) : done;
     const dropped = (result.dropped || []).length ? ` 当前内核缺少数据库，已跳过 ${result.dropped.map(x => x.join(',')).join('、')}。` : '';
-    toast(text ? text + dropped : resultText(result));
-    await load(true);
+    toast((typeof message === 'function' ? message(result) : message || '已保存。') + dropped);
+    check = null;
+    await load();
+    if (live()) runCheck();
   } catch (error) {
     toast(`没有生效：${error.message}`, true);
   } finally {
     busy = false;
-    draft = fromSnap(snap);   // a cancelled or failed change puts the controls back
+    pending = null;
     render();
   }
 }
 
-/* ---- events: each control applies its own change ---- */
-const lineDone = country => r => `AI 家宽专线已启用（${countryLabel(country)}家宽），${r.rule_count} 条 AI 规则已写入 Clash。`;
-$('#ai-enabled').addEventListener('change', e => {
-  if (!e.target.checked) {
-    draft.enabled = false; render();
-    submit({ ai_line: { enabled: false } }, '已关闭 AI 家宽专线，AI 规则已从 Clash 撤销。');
-    return;
-  }
-  const country = draft.country || ((snap.countries || []).find(c => c.ai_ok) || {}).code;
-  if (!country) { e.target.checked = false; toast('订阅中没有可用于 AI 专线的家宽节点。', true); return; }
-  draft.enabled = true; draft.country = country; render();
-  submit({ ai_line: { enabled: true, country } }, lineDone(country));
-});
-$('#countries').addEventListener('click', e => {
+/* ---- events ---- */
+$('#choices').addEventListener('click', e => {
   const b = e.target.closest('button[data-country]');
-  if (!b || b.disabled) return;
-  if (snap.ai_line && snap.ai_line.enabled && snap.ai_line.country === b.dataset.country) return;
-  draft.country = b.dataset.country; draft.enabled = true; render();
-  submit({ ai_line: { enabled: true, country: b.dataset.country } }, lineDone(b.dataset.country));
+  if (!b || b.disabled || busy) return;
+  const code = b.dataset.country, current = line().enabled && line().country ? line().country : 'off';
+  if (code === current) return;
+  pending = code;
+  render();
+  if (code === 'off') submit({ ai_line: { enabled: false } }, '已关闭 AI 专线，AI 服务按 Clash 原有规则分流。');
+  else submit({ ai_line: { enabled: true, country: code } }, r => `已生效：AI 服务从${countryLabel(code)}家宽出口（${r.rule_count} 条规则）。`);
 });
+$('#ai-result').addEventListener('click', e => { if (e.target.id === 'recheck') runCheck(); });
 $('#manual-form').addEventListener('submit', e => {
   e.preventDefault();
   const input = $('#manual-input');
   let v = input.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^(\*\.|\+\.|\.)/, '').split('/')[0].replace(/\.$/, '');
   if (/^www\.[^.]+\.[^.]+/.test(v)) v = v.slice(4);
-  if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/.test(v)) { toast(`“${input.value}”不是有效的域名`, true); return; }
-  if ((snap.manual || []).includes(v)) { toast(`${v} 已在列表中。`); input.value = ''; return; }
+  if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/.test(v)) { toast(`“${input.value}”不是有效的网址或域名`, true); return; }
   input.value = '';
-  submit({ manual: (snap.manual || []).concat([v]) }, r => `已添加 ${v}${r.clash_change ? `，${r.rule_count} 条 AI 规则已写入 Clash` : ''}。`);
+  if ((snap.manual || []).includes(v)) { toast(`${v} 已在列表中。`); return; }
+  submit({ manual: (snap.manual || []).concat([v]) }, `已添加 ${v}。`);
 });
 $('#manual').addEventListener('click', e => {
   const b = e.target.closest('button[data-remove]');
   if (!b) return;
   const gone = (snap.manual || [])[Number(b.dataset.remove)];
-  submit({ manual: (snap.manual || []).filter(d => d !== gone) }, r => `已移除 ${gone}${r.clash_change ? `，${r.rule_count} 条 AI 规则已写入 Clash` : ''}。`);
+  submit({ manual: (snap.manual || []).filter(d => d !== gone) }, `已移除 ${gone}。`);
 });
 $('#groups').addEventListener('change', e => {
   const g = e.target.dataset.group;
   if (!g) return;
   const now = snap.exclude_groups || [];
-  submit({ exclude_groups: e.target.checked ? now.concat([g]) : now.filter(x => x !== g) },
-         e.target.checked ? `已排除「${g}」，稳航不再接管。` : `已恢复接管「${g}」。`);
+  submit({ exclude_groups: e.target.checked ? now.filter(x => x !== g) : now.concat([g]) },
+         e.target.checked ? `「${g}」已恢复自动切换。` : `「${g}」已关闭自动切换，保持 Clash 自身的选择。`);
 });
-$('#migration-accept').addEventListener('click', () => submit({ migration: 'accept' }));
-$('#migration-dismiss').addEventListener('click', () => submit({ migration: 'dismiss' }, '已保留旧分组，不迁移。'));
-
-/* ---- AI routing check ---- */
-async function runCheck() {
-  const button = $('#run-check');
+$('#migration-accept').addEventListener('click', () => submit({ migration: 'accept' }, '线路已升级。'));
+$('#migration-dismiss').addEventListener('click', () => submit({ migration: 'dismiss' }, '已保持原样。'));
+$('#sync-now').addEventListener('click', async () => {
+  const button = $('#sync-now');
   button.disabled = true;
-  button.textContent = '体检中…';
+  button.textContent = '同步中…';
+  try {
+    const r = await post('/api/settings/sync', {});
+    toast(!r.ok ? `同步未成功：${r.error}；继续使用现有规则。` : r.changed ? `规则已更新：新增 ${r.last_change.added.length} 条，移除 ${r.last_change.removed.length} 条。` : '规则已是最新。', !r.ok);
+    await load();
+  } catch (error) {
+    toast(`同步未成功：${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = '立即同步';
+  }
+});
+
+/* ---- AI routing check (read-only) ---- */
+async function runCheck() {
   try {
     const r = await fetch('/api/ai-check', { cache: 'no-store' });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-    const bad = d.rows.filter(x => !x.ok);
-    const target = d.line_group ? `经 <b>${esc(d.line_group)}</b>${d.line_country ? ` 从${esc(d.line_country)}出口` : ''}` : '';
-    let summary = d.line_group
-      ? `<div><span class="score ${d.ok === d.total ? 'okline' : 'warnline'}">${d.ok} / ${d.total}</span> 条${target}</div>`
-      : '<div class="warnline">尚未启用 AI 家宽专线：下表列出各 AI 域名当前的实际去向。</div>';
-    if (d.line_group && bad.length) summary += `<p class="hint">未命中的 ${bad.length} 条在启用 / 重新写入 AI 专线后会排到所有规则之前。</p>`;
-    summary += '<p class="hint">另可 <a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">检测出口 IP ↗</a> 查看 AI 服务实际看到的地址。</p>';
-    $('#check-summary').innerHTML = summary;
+    check = d;
     $('#check-rows').innerHTML = d.rows.map(x => {
       const chain = (x.chain || []).map((n, i, all) => i === all.length - 1 ? `<b>${esc(n)}</b>` : esc(n)).join(' → ') || '—';
       const res = x.ok ? '<span class="okline">✓ 专线</span>' : x.group ? `<span class="badline">✗ ${esc(x.exit_country || '未知')}</span>` : '<span class="warnline">待确认</span>';
       const unsure = (x.unsure || []).length ? `<br><span class="hint">${esc(x.unsure[0])}</span>` : '';
-      return `<tr class="${x.ok || !d.line_group ? '' : 'bad'}"><td class="svc">${esc(x.service)}</td><td class="rule mono">${esc(x.rule)}</td>
+      return `<tr class="${x.ok ? '' : 'bad'}"><td class="svc">${esc(x.service)}</td><td class="mono">${esc(x.rule)}</td>
         <td class="hit mono">${esc(x.hit ? `#${x.index} ${x.hit}` : '—')}${unsure}</td><td class="chain">${chain}${x.exit_country ? ` <span class="muted">· ${esc(x.exit_country)}</span>` : ''}</td><td class="res">${res}</td></tr>`;
     }).join('');
-    $('#check-table').hidden = false;
   } catch (error) {
-    $('#check-summary').innerHTML = `<p class="badline">体检失败：${esc(error.message)}</p>`;
-  } finally {
-    button.disabled = false;
-    button.textContent = '重新体检';
+    check = { error: error.message };
   }
+  render();
 }
-$('#run-check').addEventListener('click', runCheck);
 
 /* ---- load ---- */
-async function load(reset) {
+async function load() {
   try {
     const r = await fetch('/api/settings', { cache: 'no-store' });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
     snap = d;
-    if (reset || !busy || !draft) draft = fromSnap(d);
     render();
   } catch (error) {
     $('#meta').textContent = `读取失败：${error.message}`;
@@ -665,9 +676,13 @@ async function load(reset) {
 }
 
 pollStatus();
-load(true).then(() => { if (location.hash === '#check') runCheck(); });
+load().then(() => {
+  if (live()) runCheck();
+  if (location.hash === '#check') $('#check').open = true;
+  if (location.hash === '#advanced') $('#advanced').open = true;
+});
 setInterval(pollStatus, 10000);
-setInterval(() => { if (!$('#dlg').open) load(false); }, 30000);
+setInterval(() => { if (!busy && !$('#dlg').open) load(); }, 30000);
 </script>
 </body>
 </html>

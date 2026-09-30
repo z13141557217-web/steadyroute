@@ -239,6 +239,57 @@ class SettingsServiceTests(ServiceBase):
         self.assertFalse(json.loads(self.config_path.read_text(encoding="utf-8"))["ai_line"]["enabled"])
         self.assertEqual(self.service.remove_all(), [])
 
+    def pages_ok(self, extra=""):
+        claude_page = "<pre>" + "\n".join("- %s,%s" % item for item in ai_rules.NETCOFFEE_CLAUDE) + extra + "</pre>"
+        gpt_page = "<pre>" + "\n".join("- %s,%s" % item for item in ai_rules.NETCOFFEE_GPT) + "</pre>"
+        return {ai_rules.NETCOFFEE_CLAUDE_URL: claude_page, ai_rules.NETCOFFEE_GPT_URL: gpt_page}
+
+    def test_failed_sync_is_retried_in_hours_not_a_week(self):
+        calls = []
+        original = self.service.fetch
+        self.service.fetch = lambda url: calls.append(url) or original(url)
+        start = self.clock[0]
+        self.service.maintenance()                        # first run: offline
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.service.rules_state()["next_check_at"], int(start + 6 * 3600))
+        self.clock[0] = start + 5 * 3600
+        self.service.maintenance()
+        self.assertEqual(len(calls), 1, "not due yet")
+        for hours in (6, 12):                             # second and third failure
+            self.clock[0] = start + hours * 3600
+            self.service.maintenance()
+        self.assertEqual(self.service.rules_state()["failures"], 3)
+        self.assertEqual(self.service.rules_state()["next_check_at"], int(start + 12 * 3600 + 86400))
+        self.pages = self.pages_ok()
+        self.clock[0] = start + 12 * 3600 + 86400
+        self.service.maintenance()
+        state = self.service.rules_state()
+        self.assertEqual((state["failures"], state["last_error"]), (0, None))
+        self.assertEqual(state["next_check_at"], int(self.clock[0] + 7 * 86400))
+        snap = self.service.snapshot()["rules_source"]
+        self.assertEqual(snap["next_check_at"], state["next_check_at"])
+
+    def test_sync_now_writes_new_rules_into_clash(self):
+        self.clash.extra_groups = ["AI 家宽专线"]
+        self.service.apply({"ai_line": {"enabled": True, "country": "JP"}})
+        self.pages = self.pages_ok("\n- DOMAIN-SUFFIX,claude-new.example.com")
+        result = self.service.sync_now()
+        self.assertEqual((result["ok"], result["changed"]), (True, True))
+        self.assertIn("claude-new.example.com", self.files()["profiles/rkX1aa.yaml"])
+        self.pages = {}
+        result = self.service.sync_now()
+        self.assertFalse(result["ok"])
+        self.assertIn("offline", result["error"])
+        self.assertIn("claude-new.example.com", self.files()["profiles/rkX1aa.yaml"], "a failed sync keeps the rules")
+
+    def test_group_details_show_country_and_state(self):
+        self.config_path.write_text(json.dumps(dict(BASE_CONFIG, auto_lock={
+            "exclude_groups": ["家宽出口"], "business_test_urls": ["https://www.gstatic.com/generate_204"]})), encoding="utf-8")
+        rows = {row["name"]: row for row in self.service.snapshot()["group_details"]}
+        self.assertEqual((rows["AI 台湾家宽线路"]["country_label"], rows["AI 台湾家宽线路"]["status"]), ("台湾", "switching"))
+        self.assertEqual(rows["AI 台湾家宽线路"]["residential"], 3)
+        self.assertEqual(rows["家宽出口"]["status"], "excluded")
+
     def test_ai_check_reports_where_each_domain_goes(self):
         (self.config_path).write_text(json.dumps(dict(BASE_CONFIG, ai_line={
             "enabled": True, "group_name": "AI 台湾家宽线路", "country": "TW"})), encoding="utf-8")
@@ -317,6 +368,19 @@ class SettingsHttpTests(ServiceBase):
         status, data = self.post(body, self.good_headers())
         self.assertEqual(status, 200, data)
         self.assertEqual(json.loads(self.config_path.read_text(encoding="utf-8"))["auto_lock"]["exclude_groups"], ["家宽出口"])
+
+    def test_sync_now_needs_our_page_too(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        headers = self.good_headers()
+        headers.pop("X-SteadyRoute")
+        connection.request("POST", "/api/settings/sync", body=b"{}", headers=headers)
+        self.assertEqual(connection.getresponse().status, 403)
+        connection.close()
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        connection.request("POST", "/api/settings/sync", body=b"{}", headers=self.good_headers())
+        response = connection.getresponse()
+        self.assertEqual(response.status, 200)
+        self.assertFalse(json.loads(response.read())["ok"])      # offline in the test
 
     def test_get_endpoints(self):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)

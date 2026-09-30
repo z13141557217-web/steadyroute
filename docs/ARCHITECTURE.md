@@ -129,7 +129,7 @@ ChatGPT / Claude 的服务地区内，不能作为 AI 专线国家。
 
 1. ip.net.coffee 的 Claude 规则（22 条，含 `IP-CIDR,160.79.104.0/21`、
    `IP-CIDR6,2607:6bc0::/32`、`IP-ASN,399358`）和 ChatGPT / Codex 规则（`GEOSITE,openai`
-   加 12 条）。程序附带 2026-09-30 的快照，每周同步。
+   加 12 条）。程序附带 2026-09-30 的快照，每周同步；失败后 6 小时重试，连续失败 3 次后每天一次；设置页可立即同步（`POST /api/settings/sync`）。
 2. `GEOSITE,category-ai-!cn`（社区汇总的其他 AI 服务）。
 3. `PROCESS-NAME`：`Claude`、`Claude Helper`、`claude`、`ChatGPT`、`codex`。
 4. 设置页手动添加的域名（`DOMAIN-SUFFIX`）。

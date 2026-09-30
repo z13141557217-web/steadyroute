@@ -187,6 +187,7 @@ type, udp, residential, group, role, delay_ms, delay_at}`。`role` 为 `current`
   增减、将移除的旧分组、规则数量和前几条规则样例；关闭时返回将移除的分组、规则数和将恢复
   的原有分组数。
 - `POST /api/settings/apply`：保存设置；需要时写入或撤销 Clash 中的专线，失败则全部回滚。
+- `POST /api/settings/sync`：立即同步 net.coffee 规则（同样的安全检查），规则有变化时重新写入 Clash；返回 `{ok, changed, error, last_change}`。
 
 请求体是 JSON 对象，只接受 `exclude_groups`、`ai_line`（`enabled`、`country`）、`manual`
 和 `migration`（`accept` / `dismiss`）；其他键被忽略。POST 只在同时满足以下条件时

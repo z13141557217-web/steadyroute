@@ -1311,7 +1311,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self._reply(421, "text/plain; charset=utf-8", b"misdirected request", api=True)
             return
         route = urlsplit(self.path).path
-        if route not in ("/api/settings/preview", "/api/settings/apply"):
+        if route not in ("/api/settings/preview", "/api/settings/apply", "/api/settings/sync"):
             self._reply(404, "text/plain; charset=utf-8", b"not found", api=True)
             return
         if not settings_request_allowed(self.headers, port):
@@ -1405,6 +1405,10 @@ def settings_post(route, body):
         changes = {key: value for key, value in changes.items() if key in settings_service.EDITABLE}
         if route == "/api/settings/preview":
             return 200, service.preview(changes)
+        if route == "/api/settings/sync":
+            result = service.sync_now()
+            logging_setup.write_event("rules_synced", ok=result["ok"], changed=result["changed"])
+            return 200, result
         if route == "/api/settings/apply":
             result = service.apply(changes)
             reload_policy_settings()
