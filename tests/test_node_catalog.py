@@ -46,10 +46,10 @@ def subscription():
 
 class RegionTests(unittest.TestCase):
     def test_taiwan_name_wins_over_a_cn_flag(self):
-        self.assertEqual(node_catalog.region_of("[03]台湾hinet家宽🇨🇳hy2")[0], "TW")
+        self.assertEqual(node_catalog.region_of("台湾 HiNet 家宽 01 🇨🇳")[0], "TW")
 
     def test_common_regions(self):
-        cases = {"香港家宽hy2🇭🇰": "HK", "🇯🇵 日本 东京 02": "JP", "US West 01": "US", "新加坡 IPLC": "SG",
+        cases = {"香港 家宽 01": "HK", "🇯🇵 日本 东京 02": "JP", "US West 01": "US", "新加坡 IPLC": "SG",
                  "Korea Seoul": "KR", "英国 London": "GB", "某个奇怪的节点": "OT"}
         for name, code in cases.items():
             with self.subTest(name=name):
@@ -147,7 +147,7 @@ class NodesEndpointTests(unittest.TestCase):
 
 
 class StaticPageTests(unittest.TestCase):
-    PAGES = {"/nodes": "text/html", "/guide": "text/html", "/changelog": "text/html", "/assets/pages.css": "text/css"}
+    PAGES = {"/nodes": "text/html", "/settings": "text/html", "/guide": "text/html", "/changelog": "text/html", "/assets/pages.css": "text/css"}
 
     def test_pages_are_served(self):
         for route, kind in self.PAGES.items():
@@ -199,10 +199,10 @@ class StaticPageTests(unittest.TestCase):
         self.assertEqual(tokens(self.source("pages.css")), tokens(self.source("dashboard.html")))
 
     def test_every_page_links_to_every_other_page(self):
-        for name in ("dashboard.html", "nodes.html", "guide.html", "changelog.html"):
+        for name in ("dashboard.html", "nodes.html", "guide.html", "changelog.html", "settings.html"):
             with self.subTest(page=name):
                 text = self.source(name)
-                for href in ('href="/"', 'href="/nodes"', 'href="/guide"', 'href="/changelog"'):
+                for href in ('href="/"', 'href="/nodes"', 'href="/guide"', 'href="/changelog"', 'href="/settings"'):
                     self.assertIn(href, text)
 
 

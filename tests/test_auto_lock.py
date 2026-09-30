@@ -17,7 +17,7 @@ import auto_lock  # noqa: E402
 import regions  # noqa: E402
 import route_policy  # noqa: E402
 
-EXAMPLE_CONFIG = cycle_harness.PROJECT_DIR / "config" / "route-policies.auto-lock.json"
+EXAMPLE_CONFIG = cycle_harness.PROJECT_DIR / "config" / "route-policies.default.json"
 os.environ["STEADYROUTE_POLICY_CONFIG"] = str(EXAMPLE_CONFIG)
 try:
     router = cycle_harness.load_router("auto_lock_router")

@@ -23,34 +23,34 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import fake_mihomo  # noqa: E402
 
 PROJECT = pathlib.Path(__file__).resolve().parents[1]
-POLICY = json.loads((PROJECT / "config" / "route-policies.json").read_text(encoding="utf-8"))
+POLICY = json.loads((PROJECT / "tests" / "fixtures" / "route-policies.fixed.json").read_text(encoding="utf-8"))
 TW = POLICY["policies"][0]
 HK = POLICY["policies"][1]
 TW_GROUP, HK_GROUP = TW["group_name"], HK["group_name"]
 
 # Latency / jitter modelled on the production dashboard screenshots (ms).
 PROFILE = {
-    "[03]台湾hinet家宽🇨🇳hy2": (57, 3),
-    "[01]台湾hinet家宽🇨🇳hy2": (80, 4),
-    "[02]台湾hinet家宽🇨🇳hy2": (96, 6),
-    "【10x】三网优化|台湾hinet家宽02": (122, 11),
-    "【10x】三网优化|台湾hinet动态家宽01": (159, 40),
-    "优秀|[3x]中转|台湾hinet家宽02": (140, 12),
-    "优秀|[3x]中转|台湾hinet家宽03": (215, 92),
-    "优秀|【3x】中转|台湾hinet动态家宽01": (143, 15),
-    "【3x】中转|台湾seednet动态家宽🇹🇼": (170, 20),
-    "优秀|cf加速|台湾动态家宽🇹🇼": (180, 25),
-    "台湾seednet动态家宽🇹🇼hy2": (110, 9),
-    "香港家宽hy2🇭🇰": (36, 4),
-    "优秀|【3x】中转|香港家宽🇭🇰": (90, 8),
-    "优秀|cf加速|香港动态家宽🇭🇰": (321, 200),
-    "优秀|cf加速|香港动态家宽二🇭🇰": (232, 120),
-    "【10x】三网优化|香港动态家宽🇭🇰": (150, 15),
+    "台湾 HiNet 家宽 01 🇨🇳": (57, 3),
+    "台湾 HiNet 家宽 02 🇨🇳": (80, 4),
+    "台湾 HiNet 家宽 03 🇨🇳": (96, 6),
+    "台湾 HiNet 家宽 04": (122, 11),
+    "台湾 HiNet 家宽 05": (159, 40),
+    "台湾 HiNet 家宽 06": (140, 12),
+    "台湾 HiNet 家宽 07": (215, 92),
+    "台湾 HiNet 家宽 08": (143, 15),
+    "台湾 HiNet 家宽 09": (170, 20),
+    "台湾 HiNet 家宽 10": (180, 25),
+    "台湾 HiNet 家宽 11": (110, 9),
+    "香港 家宽 01": (36, 4),
+    "香港 家宽 02": (90, 8),
+    "香港 家宽 03": (321, 200),
+    "香港 家宽 04": (232, 120),
+    "香港 家宽 05": (150, 15),
 }
-DEAD = {"优秀|[3x]中转|台湾hinet家宽03", "优秀|cf加速|香港动态家宽🇭🇰"}
-FLAKY = {"【10x】三网优化|台湾hinet家宽02": 0.35, "优秀|cf加速|香港动态家宽二🇭🇰": 0.2}
-TW_CURRENT = "[01]台湾hinet家宽🇨🇳hy2"
-HK_CURRENT = "香港家宽hy2🇭🇰"
+DEAD = {"台湾 HiNet 家宽 07", "香港 家宽 03"}
+FLAKY = {"台湾 HiNet 家宽 04": 0.35, "香港 家宽 04": 0.2}
+TW_CURRENT = "台湾 HiNet 家宽 02 🇨🇳"
+HK_CURRENT = "香港 家宽 01"
 CLAUDE_URL = next(url for url in TW["business_test_urls"] if "claude" in url)
 
 SCENARIOS = [

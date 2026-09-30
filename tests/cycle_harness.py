@@ -13,7 +13,22 @@ if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 
 
+# The tests exercise the fixed Taiwan / Hong Kong setup (anonymised node names) unless a test
+# points STEADYROUTE_POLICY_CONFIG elsewhere before loading the router.
+FIXED_CONFIG = PROJECT_DIR / "tests" / "fixtures" / "route-policies.fixed.json"
+
+
 def load_router(name):
+    import os
+    os.environ.setdefault("STEADYROUTE_POLICY_CONFIG", str(FIXED_CONFIG))
+    try:
+        return _load_router(name)
+    finally:
+        if os.environ.get("STEADYROUTE_POLICY_CONFIG") == str(FIXED_CONFIG):
+            del os.environ["STEADYROUTE_POLICY_CONFIG"]
+
+
+def _load_router(name):
     spec = importlib.util.spec_from_file_location(name, str(MODULE_DIR / "weighted_router.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

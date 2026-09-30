@@ -21,16 +21,16 @@ except ImportError:  # CI has no PyYAML; the structural checks below still run
     yaml = None
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "clash_verge"
-TW_NODES = ["[01]台湾hinet家宽🇨🇳hy2", "[03]台湾hinet家宽🇨🇳hy2", "【10x】三网优化|台湾hinet家宽02",
-            "优秀|cf加速|台湾动态家宽🇹🇼", "台湾seednet动态家宽🇹🇼hy2"]
-OTHER_NODES = ["🇯🇵 日本 家宽 01", "【3x】中转|香港BGP🇭🇰", "香港家宽hy2🇭🇰", "优秀|【3x】中转|香港家宽🇭🇰",
+TW_NODES = ["台湾 HiNet 家宽 02 🇨🇳", "台湾 HiNet 家宽 01 🇨🇳", "台湾 HiNet 家宽 04",
+            "台湾 HiNet 家宽 10", "台湾 HiNet 家宽 11"]
+OTHER_NODES = ["🇯🇵 日本 家宽 01", "香港 BGP 01", "香港 家宽 01", "香港 家宽 02",
                "🇹🇼 台湾 01", "剩余流量：100G", "台湾家宽 到期：2026-12-01"]
 
 
 def proxies_payload(groups=None):
     data = {name: {"type": "Hysteria2"} for name in TW_NODES + OTHER_NODES}
     data["AI 台湾家宽线路"] = {"type": "Selector", "now": TW_NODES[0], "all": TW_NODES[:2]}
-    data["香港家宽自动备援"] = {"type": "Selector", "now": "香港家宽hy2🇭🇰", "all": ["香港家宽hy2🇭🇰"]}
+    data["香港家宽自动备援"] = {"type": "Selector", "now": "香港 家宽 01", "all": ["香港 家宽 01"]}
     for name in groups or []:
         data.setdefault(name, {"type": "Selector", "now": TW_NODES[0], "all": TW_NODES})
     return data
@@ -93,7 +93,7 @@ MIGRATED = {
 class FilterTests(unittest.TestCase):
     def test_filter_picks_this_countrys_residential_nodes_only(self):
         self.assertEqual(ai_line.members("TW", TW_NODES + OTHER_NODES), TW_NODES)
-        self.assertEqual(ai_line.members("HK", TW_NODES + OTHER_NODES), ["香港家宽hy2🇭🇰", "优秀|【3x】中转|香港家宽🇭🇰"])
+        self.assertEqual(ai_line.members("HK", TW_NODES + OTHER_NODES), ["香港 家宽 01", "香港 家宽 02"])
         self.assertEqual(ai_line.members("JP", TW_NODES + OTHER_NODES), ["🇯🇵 日本 家宽 01"])
 
     def test_group_never_falls_back_to_direct(self):
@@ -186,10 +186,10 @@ class ProfileTests(Base):
             original, [clash_profile.group_item(ai_line.group_definition("AI 台湾家宽线路", "TW", True))],
             {"AI 台湾家宽线路", "SteadyRoute 发现·台湾家宽"})
         self.assertEqual(len(removed), 2)
-        self.assertIn("Verve AI 稳定线路", edited, "the user's own groups stay")
+        self.assertIn("自定义稳定线路", edited, "the user's own groups stay")
         if yaml:
             data = yaml.safe_load(edited)
-            self.assertEqual([g["name"] for g in data["prepend"]], ["AI 台湾家宽线路", "Verve AI 稳定线路"])
+            self.assertEqual([g["name"] for g in data["prepend"]], ["AI 台湾家宽线路", "自定义稳定线路"])
             self.assertEqual(data["prepend"][0]["empty-fallback"], "REJECT")
         restored = clash_profile.restore_prepend(edited, removed)
         if yaml:
@@ -206,7 +206,7 @@ class ProfileTests(Base):
         if yaml:
             data = yaml.safe_load(patched)
             self.assertEqual([g["name"] for g in data["proxy-groups"]],
-                             ["AI 台湾家宽线路", "Verve AI 稳定线路", "苏菲家宽", "🐟 漏网之鱼"])
+                             ["AI 台湾家宽线路", "自定义稳定线路", "家宽出口", "🐟 漏网之鱼"])
             self.assertEqual(data["rules"][:2], ["DOMAIN-SUFFIX,clau.de,AI 台湾家宽线路", "DOMAIN-SUFFIX,claude.ai,AI 台湾家宽线路"])
             self.assertIn("MATCH,🐟 漏网之鱼", data["rules"])
             self.assertEqual(data["rules"].count("DOMAIN-SUFFIX,claude.ai,AI 台湾家宽线路"), 1)
@@ -228,7 +228,7 @@ class ManagerTests(Base):
         groups = self.read("profiles/gkX1aa.yaml")
         rules = self.read("profiles/rkX1aa.yaml")
         runtime = self.read("clash-verge.yaml")
-        self.assertIn("Verve AI 稳定线路", groups)
+        self.assertIn("自定义稳定线路", groups)
         self.assertEqual(rules.count("AI 台湾家宽线路"), len(plan["rules"]))
         self.assertIn("gemini.google.com", rules)
         if yaml:

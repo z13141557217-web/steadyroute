@@ -80,6 +80,10 @@ def validate_auto_lock_config(config):
         value = config.get(key, [])
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
             raise PolicyConfigError("%s must be a string array" % key)
+    migration = config.get("migration")
+    if migration is not None and (not isinstance(migration, dict) or not isinstance(
+            migration.get("managed_lines", []), list)):
+        raise PolicyConfigError("migration must be an object")
     manual = (config.get("ai_rules") or {}).get("manual", [])
     if not isinstance(manual, list) or any(not isinstance(item, str) for item in manual):
         raise PolicyConfigError("ai_rules.manual must be a string array")

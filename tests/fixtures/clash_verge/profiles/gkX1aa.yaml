@@ -6,20 +6,20 @@ prepend:
     type: select
     interrupt-exist-connections: false
     proxies:
-      - "[03]台湾hinet家宽🇨🇳hy2"
-      - "[01]台湾hinet家宽🇨🇳hy2"
+      - "台湾 HiNet 家宽 01 🇨🇳"
+      - "台湾 HiNet 家宽 02 🇨🇳"
     disable-udp: true
   - name: SteadyRoute 发现·台湾家宽
     type: select
     include-all-proxies: true
     filter: "(?i)(?:台湾.*家宽)"
     hidden: true
-  - name: Verve AI 稳定线路
+  - name: 自定义稳定线路
     type: fallback
-    url: "https://www.app.vervecopilot.com/"
+    url: "https://example.com/"
     interval: 60
     proxies:
-      - 【3x】中转|香港BGP🇭🇰
+      - 香港 BGP 01
 
 append: []
 

@@ -16,7 +16,7 @@ import state_contract
 
 class CandidateRegistryTests(unittest.TestCase):
     def setUp(self):
-        self.config = route_policy.load_policy_config(PROJECT_DIR / "config" / "route-policies.json")
+        self.config = route_policy.load_policy_config(PROJECT_DIR / "tests" / "fixtures" / "route-policies.fixed.json")
         self.policy = self.config["policies"][0]
         self.discovery = self.policy["discovery_group_name"]
         self.state = state_contract.new_state()

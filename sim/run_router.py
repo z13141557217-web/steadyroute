@@ -18,6 +18,8 @@ def main():
     module_dir = pathlib.Path(source).resolve() / "src" / "steadyroute"
     sys.path.insert(0, str(module_dir))
     os.environ["STEADYROUTE_CONTROLLER_SOCKET"] = socket_path
+    os.environ.setdefault("STEADYROUTE_POLICY_CONFIG", str(
+        pathlib.Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "route-policies.fixed.json"))
     spec = importlib.util.spec_from_file_location("weighted_router", str(module_dir / "weighted_router.py"))
     router = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(router)

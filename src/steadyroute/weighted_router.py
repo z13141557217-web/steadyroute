@@ -52,9 +52,9 @@ CONTROLLER_SOCKET_PATHS = (
     "/tmp/verge/verge-mihomo.sock",
 )
 # Default to the current user's Library; STEADYROUTE_BASE_DIR / STEADYROUTE_LOG_DIR override
-# (the LaunchAgent runs as the user, so ~ resolves to the same folder deploy.py writes).
+# (the LaunchAgent runs as the user; the installer sets both variables explicitly).
 BASE_DIR = os.environ.get("STEADYROUTE_BASE_DIR") or os.path.expanduser(
-    "~/Library/Application Support/Clash-Verge-Stability-Router")
+    "~/Library/Application Support/SteadyRoute")
 STATE_PATH = os.path.join(BASE_DIR, "state.json")
 LOCK_PATH = os.path.join(BASE_DIR, "router.lock")
 DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard.html")
@@ -104,7 +104,7 @@ TIMELINE_WINDOW_SECONDS = 30 * 60     # legacy API: dashboard chart offers 5 / 1
 V1_TIMELINE_WINDOW_SECONDS = 300      # v1 recent_probes keeps its original 5-minute contract
 TIMELINE_LIMIT = 480                  # 360 fast-lane points + 90 standby points + switches
 CONNECTION_SITE_LIMIT = 30
-LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR") or os.path.expanduser("~/Library/Logs/Clash-Verge-Stability-Router")
+LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR") or os.path.expanduser("~/Library/Logs/SteadyRoute")
 MEMORY_SAMPLE_SECONDS = 600
 MEMORY_SAMPLE_LIMIT = 144
 EVENT_KEY_LIMIT = 1000
@@ -153,7 +153,8 @@ WAKE_EVENT = threading.Event()
 POLICY_CONFIG_PATHS = tuple(path for path in (
     os.environ.get("STEADYROUTE_POLICY_CONFIG"),
     os.path.join(APP_DIR, "config", "route-policies.json"),
-    os.path.join(os.path.dirname(os.path.dirname(APP_DIR)), "config", "route-policies.json"),
+    # Running straight from a clone: the default settings every install starts from.
+    os.path.join(os.path.dirname(os.path.dirname(APP_DIR)), "config", "route-policies.default.json"),
 ) if path)
 
 

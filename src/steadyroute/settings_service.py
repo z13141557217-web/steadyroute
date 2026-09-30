@@ -26,7 +26,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 HOUR = 3600
 WEEK = 7 * 86400
-EDITABLE = ("exclude_groups", "ai_line", "manual")
+EDITABLE = ("exclude_groups", "ai_line", "manual", "migration")
 
 
 def _atomic_json(path, data):
@@ -112,6 +112,20 @@ class SettingsService(object):
     def merged(self, changes):
         config = copy.deepcopy(self.config())
         config["policies"] = []
+        unknown = [key for key in changes if key not in EDITABLE]
+        if unknown:
+            raise clash_profile.ProfileError("不能修改的设置项：%s" % "、".join(unknown))
+        migration = changes.get("migration")
+        if migration not in (None, "accept", "dismiss"):
+            raise clash_profile.ProfileError("migration 只能是 accept 或 dismiss")
+        suggested = config.pop("migration", None) if migration else None
+        if migration == "accept" and suggested:
+            # The lines an older version kept in Clash, now as auto-filtered lines (same names).
+            if suggested.get("ai_line"):
+                config["ai_line"] = dict(suggested["ai_line"])
+            config["managed_lines"] = list(suggested.get("managed_lines") or [])
+            config["legacy_group_names"] = sorted(set(config.get("legacy_group_names") or []) |
+                                                  set(suggested.get("legacy_group_names") or []))
         if "exclude_groups" in changes:
             config.setdefault("auto_lock", {})["exclude_groups"] = [str(name) for name in changes["exclude_groups"]]
         if "ai_line" in changes:
@@ -152,6 +166,12 @@ class SettingsService(object):
             },
             "geo": {"updated_at": rules_state.get("geo_updated_at"), "last_error": rules_state.get("geo_error")},
             "unsupported": ai_line.AI_UNSUPPORTED,
+            "migration": config.get("migration"),
+            "ai_rules_counts": {
+                "netcoffee": len(set(map(tuple, rules_state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)) |
+                                 set(map(tuple, rules_state.get("gpt") or ai_rules.NETCOFFEE_GPT))),
+                "community": len(ai_rules.COMMUNITY), "processes": len(ai_rules.AI_PROCESSES),
+            },
         }
         try:
             proxies = self.proxies()
@@ -199,6 +219,7 @@ class SettingsService(object):
 
     def apply(self, changes):
         with self.lock:
+            self.check_writable()
             new = self.merged(changes)
             old = self.config()
             result = {"clash_change": False}
@@ -216,7 +237,30 @@ class SettingsService(object):
             self.log("settings changed: %s" % json.dumps(result, ensure_ascii=False))
             return result
 
+    def remove_all(self):
+        """Uninstall: take every SteadyRoute item out of Clash and put back what was there."""
+        with self.lock:
+            self.check_writable()
+            config = copy.deepcopy(self.config())
+            config["policies"] = []
+            line = dict(config.get("ai_line") or {})
+            line["enabled"] = False
+            config["ai_line"] = line
+            config["managed_lines"] = []
+            applied = self.applied()
+            removed = list(applied.get("groups") or [])
+            if removed:
+                _atomic_json(self.applied_path, self.manager(config, applied).disable())
+            self.save_config(config)
+            self.log("SteadyRoute lines removed from Clash: %s" % "、".join(removed))
+            return removed
+
+    def check_writable(self):
+        if self.config_path.name.endswith(".default.json"):
+            raise clash_profile.ProfileError("正在直接从仓库运行，设置不会保存；请先运行 install.command 安装")
+
     def save_config(self, config):
+        self.check_writable()
         stored = copy.deepcopy(config)
         stored["policies"] = []
         route_policy.validate_policy_config(stored)
@@ -226,6 +270,8 @@ class SettingsService(object):
     def check(self):
         config = self.config()
         line = config.get("ai_line") or {}
+        if not line.get("enabled") and ((config.get("migration") or {}).get("ai_line") or {}).get("enabled"):
+            line = config["migration"]["ai_line"]   # before migrating: measure against the old line
         rules = self._get("/rules").get("rules") or []
         proxies = self.proxies()
         try:
@@ -273,16 +319,16 @@ class SettingsService(object):
                 except Exception as error:
                     state["geo_error"] = str(error)[:200]
             _atomic_json(self.rules_path, state)
-        if enabled and now - state.get("healed_at", 0) >= HOUR:
+        if enabled and (changed or now - state.get("healed_at", 0) >= HOUR):
             try:
                 manager = self.manager(config, applied)
                 if changed or not manager.healthy():
                     with self.lock:
                         _plan, new_applied = manager.apply()
                         _atomic_json(self.applied_path, new_applied)
-                    state = self.rules_state()
-                    state["healed_at"] = int(now)
-                    _atomic_json(self.rules_path, state)
                     self.log("AI line re-applied (%s)" % ("rules updated" if changed else "not in effect"))
             except Exception as error:
                 self.log("AI line maintenance failed: %s" % error)
+            state = self.rules_state()
+            state["healed_at"] = int(now)
+            _atomic_json(self.rules_path, state)
