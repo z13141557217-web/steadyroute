@@ -30,6 +30,7 @@ BASE_CONFIG = {
 class FakeClash(object):
     def __init__(self):
         self.calls = []
+        self.version = "v1.19.31"
         self.extra_groups = []
         self.rules = [{"type": "DomainSuffix", "payload": "claude.ai", "proxy": "AI 台湾家宽线路"},
                       {"type": "Match", "payload": "", "proxy": "🐟 漏网之鱼"}]
@@ -47,6 +48,8 @@ class FakeClash(object):
         self.calls.append((method, path))
         if method == "GET" and path == "/proxies":
             return 200, json.dumps({"proxies": self.proxies()}, ensure_ascii=False)
+        if method == "GET" and path == "/version":
+            return 200, json.dumps({"meta": True, "version": self.version})
         if method == "GET" and path == "/configs":
             return 200, json.dumps({"ipv6": False, "tun": {"enable": True}})
         if method == "GET" and path == "/rules":
@@ -229,6 +232,18 @@ class SettingsServiceTests(ServiceBase):
         self.assertEqual(sum("AI 台湾家宽线路" in item for item in self.service.applied()["removed_items"]), 1)
         self.service.remove_all()
         self.assertEqual(self.files()["profiles/gkX1aa.yaml"], original)
+
+    def test_old_core_without_empty_fallback_is_refused(self):
+        before = self.files()
+        for version in ("v1.19.26", "v1.18.10", "alpha-3f2a1b", ""):
+            self.clash.version = version
+            with self.subTest(version=version), self.assertRaises(clash_profile.ProfileError) as caught:
+                self.service.apply({"ai_line": {"enabled": True, "country": "JP"}})
+            self.assertIn("v1.19.27", str(caught.exception))
+        self.assertEqual(self.files(), before)
+        self.clash.version = "v1.19.27"
+        self.clash.extra_groups = ["AI 家宽专线"]
+        self.assertEqual(self.service.apply({"ai_line": {"enabled": True, "country": "JP"}})["action"], "apply")
 
     def test_unknown_setting_is_refused(self):
         with self.assertRaises(clash_profile.ProfileError):

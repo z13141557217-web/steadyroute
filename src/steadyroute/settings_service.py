@@ -9,6 +9,7 @@ import copy
 import json
 import os
 import pathlib
+import re
 import tempfile
 import threading
 import time
@@ -29,6 +30,9 @@ HOUR = 3600
 DAY = 86400
 WEEK = 7 * DAY
 RETRY = 6 * HOUR
+# empty-fallback (the line refuses connections instead of going direct when no node matches)
+# arrived in mihomo v1.19.27; older cores ignore the key and fall back to COMPATIBLE = DIRECT.
+MIN_CORE = (1, 19, 27)
 EDITABLE = ("exclude_groups", "ai_line", "manual", "migration")
 
 
@@ -128,6 +132,19 @@ class SettingsService(object):
                 raise clash_profile.ProfileError("没找到 Clash Verge 的内核，无法校验配置；请确认 Clash Verge 安装在“应用程序”里")
             validate = clash_profile.core_validator(self.core, self.target.home)
         return clash_profile.Writer(self.target, self.base_dir / "clash-backups", validate, self.controller)
+
+    def check_core(self):
+        """Refuse to write a line into a Clash core that would send it direct when it is empty."""
+        try:
+            version = str(self._get("/version").get("version") or "")
+        except Exception as error:
+            raise clash_profile.ProfileError("读取 Clash 内核版本失败（%s），未写入" % error)
+        found = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
+        if not found or tuple(int(x) for x in found.groups()) < MIN_CORE:
+            raise clash_profile.ProfileError(
+                "Clash 内核版本 %s 过旧：专线在没有可用节点时可能改走直连。请把 Clash Verge 升级到"
+                "内核 mihomo v1.19.27 或更新版本后再启用，未写入" % (version or "未知"))
+        return version
 
     def manager(self, config, applied=None):
         return ai_line.Manager(config, self.applied() if applied is None else applied, self.target,
@@ -236,6 +253,7 @@ class SettingsService(object):
                     "remove_groups": applied.get("groups") or [],
                     "remove_rules": len(applied.get("rules") or []),
                     "restore": len(applied.get("removed_items") or [])}
+        self.check_core()
         plan = self.manager(new).plan()
         plan.pop("texts", None)
         plan.pop("removed_items", None)
@@ -255,6 +273,7 @@ class SettingsService(object):
             if self._needs_clash(old, new):
                 manager = self.manager(new)
                 if self._wants_lines(new):
+                    self.check_core()
                     plan, applied = manager.apply()
                     result = {"clash_change": True, "action": "apply", "groups": applied["groups"],
                               "rule_count": len(applied["rules"]), "dropped": applied["dropped"]}
@@ -358,6 +377,7 @@ class SettingsService(object):
         return changed
 
     def reapply(self, config, applied, reason):
+        self.check_core()
         manager = self.manager(config, applied)
         with self.lock:
             _plan, new_applied = manager.apply()

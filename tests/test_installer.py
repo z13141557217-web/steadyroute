@@ -411,6 +411,8 @@ class UninstallTests(InstallerBase):
 
         class Controller(object):
             def __call__(inner, method, path, payload):
+                if path == "/version":
+                    return 200, json.dumps({"version": "v1.19.31"})
                 if path == "/proxies":
                     names = ["台湾 HiNet 家宽 01 🇨🇳", "AI 台湾家宽线路", "香港家宽自动备援"]
                     return 200, json.dumps({"proxies": {name: {"type": "Hysteria2"} for name in names}})
