@@ -279,6 +279,29 @@ def restore_prepend(text, removed):
     return "\n".join(lines) + "\n"
 
 
+def insert_prepend_items(text, items):
+    """Put unmarked items (as taken out by edit_prepend, original indentation) back into `prepend`,
+    after SteadyRoute's block when there is one."""
+    if not items:
+        return text
+    lines = text.splitlines()
+    at = _find_key(lines, "prepend")
+    if at is None:
+        lines = ["prepend:"] + lines
+        at = 0
+    if lines[at].partition(":")[2].strip() == "[]":
+        lines[at] = "prepend:"
+    where = at + 1
+    for index in range(at + 1, len(lines)):
+        if lines[index].strip() == MARK_END:
+            where = index + 1
+            break
+    restored = []
+    for item in items:
+        restored.extend(item.splitlines())
+    return "\n".join(lines[:where] + restored + lines[where:]) + "\n"
+
+
 def patch_runtime(text, group_items, rule_items, group_names, stale_rules=()):
     """Clash Verge's runtime config with our groups and rules at the top of their lists.
 

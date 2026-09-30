@@ -211,6 +211,7 @@ class SettingsService(object):
         plan = self.manager(new).plan()
         plan.pop("texts", None)
         plan.pop("removed_items", None)
+        plan.pop("restored_items", None)
         plan["clash_change"] = True
         plan["action"] = "apply"
         plan["rules_sample"] = plan["rules"][:8]

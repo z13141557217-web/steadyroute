@@ -75,11 +75,12 @@
 .lines div { font-size: 13px; color: var(--ink-2); }
 .lines b { color: var(--ink); font-weight: 600; }
 
-.savebar {
-  position: sticky; bottom: 14px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-  padding: 12px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--accent-line); box-shadow: var(--pop);
-}
-.savebar p { font-size: 13px; color: var(--ink-2); }
+.compare { width: 100%; border-collapse: collapse; min-width: 0; font-size: 13px; }
+.compare th, .compare td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--hair); vertical-align: top; }
+.compare th { font-size: 11.5px; color: var(--ink-3); font-weight: 500; background: var(--surface-2); }
+.compare td:first-child { color: var(--ink-3); white-space: nowrap; }
+.compare td.after { color: var(--ink); font-weight: 600; }
+.compare .arrow { color: var(--ink-4); padding-inline: 0; width: 18px; }
 
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; min-width: 720px; }
@@ -166,7 +167,7 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
     <div>
       <p class="eyebrow">AI 家宽专线 · AI 域名规则 · 接管范围 · 分流体检</p>
       <h1>设置</h1>
-      <p class="lead">写入 Clash 的改动会先列出差异，确认后才生效；写入前自动备份并由 Clash 内核校验，失败即恢复原配置。关闭专线即可完整撤销。</p>
+      <p class="lead">改动即时生效。会写入 Clash 的改动先弹出改动前后的对比，确认后才写入；写入前自动备份并由 Clash 内核校验，失败即恢复原配置。关闭专线即可完整撤销。</p>
     </div>
     <span class="meta" id="meta">正在读取…</span>
   </section>
@@ -263,13 +264,7 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
     </div>
   </section>
 
-  <div class="savebar" id="savebar" hidden>
-    <p id="savebar-text">有未保存的改动</p>
-    <div class="actions">
-      <button class="btn" type="button" id="discard">放弃</button>
-      <button class="btn primary" type="button" id="save">预览并保存</button>
-    </div>
-  </div>
+ </div>
 
   <section class="card" id="check" aria-labelledby="check-title">
     <div class="card-head">
@@ -365,16 +360,6 @@ function fromSnap(s) {
     exclude: (s.exclude_groups || []).slice().sort(),
   };
 }
-function changes() {
-  const saved = fromSnap(snap), out = {};
-  if (draft.enabled !== saved.enabled || (draft.enabled && draft.country !== saved.country)) {
-    out.ai_line = { enabled: draft.enabled };
-    if (draft.enabled) out.ai_line.country = draft.country;
-  }
-  if (!same(draft.manual, saved.manual)) out.manual = draft.manual;
-  if (!same(draft.exclude.slice().sort(), saved.exclude)) out.exclude_groups = draft.exclude;
-  return out;
-}
 const countryLabel = code => {
   const c = (snap.countries || []).find(x => x.code === code);
   return c ? c.label : (snap.unsupported || {})[code] || code || '';
@@ -466,13 +451,6 @@ function render() {
   $('#groups').innerHTML = groups.length ? groups.map(g =>
     `<label title="${esc(g)}"><input type="checkbox" data-group="${esc(g)}" ${draft.exclude.includes(g) ? 'checked' : ''}><span>${esc(g)}</span></label>`).join('')
     : '<span class="muted">Clash 中暂无直接选中节点的分组。</span>';
-
-  /* save bar */
-  const c = changes();
-  const n = Object.keys(c).length;
-  $('#savebar').hidden = !n;
-  $('#save').disabled = !!(draft.enabled && !draft.country);
-  $('#savebar-text').textContent = draft.enabled && !draft.country ? '请选择 AI 专线的出口国家' : `有 ${n} 项未保存的改动`;
 }
 
 /* ---- preview → confirm → apply ---- */
@@ -485,6 +463,41 @@ function linePreview(l) {
   const empty = l.after.length ? '' : '<p class="badline">当前订阅中没有匹配的节点：分组会拒绝所有连接，直到出现该国家的家宽节点。</p>';
   return `<div class="diff"><h4>${head}</h4>${empty}<ul>${items.join('')}</ul></div>`;
 }
+const aiLabel = (enabled, country) => enabled && country ? `已启用 · ${countryLabel(country)}家宽` : '未启用';
+function liveRules() {
+  const line = snap.ai_line || {};
+  return line.enabled && ((snap.applied && snap.applied.groups) || []).includes(line.group_name) ? snap.applied_rule_count : 0;
+}
+/* 改动前 → 改动后, one row per thing that changes. */
+function compareHtml(body, plan) {
+  const rows = [];
+  const line = snap.ai_line || {};
+  const migrating = body.migration === 'accept';
+  if (body.ai_line) {
+    const after = body.ai_line.enabled ? (body.ai_line.country || line.country) : null;
+    rows.push(['AI 家宽专线', aiLabel(line.enabled, line.country), aiLabel(!!after, after)]);
+  }
+  if (migrating && snap.migration && snap.migration.ai_line) {
+    rows.push(['AI 家宽专线', '未启用', aiLabel(true, snap.migration.ai_line.country)]);
+  }
+  (plan.lines || []).forEach(l => {
+    const before = !l.exists ? '不存在' : migrating ? `固定列表 · ${l.before.length} 个节点` : `${l.before.length} 个节点`;
+    const after = `${l.country_label}家宽 · 自动筛选 · ${l.after.length} 个节点`;
+    if (migrating || !l.exists || !same(l.before, l.after)) rows.push([`分组「${l.group}」`, before, after]);
+  });
+  (plan.restored || []).forEach(name => rows.push([`分组「${name}」`, 'AI 家宽专线', '恢复原来的定义']));
+  (plan.remove_groups || []).forEach(name => rows.push([`分组「${name}」`, '稳航专线', '移除（恢复原有配置）']));
+  const rulesAfter = plan.action === 'disable' ? 0 : (plan.rule_count || 0);
+  if (rulesAfter !== liveRules() || migrating) rows.push(['AI 规则（排在最前）', `${liveRules()} 条`, `${rulesAfter} 条`]);
+  if (body.manual) {
+    const before = snap.manual || [];
+    const added = body.manual.filter(d => !before.includes(d)), removed = before.filter(d => !body.manual.includes(d));
+    rows.push(['手动添加的域名', `${before.length} 个`, `${body.manual.length} 个` + added.map(d => `（+ ${d}）`).join('') + removed.map(d => `（− ${d}）`).join('')]);
+  }
+  if (!rows.length) return '';
+  return `<div class="table-wrap"><table class="compare"><thead><tr><th>项目</th><th>改动前</th><th class="arrow"></th><th>改动后</th></tr></thead><tbody>${
+    rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td class="arrow">→</td><td class="after">${esc(r[2])}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function planHtml(plan) {
   if (plan.action === 'disable') {
     const parts = [];
@@ -493,7 +506,11 @@ function planHtml(plan) {
     if (plan.restore) parts.push(`<li class="add">恢复 ${plan.restore} 个原有分组</li>`);
     return `<div class="diff"><h4>从 Clash 撤销稳航写入的内容</h4><ul>${parts.join('') || '<li class="keep">没有需要撤销的内容</li>'}</ul></div>`;
   }
-  let html = plan.lines.map(linePreview).join('');
+  /* Lines that stay exactly as they are add nothing to the decision. */
+  let html = plan.lines.filter(l => !l.exists || !same(l.before, l.after)).map(linePreview).join('');
+  if ((plan.restored || []).length) {
+    html += `<div class="diff"><h4>恢复原来的分组定义</h4><ul>${plan.restored.map(n => `<li class="add">${esc(n)}</li>`).join('')}</ul><p class="hint">该分组名称可能被原有规则引用，因此放回启用专线之前的定义。</p></div>`;
+  }
   if ((plan.removed_legacy || []).length) {
     html += `<div class="diff"><h4>替换旧版分组</h4><ul>${plan.removed_legacy.map(n => `<li class="del">${esc(n)}（旧定义）</li>`).join('')}</ul><p class="hint">同名分组以新定义替换；关闭专线时恢复旧定义。</p></div>`;
   }
@@ -526,70 +543,76 @@ function resultText(r) {
   if ((r.dropped || []).length) t += ` 当前内核缺少数据库，已跳过 ${r.dropped.map(x => x.join(',')).join('、')}。`;
   return t;
 }
-async function submit(body) {
-  const button = $('#save');
-  button.disabled = true;
+/* Every change applies at once; a change to Clash first shows 改动前 → 改动后 in a dialog. */
+let busy = false;
+async function submit(body, done) {
+  if (busy) return;
+  busy = true;
   try {
     const plan = await post('/api/settings/preview', body);
     if (plan.clash_change) {
-      const sub = plan.action === 'disable' ? '以下内容将从 Clash 移除。' : '以下改动将写入 Clash；写入前自动备份，内核校验失败会自动恢复。';
-      if (!await confirmDialog(plan.action === 'disable' ? '确认撤销' : '确认写入 Clash', sub, planHtml(plan), plan.action === 'disable' ? '确认撤销' : '确认写入')) return;
+      const off = plan.action === 'disable';
+      const sub = off ? '以下内容将从 Clash 撤销，恢复原有配置。' : '以下改动将写入 Clash；写入前自动备份，内核校验失败会自动恢复。';
+      const ok = await confirmDialog(off ? '确认撤销' : '确认写入 Clash', sub, compareHtml(body, plan) + planHtml(plan), off ? '确认撤销' : '确认写入');
+      if (!ok) { toast('已取消，未作改动。'); return; }
     }
     const result = await post('/api/settings/apply', body);
-    toast(resultText(result));
+    const text = typeof done === 'function' ? done(result) : done;
+    const dropped = (result.dropped || []).length ? ` 当前内核缺少数据库，已跳过 ${result.dropped.map(x => x.join(',')).join('、')}。` : '';
+    toast(text ? text + dropped : resultText(result));
     await load(true);
   } catch (error) {
     toast(`没有生效：${error.message}`, true);
   } finally {
-    button.disabled = false;
+    busy = false;
+    draft = fromSnap(snap);   // a cancelled or failed change puts the controls back
+    render();
   }
 }
 
-/* ---- events ---- */
+/* ---- events: each control applies its own change ---- */
 $('#ai-enabled').addEventListener('change', e => {
-  draft.enabled = e.target.checked;
-  if (draft.enabled && !draft.country) {
-    const first = (snap.countries || []).find(c => c.ai_ok);
-    draft.country = first ? first.code : null;
+  if (!e.target.checked) {
+    draft.enabled = false; render();
+    submit({ ai_line: { enabled: false } }, '已关闭 AI 家宽专线，AI 规则已从 Clash 撤销。');
+    return;
   }
-  render();
+  const country = draft.country || ((snap.countries || []).find(c => c.ai_ok) || {}).code;
+  if (!country) { e.target.checked = false; toast('订阅中没有可用于 AI 专线的家宽节点。', true); return; }
+  draft.enabled = true; draft.country = country; render();
+  submit({ ai_line: { enabled: true, country } });
 });
 $('#countries').addEventListener('click', e => {
   const b = e.target.closest('button[data-country]');
   if (!b || b.disabled) return;
-  draft.country = b.dataset.country;
-  draft.enabled = true;
-  render();
+  if (snap.ai_line && snap.ai_line.enabled && snap.ai_line.country === b.dataset.country) return;
+  draft.country = b.dataset.country; draft.enabled = true; render();
+  submit({ ai_line: { enabled: true, country: b.dataset.country } });
 });
 $('#manual-form').addEventListener('submit', e => {
   e.preventDefault();
   const input = $('#manual-input');
   let v = input.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^(\*\.|\+\.|\.)/, '').split('/')[0].replace(/\.$/, '');
   if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/.test(v)) { toast(`“${input.value}”不是有效的域名`, true); return; }
-  if (!draft.manual.includes(v)) draft.manual.push(v);
+  if ((snap.manual || []).includes(v)) { toast(`${v} 已在列表中。`); input.value = ''; return; }
   input.value = '';
-  render();
+  submit({ manual: (snap.manual || []).concat([v]) }, r => `已添加 ${v}${r.clash_change ? `，${r.rule_count} 条 AI 规则已写入 Clash` : ''}。`);
 });
 $('#manual').addEventListener('click', e => {
   const b = e.target.closest('button[data-remove]');
   if (!b) return;
-  draft.manual.splice(Number(b.dataset.remove), 1);
-  render();
+  const gone = (snap.manual || [])[Number(b.dataset.remove)];
+  submit({ manual: (snap.manual || []).filter(d => d !== gone) }, r => `已移除 ${gone}${r.clash_change ? `，${r.rule_count} 条 AI 规则已写入 Clash` : ''}。`);
 });
 $('#groups').addEventListener('change', e => {
   const g = e.target.dataset.group;
   if (!g) return;
-  draft.exclude = e.target.checked ? draft.exclude.concat([g]) : draft.exclude.filter(x => x !== g);
-  render();
+  const now = snap.exclude_groups || [];
+  submit({ exclude_groups: e.target.checked ? now.concat([g]) : now.filter(x => x !== g) },
+         e.target.checked ? `已排除「${g}」，稳航不再接管。` : `已恢复接管「${g}」。`);
 });
-$('#discard').addEventListener('click', () => { draft = fromSnap(snap); render(); });
-$('#save').addEventListener('click', () => submit(changes()));
 $('#migration-accept').addEventListener('click', () => submit({ migration: 'accept' }));
-$('#migration-dismiss').addEventListener('click', async () => {
-  if (!await confirmDialog('暂不迁移', '旧分组保持原样，之后可在本页开启 AI 家宽专线。', '<p class="hint">不会改动 Clash。</p>', '确认')) return;
-  try { await post('/api/settings/apply', { migration: 'dismiss' }); toast('已保留旧分组。'); await load(true); }
-  catch (error) { toast(`没有生效：${error.message}`, true); }
-});
+$('#migration-dismiss').addEventListener('click', () => submit({ migration: 'dismiss' }, '已保留旧分组，不迁移。'));
 
 /* ---- AI routing check ---- */
 async function runCheck() {
@@ -631,9 +654,8 @@ async function load(reset) {
     const r = await fetch('/api/settings', { cache: 'no-store' });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-    const dirty = draft && snap && Object.keys(changes()).length;
     snap = d;
-    if (reset || !draft || !dirty) draft = fromSnap(d);
+    if (reset || !busy || !draft) draft = fromSnap(d);
     render();
   } catch (error) {
     $('#meta').textContent = `读取失败：${error.message}`;

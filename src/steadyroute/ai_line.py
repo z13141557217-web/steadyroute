@@ -127,10 +127,18 @@ class Manager(object):
         groups_text = groups_file.read_text(encoding="utf-8")
         rules_text = rules_file.read_text(encoding="utf-8")
         new_groups, removed_groups = clash_profile.edit_prepend(groups_text, group_items, names | legacy)
+        # A line we no longer keep but that replaced a group of the same name (e.g. the AI line
+        # switched off after migrating): put the old definition back, since the user's own rules
+        # may still point at that name. Everything else stays until disable() restores it all.
+        gone = set(self.applied.get("groups") or []) - names
+        restored = [item for item in self.applied.get("removed_items") or []
+                    if clash_profile._item_name(item.splitlines()[0]) in gone]
+        new_groups = clash_profile.insert_prepend_items(new_groups, restored)
         new_rules, _removed_rules = clash_profile.edit_prepend(rules_text, rule_items)
         runtime = self.target.runtime.read_text(encoding="utf-8")
         new_runtime = clash_profile.patch_runtime(
             runtime, group_items, rule_items, names | legacy, stale_rules=self.applied.get("rules") or [])
+        new_runtime = insert_runtime_groups(new_runtime, [dedent_item(item) for item in restored])
         proxy_data = self.proxies_reader()
         nodes = [name for name, proxy in proxy_data.items() if is_node(proxy)]
         preview = []
@@ -152,6 +160,8 @@ class Manager(object):
             "removed_legacy": [clash_profile._item_name(item.splitlines()[0]) for item in removed_groups],
             "texts": {"groups": new_groups, "rules": new_rules, "runtime": new_runtime},
             "removed_items": removed_groups, "dropped": [list(item) for item in drop],
+            "restored_items": restored,
+            "restored": [clash_profile._item_name(item.splitlines()[0]) for item in restored],
         }
 
     # ------------------------------------------------------------ changing Clash
@@ -192,10 +202,18 @@ class Manager(object):
             {"action": "apply", "at": int(time.time()), "profile_uid": plan["profile_uid"],
              "removed_items": plan["removed_items"], "previous_applied": self.applied},
             verify=verify, keep_selection=names)
-        removed = list(self.applied.get("removed_items") or []) + plan["removed_items"]
+        removed = [item for item in self.applied.get("removed_items") or []
+                   if item not in plan["restored_items"]] + plan["removed_items"]
+        # Keep the original order of the groups we took out, so disable() puts them back as they were.
+        order = list(self.applied.get("removed_order") or [])
+        for item in removed:
+            name = clash_profile._item_name(item.splitlines()[0])
+            if name not in order:
+                order.append(name)
+        removed.sort(key=lambda item: order.index(clash_profile._item_name(item.splitlines()[0])))
         self.applied = {
             "profile_uid": plan["profile_uid"], "groups": names, "rules": plan["rules"],
-            "removed_items": removed, "dropped": plan["dropped"], "at": int(time.time()),
+            "removed_items": removed, "removed_order": order, "dropped": plan["dropped"], "at": int(time.time()),
             "backup": str(backup), "first_rules": first_rules,
         }
         return plan, self.applied

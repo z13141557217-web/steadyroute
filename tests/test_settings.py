@@ -196,6 +196,32 @@ class SettingsServiceTests(ServiceBase):
         self.assertNotIn("migration", json.loads(self.config_path.read_text(encoding="utf-8")))
         self.assertEqual(self.files(), before)
 
+    def test_switching_the_ai_line_off_puts_the_old_group_back(self):
+        """After migrating, the AI group has the old name the user's rules point at; switching
+        the line off must not leave those rules without a group."""
+        original = self.files()["profiles/gkX1aa.yaml"]
+        old_definition = original[original.index("  - name: AI 台湾家宽线路"):original.index("  - name: SteadyRoute 发现")]
+        self.write_migration()
+        self.service.apply({"migration": "accept"})
+        plan = self.service.preview({"ai_line": {"enabled": False}})
+        self.assertEqual((plan["action"], plan["restored"], plan["rule_count"]), ("apply", ["AI 台湾家宽线路"], 0))
+        self.clash.extra_groups = ["AI 台湾家宽线路"]
+        result = self.service.apply({"ai_line": {"enabled": False}})
+        self.assertEqual(result["groups"], ["家宽出口"])
+        files = self.files()
+        self.assertIn(old_definition, files["profiles/gkX1aa.yaml"])
+        self.assertNotIn("AI 台湾家宽线路", files["profiles/rkX1aa.yaml"])
+        self.assertEqual(files["clash-verge.yaml"].count("name: AI 台湾家宽线路"), 1)
+        self.assertNotIn('"name": "AI 台湾家宽线路"', files["clash-verge.yaml"])
+        self.assertEqual(sum("AI 台湾家宽线路" in item for item in self.service.applied()["removed_items"]), 0)
+        # on again: the old definition is taken out once more, and remove_all still restores everything
+        self.service.apply({"ai_line": {"enabled": True, "country": "TW"}})
+        files = self.files()
+        self.assertNotIn(old_definition, files["profiles/gkX1aa.yaml"])
+        self.assertEqual(sum("AI 台湾家宽线路" in item for item in self.service.applied()["removed_items"]), 1)
+        self.service.remove_all()
+        self.assertEqual(self.files()["profiles/gkX1aa.yaml"], original)
+
     def test_unknown_setting_is_refused(self):
         with self.assertRaises(clash_profile.ProfileError):
             self.service.apply({"mode": "active"})
