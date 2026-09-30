@@ -122,6 +122,20 @@ details.advanced > .card { margin-top: 10px; }
 .kv dt { color: var(--ink-3); }
 .kv dd { margin: 0; color: var(--ink-2); min-width: 0; }
 
+.tech { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--hair); }
+.tech h4 { margin: 0; font-size: 13.5px; font-weight: 650; color: var(--ink); }
+.tech h5 { margin: 6px 0 2px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.kv.tight { grid-template-columns: 110px minmax(0, 1fr); gap: 4px 12px; font-size: 12.5px; }
+.kv code, .tech code { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; background: var(--sunken); padding: 1px 5px; border-radius: 5px; }
+.members, .plainlist { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 12.5px; color: var(--ink-2); }
+.members li.add::before { content: "+ "; color: var(--good); font-weight: 700; }
+.members li.del::before { content: "− "; color: var(--bad); font-weight: 700; }
+.members li.keep::before { content: "· "; color: var(--ink-4); }
+.plainlist li::before { content: "· "; color: var(--ink-4); }
+.rules { margin: 0; padding-left: 2.6em; display: grid; gap: 1px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+.rules li { overflow-wrap: anywhere; }
+.rules li::marker { color: var(--ink-4); }
+.raw { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--sunken); font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .compare { width: 100%; border-collapse: collapse; font-size: 13px; }
 .compare th, .compare td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--hair); vertical-align: top; }
 .compare th { font-size: 12px; color: var(--ink-3); font-weight: 500; }
@@ -529,17 +543,63 @@ function linePreview(x) {
   const empty = x.after.length ? '' : '<p class="badline">当前订阅中没有匹配的节点：分组会拒绝所有连接，直到出现该国家的家宽节点。</p>';
   return `<div class="diff"><h4>${esc(x.group)} <span class="muted">${esc(x.country_label)}家宽 · ${x.after.length} 个节点</span></h4>${empty}<ul>${items.join('')}</ul></div>`;
 }
+/* 技术细节: everything that will be written, nothing left out. */
 function techHtml(plan) {
+  const sec = (title, body) => `<section class="tech"><h4>${esc(title)}</h4>${body}</section>`;
+  const ruleList = (lines, start) => `<ol class="rules" start="${start || 1}">${lines.map(r => `<li>${esc(r)}</li>`).join('')}</ol>`;
   if (plan.action === 'disable') {
-    return `<div class="diff"><ul>${(plan.remove_groups || []).map(n => `<li class="del">分组 ${esc(n)}</li>`).join('')}${plan.remove_rules ? `<li class="del">${plan.remove_rules} 条 AI 规则</li>` : ''}${plan.restore ? `<li class="add">恢复 ${plan.restore} 个原有分组</li>` : ''}</ul></div>`;
+    let html = '';
+    if ((plan.remove_groups || []).length) html += sec('撤销的分组', `<ul class="plainlist">${plan.remove_groups.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`);
+    if ((plan.restore_groups || []).length) html += sec('恢复为原来定义的分组', `<ul class="plainlist">${plan.restore_groups.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`);
+    if ((plan.remove_rule_lines || []).length) html += sec(`撤销的 AI 规则 · ${plan.remove_rule_lines.length} 条`, ruleList(plan.remove_rule_lines));
+    return html + sec('写入位置', `<p class="hint">Clash Verge 订阅 ${esc(plan.profile_uid || '')} 的扩展分组与扩展规则文件，以及运行配置。</p>`);
   }
-  let html = (plan.lines || []).filter(x => !x.exists || !same(x.before, x.after)).map(linePreview).join('');
-  if ((plan.removed_legacy || []).length) html += `<div class="diff"><h4>替换的旧定义</h4><ul>${plan.removed_legacy.map(n => `<li class="del">${esc(n)}</li>`).join('')}</ul></div>`;
-  if (plan.rule_count) {
-    html += `<div class="diff"><h4>AI 规则 · ${plan.rule_count} 条，排在所有规则之前</h4><ul>${(plan.rule_breakdown || []).map(b => `<li class="keep">${esc(b.source)}：${b.count} 条</li>`).join('')}</ul>
-      <p class="hint mono">${(plan.rules_sample || []).map(esc).join('<br>')}${plan.rule_count > (plan.rules_sample || []).length ? '<br>…' : ''}</p></div>`;
+  let html = '';
+  const lines = {};
+  (plan.lines || []).forEach(x => { lines[x.group] = x; });
+  (plan.groups || []).forEach(g => {
+    const x = lines[g.name] || { after: [], added: [], removed: [], before: [] };
+    const kept = x.after.filter(n => !x.added.includes(n));
+    const members = x.added.map(n => `<li class="add">${esc(n)}</li>`)
+      .concat(x.removed.map(n => `<li class="del">${esc(n)}</li>`))
+      .concat(kept.map(n => `<li class="keep">${esc(n)}</li>`)).join('');
+    const facts = [
+      ['类型', `${g.type}（由稳航选择节点）`],
+      ['成员来源', '订阅中的全部节点，按下面的条件自动筛选；订阅变化时自动跟随'],
+      ['筛选条件', `<code>${esc(g.filter)}</code>（${esc(x.country_label || '')} 且为家宽）`],
+      ['排除', `<code>${esc(g['exclude-filter'])}</code>（到期、流量等提示条目）；类型 ${esc(g['exclude-type'])}`],
+      ['无可用节点时', `${esc(g['empty-fallback'])}：拒绝连接，不改走直连或其他国家`],
+      ['UDP', g['disable-udp'] ? '禁用' : '开启：UDP、QUIC、NTP 与网页同一出口'],
+      ['切换时的已有连接', g['interrupt-exist-connections'] ? '中断' : '不中断，自然结束'],
+    ].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('');
+    const empty = x.after.length ? '' : '<p class="badline">当前订阅中没有匹配的节点：分组会拒绝所有连接，直到出现该国家的家宽节点。</p>';
+    const unchanged = x.exists && same(x.before, x.after) && !(plan.removed_legacy || []).includes(g.name);
+    html += sec(`分组「${g.name}」 · ${x.after.length} 个节点${unchanged ? '（不变）' : ''}`,
+      `<dl class="kv tight">${facts}</dl>${empty}<ul class="members">${members}</ul>
+       <pre class="raw">${esc(JSON.stringify(g, null, 2))}</pre>`);
+  });
+  if ((plan.removed_rules || []).length) html += sec(`撤销的 AI 规则 · ${plan.removed_rules.length} 条`, ruleList(plan.removed_rules));
+  if ((plan.restored || []).length) html += sec('恢复为原来定义的分组', `<ul class="plainlist">${plan.restored.map(n => `<li>${esc(n)}（名称可能被原有规则引用）</li>`).join('')}</ul>`);
+  if ((plan.removed_legacy || []).length) html += sec('替换的旧定义', `<ul class="plainlist">${plan.removed_legacy.map(n => `<li>${esc(n)}</li>`).join('')}</ul><p class="hint">关闭专线或卸载时原样放回。</p>`);
+  const rules = plan.rules || [];
+  if (rules.length) {
+    let at = 0, body = '';
+    (plan.rule_breakdown || []).forEach(b => {
+      if (!b.count) return;
+      body += `<h5>${esc(b.source)} · ${b.count} 条</h5>` + ruleList(rules.slice(at, at + b.count), at + 1);
+      at += b.count;
+    });
+    if (at < rules.length) body += ruleList(rules.slice(at), at + 1);
+    html += sec(`AI 规则 · ${rules.length} 条，按顺序排在所有规则之前`, body);
   }
-  return html + `<p class="hint">写入 Clash Verge 当前订阅（${esc(plan.profile_uid || '')}）的扩展分组与扩展规则文件。</p>`;
+  if ((plan.dropped || []).length) html += sec('当前 Clash 内核无法加载、已跳过的规则', `<ul class="plainlist">${plan.dropped.map(d => `<li><code>${esc(d.join(','))}</code></li>`).join('')}</ul>`);
+  html += sec('写入位置与步骤', `<dl class="kv tight">
+    <dt>订阅</dt><dd>${esc(plan.profile_uid || '')}</dd>
+    <dt>扩展分组文件</dt><dd><code>profiles/${esc(plan.groups_file || '')}</code></dd>
+    <dt>扩展规则文件</dt><dd><code>profiles/${esc(plan.rules_file || '')}</code></dd>
+    <dt>运行配置</dt><dd><code>${esc(plan.runtime_file || 'clash-verge.yaml')}</code></dd>
+    <dt>步骤</dt><dd>Clash 内核校验 → 备份三个文件 → 写入稳航标记块 → 重新加载 → 核对分组 → 任一步失败即全部恢复</dd></dl>`);
+  return html;
 }
 function confirmDialog(title, sub, body, ok) {
   const d = $('#dlg');

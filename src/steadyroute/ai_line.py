@@ -163,7 +163,8 @@ class Manager(object):
             })
         return {
             "profile_uid": uid, "groups_file": groups_file.name, "rules_file": rules_file.name,
-            "lines": preview, "rules": rule_lines, "rule_breakdown": breakdown,
+            "lines": preview, "rules": rule_lines, "rule_breakdown": breakdown, "groups": groups,
+            "removed_rules": [line for line in self.applied.get("rules") or [] if line not in rule_lines],
             "removed_legacy": [clash_profile._item_name(item.splitlines()[0]) for item in removed_groups],
             "texts": {"groups": new_groups, "rules": new_rules, "runtime": new_runtime},
             "removed_items": removed_groups, "dropped": [list(item) for item in drop],
@@ -172,7 +173,8 @@ class Manager(object):
         }
 
     # ------------------------------------------------------------ changing Clash
-    def apply(self):
+    def validated_plan(self):
+        """plan() as it will be written: checked by the Clash core, optional rules it cannot load dropped."""
         for line in self.lines():
             if line["ai"] and line["country"] in AI_UNSUPPORTED:
                 raise clash_profile.ProfileError("%s不在 ChatGPT / Claude 的服务地区内，不能用作 AI 专线" % (
@@ -195,6 +197,10 @@ class Manager(object):
                 named = [item for item in remaining if item[1].lower() in text
                          or (item[0] == "IP-ASN" and "asn" in text)]
                 drop.append((named or remaining)[0])
+        return plan
+
+    def apply(self):
+        plan = self.validated_plan()
         names = [line["name"] for line in self.lines()]
         first_rules = plan["rules"][:3]
 

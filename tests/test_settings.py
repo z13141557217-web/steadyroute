@@ -104,6 +104,9 @@ class SettingsServiceTests(ServiceBase):
         self.assertEqual(plan["lines"][0]["after"], ["🇯🇵 日本 家宽 01"])
         self.assertGreater(plan["rule_count"], 40)
         self.assertNotIn("texts", plan)
+        self.assertEqual(len(plan["rules"]), plan["rule_count"], "the preview lists every rule it will write")
+        self.assertEqual(plan["groups"][0]["empty-fallback"], "REJECT")
+        self.assertNotIn("disable-udp", plan["groups"][0])
         self.assertEqual(self.files(), before)
 
     def test_enable_then_disable(self):
@@ -216,6 +219,7 @@ class SettingsServiceTests(ServiceBase):
         self.service.apply({"migration": "accept"})
         plan = self.service.preview({"ai_line": {"enabled": False}})
         self.assertEqual((plan["action"], plan["restored"], plan["rule_count"]), ("apply", ["AI 台湾家宽线路"], 0))
+        self.assertEqual(plan["removed_rules"], self.service.applied()["rules"], "every rule taken out is listed")
         self.clash.extra_groups = ["AI 台湾家宽线路"]
         result = self.service.apply({"ai_line": {"enabled": False}})
         self.assertEqual(result["groups"], ["家宽出口"])

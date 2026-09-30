@@ -271,16 +271,20 @@ class SettingsService(object):
             return {"clash_change": True, "action": "disable",
                     "remove_groups": applied.get("groups") or [],
                     "remove_rules": len(applied.get("rules") or []),
-                    "restore": len(applied.get("removed_items") or [])}
+                    "remove_rule_lines": applied.get("rules") or [],
+                    "restore": len(applied.get("removed_items") or []),
+                    "restore_groups": [clash_profile._item_name(item.splitlines()[0])
+                                       for item in applied.get("removed_items") or []],
+                    "profile_uid": applied.get("profile_uid")}
         self.check_core()
-        plan = self.manager(new).plan()
+        plan = self.manager(new).validated_plan()
         plan.pop("texts", None)
         plan.pop("removed_items", None)
         plan.pop("restored_items", None)
         plan["clash_change"] = True
         plan["action"] = "apply"
-        plan["rules_sample"] = plan["rules"][:8]
-        plan["rule_count"] = len(plan.pop("rules"))
+        plan["rule_count"] = len(plan["rules"])
+        plan["runtime_file"] = self.target.runtime.name
         return plan
 
     def apply(self, changes):
