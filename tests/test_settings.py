@@ -287,7 +287,7 @@ class SettingsServiceTests(ServiceBase):
             "exclude_groups": ["家宽出口"], "business_test_urls": ["https://www.gstatic.com/generate_204"]})), encoding="utf-8")
         rows = {row["name"]: row for row in self.service.snapshot()["group_details"]}
         self.assertEqual((rows["AI 台湾家宽线路"]["country_label"], rows["AI 台湾家宽线路"]["status"]), ("台湾", "switching"))
-        self.assertEqual(rows["AI 台湾家宽线路"]["residential"], 3)
+        self.assertEqual(rows["AI 台湾家宽线路"]["residential"], 2, "only the group's own members count")
         self.assertEqual(rows["家宽出口"]["status"], "excluded")
 
     def test_ai_check_reports_where_each_domain_goes(self):

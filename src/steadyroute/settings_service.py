@@ -69,7 +69,9 @@ def group_details(proxies, exclude):
         current = (proxies.get(name) or {}).get("now")
         code = regions.region_of(current)[0] if current and ai_line.is_node(proxies.get(current)) else None
         known = code and code != regions.OTHER_REGION[0]
-        residential = sum(1 for node, proxy in proxies.items() if known and ai_line.is_node(proxy)
+        # Only the group's own members can be switched to, so count those (same rule as auto_lock).
+        members = (proxies.get(name) or {}).get("all") or []
+        residential = sum(1 for node in members if known and ai_line.is_node(proxies.get(node))
                           and regions.region_of(node)[0] == code and regions.is_residential(node)
                           and not regions.is_notice(node))
         status = ("excluded" if name in exclude else "unknown" if not known
