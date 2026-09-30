@@ -417,7 +417,7 @@ function render() {
   }
   const cards = [`<button class="choice" type="button" role="radio" data-country="off" aria-checked="${selected === 'off'}"><b>不使用</b><small>按 Clash 原有规则分流</small></button>`]
     .concat(countries.map(c => `<button class="choice" type="button" role="radio" data-country="${esc(c.code)}" aria-checked="${selected === c.code}" ${c.ai_ok ? '' : 'disabled'}>
-      <b>${esc(c.label)}</b><small>${c.ai_ok ? `${c.residential} 个家宽节点` : 'ChatGPT / Claude 不支持该地区'}</small></button>`));
+      <b>${esc(c.label)}</b><small>${!c.ai_ok ? 'ChatGPT / Claude 不支持该地区' : c.residential === 1 ? '1 个家宽节点，无备用' : `${c.residential} 个家宽节点`}</small></button>`));
   const box = $('#choices'), html = cards.join('');
   if (box.__html !== html) { box.innerHTML = html; box.__html = html; }
 
@@ -459,11 +459,13 @@ function render() {
   $('#groups').innerHTML = details.length ? details.map(g => {
     const on = g.status !== 'excluded';
     const where = g.country_label ? `${g.country_label}家宽` : '';
-    const text = g.status === 'switching' ? `${esc(where)} · ${g.residential} 个节点`
+    const single = g.status === 'switching' && g.residential === 1;
+    const text = single ? `${esc(where)}只有 1 个节点，断线时没有可切换的备用`
+      : g.status === 'switching' ? `${esc(where)} · ${g.residential} 个节点`
       : g.status === 'excluded' ? `已关闭，保持 Clash 自身的选择${where ? `（当前在${esc(g.country_label)}）` : ''}`
       : g.status === 'no_residential' ? `<span class="warn">订阅中没有${esc(g.country_label)}家宽节点，暂不切换</span>`
       : '<span class="warn">当前节点的国家无法识别，暂不切换</span>';
-    return `<div class="grow"><div><b>${esc(g.name)}</b><small${g.status === 'switching' || g.status === 'excluded' ? '' : ' class="warn"'}>${text}</small></div>
+    return `<div class="grow"><div><b>${esc(g.name)}</b><small${(g.status === 'switching' && !single) || g.status === 'excluded' ? '' : ' class="warn"'}>${text}</small></div>
       <label class="switch" title="${on ? '自动切换中' : '已关闭'}"><input type="checkbox" data-group="${esc(g.name)}" ${on ? 'checked' : ''} aria-label="${esc(g.name)} 自动切换"><i></i></label></div>`;
   }).join('') : '<p class="muted pad">Clash 中暂无直接选中节点的分组。</p>';
 
