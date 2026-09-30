@@ -153,6 +153,8 @@ class RulesTests(unittest.TestCase):
 
     def test_manual_entries_are_cleaned_or_refused(self):
         self.assertEqual(ai_rules.manual_entry(" *.Perplexity.AI/ "), ("DOMAIN-SUFFIX", "perplexity.ai"))
+        self.assertEqual(ai_rules.manual_entry("https://www.perplexity.ai/search?q=1"), ("DOMAIN-SUFFIX", "perplexity.ai"))
+        self.assertEqual(ai_rules.manual_entry("www.io"), ("DOMAIN-SUFFIX", "www.io"))
         self.assertIsNone(ai_rules.manual_entry("com"))
         self.assertIsNone(ai_rules.manual_entry("bad domain!"))
 

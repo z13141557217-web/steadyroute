@@ -571,6 +571,7 @@ async function submit(body, done) {
 }
 
 /* ---- events: each control applies its own change ---- */
+const lineDone = country => r => `AI 家宽专线已启用（${countryLabel(country)}家宽），${r.rule_count} 条 AI 规则已写入 Clash。`;
 $('#ai-enabled').addEventListener('change', e => {
   if (!e.target.checked) {
     draft.enabled = false; render();
@@ -580,19 +581,20 @@ $('#ai-enabled').addEventListener('change', e => {
   const country = draft.country || ((snap.countries || []).find(c => c.ai_ok) || {}).code;
   if (!country) { e.target.checked = false; toast('订阅中没有可用于 AI 专线的家宽节点。', true); return; }
   draft.enabled = true; draft.country = country; render();
-  submit({ ai_line: { enabled: true, country } });
+  submit({ ai_line: { enabled: true, country } }, lineDone(country));
 });
 $('#countries').addEventListener('click', e => {
   const b = e.target.closest('button[data-country]');
   if (!b || b.disabled) return;
   if (snap.ai_line && snap.ai_line.enabled && snap.ai_line.country === b.dataset.country) return;
   draft.country = b.dataset.country; draft.enabled = true; render();
-  submit({ ai_line: { enabled: true, country: b.dataset.country } });
+  submit({ ai_line: { enabled: true, country: b.dataset.country } }, lineDone(b.dataset.country));
 });
 $('#manual-form').addEventListener('submit', e => {
   e.preventDefault();
   const input = $('#manual-input');
   let v = input.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^(\*\.|\+\.|\.)/, '').split('/')[0].replace(/\.$/, '');
+  if (/^www\.[^.]+\.[^.]+/.test(v)) v = v.slice(4);
   if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/.test(v)) { toast(`“${input.value}”不是有效的域名`, true); return; }
   if ((snap.manual || []).includes(v)) { toast(`${v} 已在列表中。`); input.value = ''; return; }
   input.value = '';

@@ -134,6 +134,8 @@ def manual_entry(domain):
     """A domain typed on the settings page, as a DOMAIN-SUFFIX entry, or None if invalid."""
     value = domain.strip().lower().rstrip(".")
     value = re.sub(r"^(?:https?://)?(?:\*\.|\+\.|\.)?", "", value).split("/")[0]
+    if value.startswith("www.") and value.count(".") >= 2:
+        value = value[4:]      # a pasted address: cover the whole site, not only www
     return ("DOMAIN-SUFFIX", value) if valid_entry("DOMAIN-SUFFIX", value) else None
 
 
