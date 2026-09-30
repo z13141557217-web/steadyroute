@@ -145,6 +145,8 @@ def run(rules, proxies, runtime_text, home, line_group=None, line_country=None):
                     return index, "RULE-SET,%s" % payload, target, unsure
             if kind == "match":
                 return index, "MATCH", target, unsure
+            if kind == "and" and re.search(r"\(\s*NETWORK\s*,\s*UDP\s*\)", payload, re.I):
+                continue      # UDP-only rule: never matches the HTTPS (TCP) traffic judged here
             if kind in UNKNOWN_KINDS:
                 unsure.append(("第 %d 条 %s,%s" % (index, rule.get("type"), payload), target))
         return None, None, None, unsure

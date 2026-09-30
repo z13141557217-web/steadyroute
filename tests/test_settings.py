@@ -232,7 +232,8 @@ class AiCheckTests(unittest.TestCase):
         line = "AI 家宽专线"
         proxies = {line: {"type": "Selector", "now": "🇯🇵 日本 家宽 01"}, "🇯🇵 日本 家宽 01": {"type": "Socks5"},
                    "出口": {"type": "Selector", "now": "香港 家宽 01"}, "香港 家宽 01": {"type": "Socks5"}}
-        rules = [{"type": "IPCIDR", "payload": "160.79.104.0/21", "proxy": line},
+        rules = [{"type": "AND", "payload": "((Network,udp),(DstPort,3478-3481))", "proxy": "REJECT"},
+                 {"type": "IPCIDR", "payload": "160.79.104.0/21", "proxy": line},
                  {"type": "GeoSite", "payload": "openai", "proxy": line},
                  {"type": "DomainSuffix", "payload": "openai.com", "proxy": line},
                  {"type": "Match", "payload": "", "proxy": "出口"}]
@@ -241,7 +242,7 @@ class AiCheckTests(unittest.TestCase):
         self.assertFalse(rows["IP-ASN,399358"]["ok"])
         self.assertEqual(rows["IP-ASN,399358"]["hit"], "MATCH")
         self.assertEqual(rows["DOMAIN-SUFFIX,openai.com"]["unsure"], [])
-        self.assertEqual(rows["DOMAIN,anthropic-com.ghost.io"]["unsure"], ["第 2 条 GeoSite,openai"])
+        self.assertEqual(rows["DOMAIN,anthropic-com.ghost.io"]["unsure"], ["第 3 条 GeoSite,openai"])
         rules.insert(1, {"type": "IPASN", "payload": "399358", "proxy": line})
         rows = {row["rule"]: row for row in ai_check.run(rules, proxies, "", "/nonexistent", line, "JP")["rows"]}
         self.assertEqual(rows["IP-ASN,399358"]["hit"], "IP-ASN,399358")
