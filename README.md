@@ -1,13 +1,24 @@
 # 稳航 SteadyRoute
 
-稳航是一个跑在 macOS 上的 Clash Verge / Mihomo 家宽线路控制器。它盯着两条代理线路，一直测节点，节点坏了几秒内换到同地区的热备，节点变慢时在不打断现有连接的前提下换到更快的同地区家宽，并在本机提供一个只读看板：
+稳航是一个跑在 macOS 上的 Clash Verge / Mihomo 家宽线路控制器。它照看 Clash 里正在用的每条线路：按当前节点的国家锁定，一直测节点，节点坏了几秒内换到同国家的家宽热备，节点变慢时在不打断现有连接的前提下换到更快的同国家家宽，并在本机提供看板。
 
-- **AI 台湾家宽线路**：给 ChatGPT、Claude 等 AI 服务用。
-- **香港家宽自动备援**：香港出口。
+可选的 **AI 家宽专线**：在设置页选一个国家，稳航在 Clash 里建立只含该国家家宽节点的专线，ChatGPT、Claude 等 AI 服务的规则（以 [ip.net.coffee](https://ip.net.coffee/) 为第一优先级，每周自动同步）排在所有规则之前。
 
 - 只用 Python 3.9 标准库，没有第三方依赖。单进程，由 LaunchAgent 开机自启、异常自动拉起。
-- 不改订阅，不碰其他策略组，不上传任何数据。看板只监听 `127.0.0.1:17654`。
-- 当前版本：**v0.5.0**（2026-09-29）。
+- 不改订阅，不上传任何数据；只有在设置页确认后才会往 Clash 写入专线，关闭即完整撤销。看板只监听 `127.0.0.1:17654`。
+- 当前版本：**v0.5.1**（2026-09-30）。
+
+## 快速开始
+
+需要 macOS 和 [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev)。新装、升级、换电脑都是同一步：
+
+```bash
+git clone https://github.com/z13141557217-web/steadyroute.git
+cd steadyroute
+./install.command
+```
+
+也可以下载 [Releases](https://github.com/z13141557217-web/steadyroute/releases) 里的 `SteadyRoute-v<版本>.zip`，解压后右键 `install.command` → 打开。装好后自动打开看板 <http://127.0.0.1:17654/>；AI 家宽专线在看板右上角的“设置”里开启。
 
 ---
 
@@ -17,8 +28,8 @@
 - [铁律：只在同地区家宽之间切换](#铁律只在同地区家宽之间切换)
 - [工作原理](#工作原理)
 - [看板与页面](#看板与页面)
-- [分享给朋友（分享版）](#分享给朋友分享版)
-- [安装、发布与回滚](#安装发布与回滚)
+- [AI 家宽专线](#ai-家宽专线)
+- [安装、升级与卸载](#安装升级与卸载)
 - [日志与数据](#日志与数据)
 - [资源占用](#资源占用)
 - [隐私与安全](#隐私与安全)
@@ -39,7 +50,7 @@ AI 服务对出口 IP 很敏感。出口在不同地区之间来回跳，或者�
 | 只按单次测速选，抖一下就换，出口频繁变化 | 按平均延迟、抖动、24 小时可用率综合判断；回优有门槛、要连续确认、有冷却时间 |
 | 节点断了要等下一次测速（分钟级）才发现 | 当前节点每 5 秒探测，连续 3 次失败即确认，断线到切换约 6 秒 |
 | 换节点会打断正在进行的对话、上传 | 回优时旧连接保留到自然结束，只有新请求走新节点 |
-| 候选列表写死，订阅换了节点名就失效 | 按名称规则自动发现订阅里的同地区家宽（目前为观察模式） |
+| 候选列表写死，订阅换了节点名就失效 | 每轮从订阅自动发现同国家的家宽，新节点预热后参与选路 |
 | 本机断网、合盖休眠、网站自己挂了，都会被当成节点故障 | 这些情况都能识别，不冤枉节点 |
 | 不知道它为什么换、什么时候换 | 看板直接显示原因和下一步；每次决策写入结构化日志 |
 
@@ -47,21 +58,23 @@ AI 服务对出口 IP 很敏感。出口在不同地区之间来回跳，或者�
 
 ## 铁律：只在同地区家宽之间切换
 
-> **台湾线路只会换到台湾家宽，香港线路只会换到香港家宽。**
+> **每条线路锁定一个国家，只会换到这个国家的家宽：台湾线路只用台湾家宽，香港线路只用香港家宽。**
 
 这条规则没有例外。同地区的家宽全部不可用时，稳航保持当前选择、继续检测，并在看板上用红色提示，不会为了"能连上"而换到其他地区或机房节点。
 
 规则在三层都有检查：
 
-1. **加载策略时**：静态候选如果不匹配本地区家宽规则，或者同时匹配多个地区，直接拒绝启动。
-2. **选路前**：候选列表按地区和家宽规则再过滤一次。
+1. **生成策略时**：每轮按分组当前节点的国家生成策略，候选只取同国家、名称带家宽标记的节点。
+2. **选路前**：候选列表按国家和家宽规则再过滤一次。
 3. **向 Mihomo 下发切换（`PUT`）前**：最后一次校验，越界的选择直接拒绝并记录。
 
-候选节点按名称识别，规则在 [`config/route-policies.json`](config/route-policies.json) 里：
+候选节点按名称识别（[`regions.py`](src/steadyroute/regions.py)）：
 
-- 台湾："台湾 / 台灣 / 🇹🇼"加上"家宽 / HINET / Seednet"。
-- 香港："香港 / 🇭🇰"加上"家宽 / HKT / HKBN"。
-- 排除"到期、剩余流量、官网"这类提示条目。
+- 国家：中英文名、常见缩写和国旗，例如“台湾 / 台灣 / 🇹🇼 / TW”。
+- 家宽：“家宽 / 住宅 / Residential / ISP / HiNet / Seednet / HKT / HKBN”等。
+- 排除“到期、剩余流量、官网”这类提示条目。
+
+AI 家宽专线在 Clash 层面同样遵守这条规则：分组只包含所选国家的家宽节点，节点全部不可用时拒绝连接（`empty-fallback: REJECT`），不会回落到直连。
 
 `DIRECT` 只用于只读的本机网络检测，任何路径都不会把线路切到 `DIRECT`。
 
@@ -86,7 +99,7 @@ flowchart LR
 |---|---|---|
 | 快速通道 | 每 5 秒 | 只测当前节点，纯 HTTP 204，约 1 KB，2 秒超时 |
 | 完整检测 | 每 20 秒一轮（固定速率） | 所有候选的 HTTPS 连通和延迟；热备单独测一次；轮流抽查备用节点 |
-| 业务检测 | 每 60 秒 | 通过当前节点和热备打开 AI 网站检测页（台湾：chatgpt.com、claude.ai；香港：grok.com） |
+| 业务检测 | 每 60 秒 | 通过当前节点和热备打开检测页（AI 专线：ChatGPT、Claude 的网页与 API 地址） |
 | 本机网络 | 怀疑故障时 | 绕开代理直接测，区分"节点坏了"和"本机没网" |
 
 ### 故障切换
@@ -144,23 +157,23 @@ flowchart LR
 
 ## 看板与页面
 
-所有页面都在本机 `http://127.0.0.1:17654`，只读，不加载任何外部资源，断网时也能打开。
+所有页面都在本机 `http://127.0.0.1:17654`，不加载任何外部资源，断网时也能打开；除设置页外均为只读。
 
 | 地址 | 内容 |
 |---|---|
 | `/` | **看板**，见下方说明 |
 | `/nodes` | **全部节点（只读）**：订阅里的每个节点按地区分组，显示 Clash 自己最近一次测速；标出"当前在用 / 热备 / 候选 / 仅查看"。可按地区、家宽 / 非家宽筛选和搜索 |
-| `/guide` | **使用说明**：14 节，从工作原理到每个数字的含义；文中数值从运行中的服务读取 |
+| `/settings` | **设置**：AI 家宽专线、AI 域名规则、接管范围、旧版迁移、AI 分流体检；修改只接受本页请求 |
+| `/guide` | **使用说明**：从工作原理到每个数字的含义；文中数值从运行中的服务读取 |
 | `/changelog` | **更新日志**：每个版本面向使用者的变化，高亮正在运行的版本 |
 | `/api/status` | 看板用的状态快照（兼容格式） |
 | `/api/v1/status` | 版本化状态契约，见 [STATE_API.md](docs/STATE_API.md) |
 | `/api/nodes` | 订阅节点目录（全部节点页用） |
-| `/acceptance`、`/candidate-acceptance` | 固定样例验收页、动态候选影子验收页 |
 
 看板包括：
 
-- **顶部状态面板**：动态稳航图标（正常为蓝色，需留意为橙色，故障为红色）、两条线路的实时延迟、24 小时切换次数（故障 / 回优）、内存当前值与峰值、累计检测轮数。
-- **两张线路卡片**：当前节点、热备、平均延迟、近 24 小时可用率、抖动、综合评分、活跃连接。
+- **顶部状态面板**：动态稳航图标（正常为蓝色，需留意为橙色，故障为红色）、各线路的实时延迟、24 小时切换次数（故障 / 回优）、内存当前值与峰值、累计检测轮数。
+- **线路卡片**（每行两张）：锁定国家、当前节点、热备、平均延迟、近 24 小时可用率、抖动、综合评分、活跃连接；AI 专线带“AI 专线”标记与“检测出口 IP”链接。未接管的分组单独列出原因。
 - **延迟曲线**：可看 5 / 15 / 30 分钟。
   - 实线是当前节点，虚线是热备。
   - 红色实线标故障切换，绿色虚线标无损回优。
@@ -173,86 +186,43 @@ flowchart LR
 
 ---
 
-## 分享给朋友（分享版）
+## AI 家宽专线
 
-v0.5.0 起，稳航可以装在朋友的 Mac 上（Clash Verge，TUN 模式也可以），不需要改他的 Clash 配置：
+可选功能，在设置页 `/settings` 开启。写入 Clash 前列出分组成员与规则差异，确认后才生效。
 
-- 接管朋友 Clash 里**直接选中了某个节点**的分组，按这个节点的国家锁定（美国就锁美国），之后**只在这个国家的家宽节点之间切换**，不跨国家。
-- 朋友在 Clash 里手动换到别的国家，稳航改锁到新国家。
-- 当前是同国家的普通节点时，家宽预热好（约 1 分钟）后无损换上；之后手动选普通节点保留 60 分钟，断了立刻换。
-- 没有家宽的国家只提示不切换；分组选的是另一个分组（比如"自动选择"）时暂停。
-- 装好后先给家宽候选测速约 1 分钟，有了热备之后故障切换才生效。
+- **分组**：select 类型，自动包含所选国家的全部家宽节点（订阅更新后自动跟随），排除提示条目；`empty-fallback: REJECT`（Mihomo 默认的 COMPATIBLE 等于直连）；`disable-udp`，避免 QUIC 绕过专线出口。香港、澳门、俄罗斯、中国大陆不在 ChatGPT / Claude 的服务范围内，不可选。
+- **规则**（全部排在用户规则之前）：
+  1. [ip.net.coffee](https://ip.net.coffee/claude/) 的 Claude 分流规则（22 条，含 Anthropic IP 段与 ASN 399358）和 ChatGPT / Codex 分流规则（`GEOSITE,openai` + 12 条）。NTP 规则不采用（专线禁用 UDP）。
+  2. 社区合集 `GEOSITE,category-ai-!cn`（Gemini、Grok、Perplexity 等）。
+  3. AI 桌面 App 与命令行（按进程名）。
+  4. 设置页手动添加的域名。
+- **自动维护**：每周同步 net.coffee 规则（数量、核心域名、规则类型、单次移除比例都有检查，异常时继续用现有规则）并更新地理数据库；每小时自检，切换订阅或规则丢失时自动重新写入。
+- **写入方式**：写入 Clash Verge 当前订阅的扩展分组 / 扩展规则文件（标记块内），更新订阅不丢失。每次写入先由 Clash 内核校验、自动备份，重载后核对分组，任一步失败完整恢复并选回原节点。
+- **撤销**：关闭专线或卸载稳航，写入内容全部撤销，被替换的旧分组定义原样放回。
+- **AI 分流体检**：设置页按 Clash 当前生效的规则推演 net.coffee 列出的 34 项域名与 IP，显示命中规则、分组链、出口节点与国家。看板专线卡片上的“检测出口 IP”打开 ip.net.coffee 查看 AI 服务实际看到的地址。
 
-### 打包与安装
+## 安装、升级与卸载
+
+仓库和发布包布局相同，都用根目录的 `install.command`（即 `/usr/bin/python3 scripts/installer.py install`）：
 
 ```bash
-python3 scripts/share/build_share.py        # 生成 dist/SteadyRoute-share-v<版本>.zip
+./install.command
+python3 scripts/installer.py status
+./uninstall.command
 ```
 
-打包时只放程序、分享版配置（`config/route-policies.auto-lock.json`）和安装器，不带作者自己的配置、状态和日志，并自动检查个人信息（本机路径、用户名、订阅链接、密钥、邮箱），发现就拒绝打包。
+安装器：检查 macOS、Python 3.9+ 与 Clash Verge → 停止旧服务 → 备份当前版本 → 安装程序、保留设置 → 启动并确认看板回报的是新版本；失败自动恢复上一版（保留最近 3 份备份）。`uninstall.command` 先停止服务，再撤销写入 Clash 的专线和规则，最后删除程序（`--purge` 连日志一起删除）。
 
-朋友解压后右键 `install.command` → 打开。安装器会：检查 macOS、Python 3.9+ 和 Clash Verge；拒绝与另一份稳航同时运行；把程序装到 `~/Library/Application Support/SteadyRoute`，日志在 `~/Library/Logs/SteadyRoute`，开机自启 `com.steadyroute.share`；启动后确认看板回报的版本正确，失败自动恢复到上一版（保留最近 3 份备份）。升级再运行一次即可，状态和配置保留。`uninstall.command` 卸载，Clash 设置不受影响。
-
-## 安装、发布与回滚
-
-### 路径
+**旧版迁移**：安装器会识别运行 `weighted_router.py` 的旧 LaunchAgent（v0.5.0 及以前的固定台湾 / 香港配置，或 v0.5.0 分享版），带过状态、节点历史和日志，把旧设置转换为新格式；新服务确认正常后才停用旧版自启（plist 移到备份目录），失败则重新启动旧版。旧版的台湾 / 香港线路作为迁移建议出现在设置页，确认后改为同名、自动筛选同国家家宽的专线，Clash 中引用这些分组的规则继续有效。
 
 | 用途 | 路径 |
 |---|---|
-| 源码仓库（唯一开发源） | `/Users/nurture/Projects/steadyroute` |
-| 生产目录 | `~/Library/Application Support/Clash-Verge-Stability-Router` |
-| 生产备份 | `~/Library/Application Support/Clash-Verge-Stability-Router Backups` |
-| 日志 | `~/Library/Logs/Clash-Verge-Stability-Router` |
-| LaunchAgent | `~/Library/LaunchAgents/com.nurture.clash-stability-router.plist` |
+| 程序、状态、设置 | `~/Library/Application Support/SteadyRoute`（`config/route-policies.json`、`state.json`、`clash-applied.json`、`ai-rules.json`、`clash-backups/`） |
+| 版本备份 | `~/Library/Application Support/SteadyRoute-backups`（`legacy/` 存放停用的旧版自启） |
+| 日志 | `~/Library/Logs/SteadyRoute` |
+| LaunchAgent | `~/Library/LaunchAgents/com.steadyroute.plist` |
 
-禁止直接在生产目录修改。紧急修复后必须立即同步回仓库，并补上测试、变更日志和版本记录。
-
-### 发布一个新版本
-
-合并到 `main` 后，在源码仓库执行：
-
-```bash
-cd /Users/nurture/Projects/steadyroute
-git checkout main && git pull
-git tag v$(cat VERSION) && git push origin v$(cat VERSION)
-
-./scripts/check.sh               # 语法、全部测试、配置校验、密钥扫描
-./scripts/build-release.sh       # 生成 dist/steadyroute-<版本>.zip 与校验和
-./scripts/deploy-local.sh        # 预演：只校验，不写入
-./scripts/deploy-local.sh --apply
-./scripts/status.sh              # 查看运行状态、最近决策和错误
-
-./scripts/publish-release.sh     # 部署成功后：在 GitHub 发布 Release（说明取自 docs/releases/）
-```
-
-`--apply` 会依次执行：
-
-1. 停止旧服务，确认进程和端口都已退出。
-2. 完整备份并校验。
-3. 原子替换生产目录和 plist。
-4. 启动新版本。
-5. 自检：LaunchAgent 在运行、状态接口正常、两个代理组存在、当前节点合法、完成了一轮新检测。
-6. 自检通过后清理旧备份：只保留最近 10 份（刚被替换的上一版永远在内），失败证据也只留最近 10 份；部署失败时不清理。
-
-任一检查失败都会自动恢复到部署前的版本。生产部署要求工作树干净、当前 commit 带 `v<版本>` 标签。第一次生产写入还需要在终端输入确认短语。
-
-### 回滚
-
-```bash
-./scripts/rollback-local.sh          # 预演
-./scripts/rollback-local.sh --apply  # 恢复到最近一次备份
-```
-
-详见 [本地部署与回滚](docs/DEPLOYMENT.md) 和 [发布流程](docs/RELEASE.md)。
-
-### Clash Verge 代理组
-
-动态发现需要在 Clash Verge 当前订阅里加入两个隐藏的发现组。这是一个独立的控制面，管理命令默认也是 dry-run。执行后需要人工重载 Clash Verge，再只读验证：
-
-```bash
-python3 scripts/manage-clash-groups.py --help
-python3 scripts/verify-clash-discovery.py --help
-```
+不要直接修改安装目录里的程序；改动在仓库完成并测试后，再运行一次 `install.command`。发布流程见 [RELEASE.md](docs/RELEASE.md)，安装细节见 [DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 ---
 
@@ -266,15 +236,15 @@ python3 scripts/verify-clash-discovery.py --help
 | `events.jsonl` | 决策：故障切换、回优、休眠恢复、同地区拦截、线路和服务状态变化，一行一条 JSON | 90 天 | 10 MiB |
 | `node-events.jsonl` | 节点状态变化：下降、恢复、隔离、新节点 | 30 天 | 5 MiB |
 | `router-error.log` | 警告和错误，10 分钟内相同错误只记一次 | 30 天 | 3 MiB |
-| `bootstrap.log` | LaunchAgent 标准输出 / 错误 | — | — |
+| `launchd.log` | LaunchAgent 标准输出 / 错误，只记录日志系统启动前的崩溃 | — | — |
 
-持久状态在生产目录的 `state.json`（schema 2，只追加字段，旧版本可读）。延迟曲线和连接信息只在内存里，重启即清空。
+持久状态在安装目录的 `state.json`（schema 2，只追加字段，旧版本可读）。延迟曲线和连接信息只在内存里，重启即清空。
 
 ---
 
 ## 资源占用
 
-- **内存**：常驻约 25 MB（模拟环境实测峰值 24.9 MB）。看板显示当前值和峰值，`status.sh` 给出每小时趋势。
+- **内存**：常驻约 25 MB（模拟环境实测峰值 24.9 MB）。看板显示当前值和峰值。
 - **CPU**：大部分时间空闲，每 20 秒一轮检测，并行探测。
 - **网络**：
   - 快速通道每 5 秒约 1 KB。
@@ -287,6 +257,7 @@ python3 scripts/verify-clash-discovery.py --help
 ## 隐私与安全
 
 - 只监听 `127.0.0.1`，其他设备访问不到；并且只接受 Host 为 `127.0.0.1:17654` 或 `localhost:17654` 的请求，其他一律返回 421。这能防住 DNS rebinding：恶意网页把自己的域名解析到 127.0.0.1，也读不到看板数据。
+- 设置接口只接受本页发出的修改：Host 与同源 Origin 校验、`Content-Type: application/json`、自定义头 `X-SteadyRoute: 1`（跨站网页无法通过 CORS 预检）、请求体上限 64 KB。
 - 接口和日志使用字段白名单，不输出订阅地址、认证信息、密码和服务器地址。
 - 活跃连接只显示域名，不显示 IP、端口和完整网址，也不写入日志或状态文件。
 - 所有页面和接口都经过同一个出口，统一带上 CSP（禁止被嵌入其他网页）、`nosniff`、`no-referrer`、`no-store`；页面不加载任何外部资源。
@@ -299,24 +270,26 @@ python3 scripts/verify-clash-discovery.py --help
 ## 仓库结构
 
 ```text
+install.command  uninstall.command   安装 / 升级 / 迁移、卸载（仓库与发布包相同）
 src/steadyroute/
   weighted_router.py        主程序：检测、决策、切换、HTTP 服务
   health_model.py           延迟 / 抖动 / 可用率模型与隔离判定
-  route_policy.py           策略加载与同地区家宽规则
+  route_policy.py           配置校验与同地区家宽规则
   candidate_registry.py     订阅候选发现与生命周期
-  node_catalog.py           只读订阅节点目录（/api/nodes）
+  auto_lock.py              按当前节点的国家锁定并接管分组
   regions.py                国家与家宽识别
-  auto_lock.py              分享版：按当前节点的国家锁定用户自己的分组
+  node_catalog.py           只读订阅节点目录（/api/nodes）
+  ai_rules.py               AI 规则：net.coffee 快照、同步检查、优先级汇总
+  ai_line.py                AI 家宽专线与其他家宽专线的分组定义、预览、写入、撤销
+  clash_profile.py          Clash Verge 扩展文件编辑、内核校验、备份与回滚
+  ai_check.py               AI 分流体检
+  settings_service.py       设置页后端：预览、写入、每周同步、每小时自检
   state_contract.py         持久状态与 API 契约、迁移
   logging_setup.py          有界日志轮换
-  runtime_metrics.py        内存指标（phys_footprint）
-  dashboard.html            看板
-  nodes.html  guide.html  changelog.html  pages.css   子页面与共享样式
-  acceptance_dashboard.html  candidate_dashboard.html  验收页
-config/                     路由策略、Clash Verge 增强配置
-deploy/macos/               LaunchAgent 模板
-scripts/                    检查、构建、部署、回滚、状态、代理组管理
-scripts/share/              分享版打包与安装器
+  runtime_metrics.py        内存指标（phys_footprint）、开机 / 休眠时间
+  dashboard.html  settings.html  nodes.html  guide.html  changelog.html  pages.css
+config/route-policies.default.json   新安装的默认设置
+scripts/                    installer.py、build_package.py、check.sh、leak-scan.py、publish-release.sh
 sim/                        假 Mihomo 控制器与上线前模拟验收（不进发布包）
 tests/                      单元、集成与回归测试
 docs/                       架构、运维、发布、安全、风险、ADR
@@ -330,7 +303,7 @@ docs/                       架构、运维、发布、安全、风险、ADR
 ./scripts/check.sh
 ```
 
-依次执行 Python 语法检查、全部单元与集成测试、Clash 配置校验、LaunchAgent plist 校验和密钥扫描。CI 在 GitHub Actions 的 macOS + Python 3.9 上运行同一个脚本。
+依次执行 Python 语法检查、全部单元与集成测试和密钥扫描。CI 在 GitHub Actions 的 macOS + Python 3.9 上运行同一个脚本。
 
 上线前还会用 [sim/](sim/README.md) 做模拟验收：假 Mihomo 控制器按剧本制造节点断线、节点变慢、本机断网、休眠唤醒、网站故障等场景，同时运行新旧两个版本，对比切换时机、断开的连接和资源占用。
 
@@ -351,7 +324,8 @@ python3 sim/run_scenarios.py --old ../steadyroute-prev --new . --out /tmp/sim.js
 
 | 版本 | 日期 | 主要变化 |
 |---|---|---|
-| **0.5.0** | 2026-09-29 | 分享版：装在朋友的 Mac 上，按当前节点的国家锁定、只换该国家家宽；一键安装包；休眠时长合并短暂唤醒 |
+| **0.5.1** | 2026-09-30 | 大一统：一个产品、一种安装方式，旧版自动迁移；可选 AI 家宽专线（net.coffee 规则优先、每周同步、写入前校验与一键撤销）；设置页与 AI 分流体检 |
+| 0.5.0 | 2026-09-29 | 分享版：装在朋友的 Mac 上，按当前节点的国家锁定、只换该国家家宽；一键安装包；休眠时长合并短暂唤醒 |
 | 0.4.6 | 2026-09-27 | 安全加固：只接受本机 Host（防 DNS rebinding）、所有响应带安全头、密钥扫描不再被跳过；24 小时切换统计不再漏算 |
 | 0.4.5 | 2026-09-26 | 看板重新设计；5 / 15 / 30 分钟曲线；活跃连接面板；全部节点、使用说明、更新日志页面；`/api/nodes` |
 | 0.4.4 | 2026-09-26 | 有界日志（合计 ≤ 38 MB）；偶发丢包不再隔离最优节点；内存当前 / 峰值 |
@@ -371,8 +345,7 @@ python3 sim/run_scenarios.py --old ../steadyroute-prev --new . --out /tmp/sim.js
 
 | 版本 | 内容 |
 |---|---|
-| v0.5.0 | 分享版：装在朋友的 Mac 上，按国家锁定、只换该国家家宽（[#32](https://github.com/z13141557217-web/steadyroute/issues/32)） |
-| v0.5.1 | 可选的"AI 家宽专线"模板（作者这套配置） |
+| v0.5.1 | 大一统安装与旧版迁移；可选 AI 家宽专线；设置页与 AI 分流体检 |
 | v0.5.x | 选路策略 v2（[#23](https://github.com/z13141557217-web/steadyroute/issues/23)） |
 | v0.6.0 | 动态候选正式接管：订阅新增的家宽经预热后直接参与选路（[#24](https://github.com/z13141557217-web/steadyroute/issues/24)） |
 | 之后 | 被动检测：利用真实连接的成败辅助判断（[#25](https://github.com/z13141557217-web/steadyroute/issues/25)）；全节点监控与配置页面（[#26](https://github.com/z13141557217-web/steadyroute/issues/26)） |
@@ -388,7 +361,7 @@ python3 sim/run_scenarios.py --old ../steadyroute-prev --new . --out /tmp/sim.js
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构与模块边界 |
 | [STATE_API.md](docs/STATE_API.md) | 持久状态与 API 契约 |
 | [OPERATIONS.md](docs/OPERATIONS.md) | 运维、告警与排障 |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | 部署与回滚细节 |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | 安装、升级、迁移与卸载 |
 | [RELEASE.md](docs/RELEASE.md) | 发布流程与门禁 |
 | [TESTING.md](docs/TESTING.md) | 测试策略 |
 | [SECURITY.md](docs/SECURITY.md) | 安全与隐私 |

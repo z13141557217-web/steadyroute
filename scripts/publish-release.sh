@@ -37,28 +37,39 @@ trap cleanup EXIT INT TERM
 
 echo "从 $TAG 构建发布包（会运行全部检查，约 1 分钟）…"
 git -C "$PROJECT_DIR" worktree add -q --detach "$WORK/src" "$TAG"
-(cd "$WORK/src" && ./scripts/build-release.sh >"$WORK/build.log" 2>&1) || {
-  tail -30 "$WORK/build.log" >&2
-  echo "构建失败，未发布" >&2
-  exit 1
-}
-ZIP="$WORK/src/dist/steadyroute-$VERSION.zip"
-EXPECTED=$(git -C "$PROJECT_DIR" rev-list -n 1 "$TAG")
-ACTUAL=$(unzip -p "$ZIP" "steadyroute-$VERSION/GIT_COMMIT" | tr -d '[:space:]')
-if [ "$EXPECTED" != "$ACTUAL" ]; then
-  echo "发布包 commit $ACTUAL 与标签 $EXPECTED 不一致，未发布" >&2
-  exit 1
-fi
-
-# v0.5.0+: the share package for friends goes into the same release.
-ASSETS="$ZIP $ZIP.sha256"
-if [ -f "$WORK/src/scripts/share/build_share.py" ]; then
-  (cd "$WORK/src" && python3 scripts/share/build_share.py --out "$WORK/src/dist" >>"$WORK/build.log" 2>&1) || {
+if [ -f "$WORK/src/scripts/build_package.py" ]; then
+  # v0.5.1+: one package, same layout as the repository.
+  (cd "$WORK/src" && ./scripts/check.sh >"$WORK/build.log" 2>&1 \
+    && python3 scripts/build_package.py --out "$WORK/src/dist" >>"$WORK/build.log" 2>&1) || {
     tail -30 "$WORK/build.log" >&2
-    echo "分享包构建失败（可能检查到个人信息），未发布" >&2
+    echo "检查或打包失败（可能检查到个人信息），未发布" >&2
     exit 1
   }
-  ASSETS="$ASSETS $WORK/src/dist/SteadyRoute-share-v$VERSION.zip"
+  ZIP="$WORK/src/dist/SteadyRoute-v$VERSION.zip"
+  (cd "$WORK/src/dist" && shasum -a 256 "SteadyRoute-v$VERSION.zip" >"SteadyRoute-v$VERSION.zip.sha256")
+  ASSETS="$ZIP $ZIP.sha256"
+else
+  (cd "$WORK/src" && ./scripts/build-release.sh >"$WORK/build.log" 2>&1) || {
+    tail -30 "$WORK/build.log" >&2
+    echo "构建失败，未发布" >&2
+    exit 1
+  }
+  ZIP="$WORK/src/dist/steadyroute-$VERSION.zip"
+  EXPECTED=$(git -C "$PROJECT_DIR" rev-list -n 1 "$TAG")
+  ACTUAL=$(unzip -p "$ZIP" "steadyroute-$VERSION/GIT_COMMIT" | tr -d '[:space:]')
+  if [ "$EXPECTED" != "$ACTUAL" ]; then
+    echo "发布包 commit $ACTUAL 与标签 $EXPECTED 不一致，未发布" >&2
+    exit 1
+  fi
+  ASSETS="$ZIP $ZIP.sha256"
+  if [ -f "$WORK/src/scripts/share/build_share.py" ]; then
+    (cd "$WORK/src" && python3 scripts/share/build_share.py --out "$WORK/src/dist" >>"$WORK/build.log" 2>&1) || {
+      tail -30 "$WORK/build.log" >&2
+      echo "分享包构建失败，未发布" >&2
+      exit 1
+    }
+    ASSETS="$ASSETS $WORK/src/dist/SteadyRoute-share-v$VERSION.zip"
+  fi
 fi
 
 NEWEST=$(git -C "$PROJECT_DIR" tag -l 'v[0-9]*' --sort=-v:refname | head -n 1)

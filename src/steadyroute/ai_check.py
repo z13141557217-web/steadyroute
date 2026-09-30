@@ -18,7 +18,9 @@ except ModuleNotFoundError:  # pragma: no cover
     from . import ai_rules, regions
 
 SAMPLE_HOST = {"datadog": "browser-intake-datadoghq.com", "sift": "cdn.sift.com"}
-SAMPLE_IP = {"160.79.104.0/21": "160.79.104.10", "2607:6bc0::/32": "2607:6bc0::10"}
+# The ASN row stands for an Anthropic address outside the listed ranges (documentation address
+# here), so it shows whether the IP-ASN rule itself is in place rather than the CIDR above it.
+SAMPLE_IP = {"160.79.104.0/21": "160.79.104.10", "2607:6bc0::/32": "2607:6bc0::10", "399358": "198.51.100.10"}
 UNKNOWN_KINDS = {"geosite", "domainregex", "processname", "processnameregex", "processpath",
                  "subrule", "domainwildcard", "and", "or", "not"}
 
@@ -135,7 +137,7 @@ def run(rules, proxies, runtime_text, home, line_group=None, line_country=None):
             if kind == "ruleset":
                 entries = provider(payload)
                 if entries is None:
-                    unsure.append("第 %d 条规则集 %s（无法读取内容）" % (index, payload))
+                    unsure.append(("第 %d 条规则集 %s（无法读取内容）" % (index, payload), target))
                 elif host and any(domain_hit(k, v, host) for k, v in entries):
                     return index, "RULE-SET,%s" % payload, target, unsure
                 elif address is not None and any(
@@ -144,7 +146,7 @@ def run(rules, proxies, runtime_text, home, line_group=None, line_country=None):
             if kind == "match":
                 return index, "MATCH", target, unsure
             if kind in UNKNOWN_KINDS:
-                unsure.append("第 %d 条 %s,%s" % (index, rule.get("type"), payload))
+                unsure.append(("第 %d 条 %s,%s" % (index, rule.get("type"), payload), target))
         return None, None, None, unsure
 
     rows = []
@@ -166,7 +168,8 @@ def run(rules, proxies, runtime_text, home, line_group=None, line_country=None):
                 "service": service, "rule": "%s,%s" % (kind, value), "hit": what, "index": index,
                 "group": target, "chain": chain, "exit": node,
                 "exit_country": regions.label(country) if country else None,
-                "ok": ok, "unsure": unsure[:1],
+                # A rule we cannot judge only matters when it would send the traffic elsewhere.
+                "ok": ok, "unsure": [text for text, other in unsure if other != target][:1],
             })
     good = sum(1 for row in rows if row["ok"])
     return {"rows": rows, "total": len(rows), "ok": good, "line_group": line_group,

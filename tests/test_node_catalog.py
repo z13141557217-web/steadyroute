@@ -164,10 +164,11 @@ class StaticPageTests(unittest.TestCase):
         return (MODULE_DIR / name).read_text(encoding="utf-8")
 
     def test_pages_load_nothing_from_the_network(self):
-        for name in ("nodes.html", "guide.html", "changelog.html", "pages.css"):
+        for name in ("nodes.html", "guide.html", "changelog.html", "settings.html", "pages.css"):
             with self.subTest(page=name):
                 text = self.source(name)
-                self.assertIsNone(re.search(r'(src|href)="https?://', text))
+                # Only plain links that open elsewhere in a new tab; nothing is loaded.
+                self.assertIsNone(re.search(r'src="https?://|<link[^>]+href="https?://', text))
                 self.assertIsNone(re.search(r"url\(\s*['\"]?https?://", text))
                 self.assertNotIn("@import", text)
 

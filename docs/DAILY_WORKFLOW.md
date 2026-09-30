@@ -13,16 +13,16 @@ Issue/需求
   → 合并 main
   → 更新版本与变更日志
   → 构建发布包
-  → 备份、部署、冒烟、观察
-  → 必要时回滚
+  → 本机 ./install.command 升级、观察
+  → 发布 GitHub Release
 ```
 
-`main` 是可发布版本；生产目录不是开发目录。
+`main` 是可发布版本；安装目录 `~/Library/Application Support/SteadyRoute` 不是开发目录。
 
 ## 二、开始一天的开发
 
 ```bash
-cd /Users/nurture/Projects/steadyroute
+cd ~/Projects/steadyroute
 git status
 git switch main
 git pull --ff-only
@@ -55,19 +55,19 @@ git switch -c feat/dynamic-candidates
 
 给 Codex 的任务必须包含：
 
-- 仓库路径：`/Users/nurture/Projects/steadyroute`
+- 仓库路径：`<仓库目录>`（例如 `~/Projects/steadyroute`）
 - 当前分支和任务目标
 - In Scope / Out of Scope
 - 验收条件
 - 必须运行的测试
-- 不得直接修改生产目录
-- 完成后不要自行部署，除非本次明确授权
+- 不得直接修改安装目录
+- 完成后不要自行运行 `./install.command`，除非本次明确授权
 
 推荐提示：
 
 ```text
-请在 /Users/nurture/Projects/steadyroute 的当前功能分支开发。
-不要修改生产目录或重启稳航。
+请在 ~/Projects/steadyroute 的当前功能分支开发。
+不要修改安装目录、不要重启稳航、不要写入 Clash Verge 的配置。
 先读取 README、docs/DEVELOPMENT.md、docs/ARCHITECTURE.md 和相关 ADR。
 为本次问题建立回归测试，完成后运行 ./scripts/check.sh。
 更新 CHANGELOG 和受影响文档，汇报修改文件、测试结果、风险和发布建议。
@@ -91,7 +91,7 @@ git worktree add ../steadyroute-log-rotation -b feat/log-rotation main
 git worktree add ../steadyroute-dashboard -b feat/dashboard-v2 main
 ```
 
-禁止两个任务同时编辑生产 `weighted_router.py`。
+禁止两个任务同时编辑 `weighted_router.py`。
 
 ## 六、开发过程中
 
@@ -150,7 +150,7 @@ Pull Request 需要说明：
 - 改了什么
 - 没改什么
 - 测试证据
-- 对生产的风险
+- 对已安装服务和用户 Clash 配置的风险
 - 发布和回滚方法
 
 即使只有一个人，也建议使用 PR；它提供清晰的审查页面和 CI 记录。
@@ -166,6 +166,7 @@ Pull Request 需要说明：
 - 状态 schema 是否兼容
 - 是否增加资源占用
 - 是否能回滚
+- 是否可能改动用户的 Clash 配置；若会，是否有校验、备份和完整撤销
 
 合并后：
 
@@ -179,44 +180,37 @@ git branch -d feat/dynamic-candidates
 
 ## 十、版本与发布
 
-不是每个 commit 都部署。准备发布时：
+不是每个 commit 都发布。准备发布时：
 
 1. 决定 PATCH、MINOR 或 MAJOR。
 2. 更新 `VERSION`。
-3. 把 `Unreleased` 内容整理到新版本下。
+3. 把 `Unreleased` 内容整理到新版本下，写好 `docs/releases/v<版本>.md`，并在
+   `src/steadyroute/changelog.html` 增加该版本。
 4. 运行完整检查。
-5. 提交版本变更。
-6. 创建 tag。
-7. 构建发布包。
+5. 提交版本变更，合并到 `main`。
+6. 创建并推送 tag。
+7. 构建发布包，本机升级，发布 Release。
 
 示例：
 
 ```bash
-git tag -a v0.2.0 -m 'SteadyRoute v0.2.0'
+git tag -a v0.5.1 -m 'SteadyRoute v0.5.1'
 git push origin main
-git push origin v0.2.0
-./scripts/build-release.sh
+git push origin v0.5.1
+python3 scripts/build_package.py
 ```
 
-在自动部署脚本完成前，不要手工把零散文件复制到生产；应按照 `docs/RELEASE.md` 先备份、校验并准备完整回滚。
+完整步骤见 [RELEASE.md](RELEASE.md)。
 
-## 十一、生产发布
+## 十一、本机升级
 
-标准顺序：
-
-```text
-检查工作树与 tag
-  → 构建发布包与 SHA-256
-  → 生产备份
-  → 暂存目录语法检查
-  → 原子替换
-  → 重启 LaunchAgent
-  → 冒烟测试
-  → 观察一个检测周期
-  → 记录发布结果
+```bash
+./install.command
 ```
 
-任何关键检查失败，立即恢复上一个完整版本，不在生产目录临时拼修。
+安装器会停止旧服务、备份当前版本、替换程序文件、保留设置和状态、启动新版本并确认看板
+报告的版本；失败时自动恢复上一版本。随后在看板观察至少一个检测周期。不要把零散文件
+手工复制到安装目录。详见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ## 十二、紧急修复
 
@@ -245,48 +239,61 @@ git switch -c fix/short-description
 
 复盘：
 
-- 本周是否直接改过生产
+- 本周是否直接改过安装目录
 - 是否有未提交变更
 - 是否有失败测试被绕过
 - 日志和备份是否超限
-- 是否需要发布或回滚演练
+- 是否需要发布或升级演练
 - 风险是否升级
 
 ## 十四、常用命令速查
 
+查看工作树状态、修改和最近的提交历史：
+
 ```bash
-# 当前状态
 git status
-
-# 查看修改
 git diff
-
-# 查看提交历史
 git log --oneline --decorate --graph -20
+```
 
-# 完整检查
+完整检查（编译、全部测试、敏感信息扫描）：
+
+```bash
 ./scripts/check.sh
+```
 
-# 查看生产状态
-./scripts/status.sh
+查看已安装服务的状态：
 
-# 构建发布包
-./scripts/build-release.sh
+```bash
+python3 scripts/installer.py status
+```
 
-# 同步远程主干
+构建发布包 `dist/SteadyRoute-v<版本>.zip`：
+
+```bash
+python3 scripts/build_package.py
+```
+
+安装或升级本机：
+
+```bash
+./install.command
+```
+
+同步远程主干、推送当前分支：
+
+```bash
 git switch main && git pull --ff-only
-
-# 推送当前分支
 git push -u origin HEAD
 ```
 
 ## 十五、绝对不要做
 
-- 不要把订阅 URL、令牌、密码、`state.json` 或日志提交到 Git。
+- 不要把订阅 URL、令牌、密码、`state.json`、日志、真实节点名或本机路径提交到 Git。
 - 不要在 `main` 上进行大规模试验。
-- 不要让多个任务同时编辑同一生产文件。
+- 不要让多个任务同时编辑同一文件。
 - 不要使用 `--no-verify` 绕过检查。
-- 不要在没备份、没回滚方案时部署。
+- 不要手工改安装目录或 Clash Verge 扩展文件中稳航管理的区块。
 - 不要把私有仓库改为公开，除非完成完整安全审计。
-- 不要把 GitHub 当作生产状态和订阅凭据的备份。
+- 不要把 GitHub 当作运行状态和订阅凭据的备份。
 
