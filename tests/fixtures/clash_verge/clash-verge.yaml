@@ -1,0 +1,59 @@
+mixed-port: 7897
+mode: rule
+log-level: info
+ipv6: false
+proxies:
+- name: '[01]台湾hinet家宽🇨🇳hy2'
+  type: socks5
+  server: 203.0.113.1
+  port: 443
+- name: '[03]台湾hinet家宽🇨🇳hy2'
+  type: socks5
+  server: 203.0.113.3
+  port: 443
+- name: 🇯🇵 日本 家宽 01
+  type: socks5
+  server: 203.0.113.9
+  port: 443
+- name: 【3x】中转|香港BGP🇭🇰
+  type: socks5
+  server: 203.0.113.4
+  port: 443
+- name: 香港家宽hy2🇭🇰
+  type: socks5
+  server: 203.0.113.5
+  port: 443
+proxy-groups:
+- name: AI 台湾家宽线路
+  type: select
+  interrupt-exist-connections: false
+  proxies:
+  - '[03]台湾hinet家宽🇨🇳hy2'
+  - '[01]台湾hinet家宽🇨🇳hy2'
+  disable-udp: true
+- name: SteadyRoute 发现·台湾家宽
+  type: select
+  include-all-proxies: true
+  filter: (?i)(?:台湾.*家宽)
+  hidden: true
+- name: Verve AI 稳定线路
+  type: fallback
+  url: https://www.app.vervecopilot.com/
+  interval: 60
+  proxies:
+  - 【3x】中转|香港BGP🇭🇰
+- name: 苏菲家宽
+  type: select
+  proxies:
+  - 香港家宽hy2🇭🇰
+  - 🇯🇵 日本 家宽 01
+- name: 🐟 漏网之鱼
+  type: select
+  proxies:
+  - 苏菲家宽
+  - DIRECT
+rules:
+- AND,((NETWORK,udp),(DST-PORT,3478-3481)),REJECT
+- DOMAIN-SUFFIX,claude.ai,AI 台湾家宽线路
+- DOMAIN-SUFFIX,openai.com,AI 台湾家宽线路
+- MATCH,🐟 漏网之鱼

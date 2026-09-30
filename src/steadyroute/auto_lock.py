@@ -143,7 +143,7 @@ def build_policies(proxy_data, state, now, settings=None):
             "warmup_samples": 10,
             "warmup_successes": 3,
             "retire_after_seconds": 86400,
-            "business_test_urls": list(urls),
+            "business_test_urls": list((settings.get("group_business_urls") or {}).get(group_name) or urls),
             "static_candidates": [],
         }
         members = [name for name in group.get("all") or [] if is_node(proxy_data.get(name))]
