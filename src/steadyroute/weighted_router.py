@@ -402,7 +402,7 @@ def api_request(method, path, payload=None, timeout=10):
     if headers.get(b"transfer-encoding") == b"chunked":
         response_body = decode_chunked(response_body)
     if status >= 400:
-        raise RuntimeError("controller HTTP %d: %s" % (status, response_body[:200]))
+        raise RuntimeError("controller HTTP %d: %s" % (status, response_body[:600].decode("utf-8", "replace")))
     if not response_body:
         return None
     return json.loads(response_body.decode("utf-8"))

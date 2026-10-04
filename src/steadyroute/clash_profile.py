@@ -11,8 +11,14 @@ Where things go
   which is validated with Clash Verge's own core (`verge-mihomo -t`) and then loaded through
   the controller. When Clash Verge later rebuilds, the extension files produce the same result.
 
-Every change: back up → edit → validate with the core → write → reload → verify. Any failure
-restores all three files and reloads the original config.
+  The new config is sent to the core as text (PUT /configs with "payload"), never as a file
+  path: since Mihomo 1.19 the core only opens files under its own home directory, and with
+  Clash Verge's service mode that home is a system folder
+  (/Library/Application Support/clash-verge-service/…), not the folder clash-verge.yaml is in.
+
+Every change: validate with the core → check that clash-verge.yaml is what the core is running
+→ back up → write → reload → verify. A config the core refuses leaves it running the old one;
+the files are put back. A failure after the core took the new config also reloads the old one.
 """
 
 import datetime
@@ -33,8 +39,15 @@ CORE_CANDIDATES = (
 )
 
 
+GROUP_TYPES = ("Selector", "URLTest", "Fallback", "LoadBalance", "Relay")
+
+
 class ProfileError(RuntimeError):
     """Clash Verge's files are not in a state we can safely edit; nothing was changed."""
+
+
+class ReloadRejected(ProfileError):
+    """The core answered the reload with an error: it is still running the config it had."""
 
 
 def default_home():
@@ -339,6 +352,19 @@ def patch_runtime(text, group_items, rule_items, group_names, stale_rules=()):
     return "\n".join(lines) + "\n"
 
 
+def runtime_group_names(text):
+    """Names of the proxy groups in a runtime config, or None when they cannot all be read."""
+    lines = text.splitlines()
+    at = _find_key(lines, "proxy-groups")
+    if at is None or lines[at].partition(":")[2].strip():
+        return None
+    indent, end = _sequence(lines, at)
+    if indent is None:
+        return []
+    names = [_item_name(lines[first]) for first, _last in _split_items(lines, at + 1, end, indent)]
+    return None if any(name is None for name in names) else names
+
+
 def _normal_rule(item):
     item = item.strip()
     if item.startswith('"') and item.endswith('"'):
@@ -414,10 +440,31 @@ class Writer(object):
             shutil.rmtree(str(old), ignore_errors=True)
         return folder
 
-    def _reload(self):
-        status, body = self.controller("PUT", "/configs?force=true", {"path": str(self.target.runtime)})
+    def _reload(self, text):
+        """Hand the core the config itself; it accepts no file path outside its own home."""
+        status, body = self.controller("PUT", "/configs?force=true", {"path": "", "payload": text})
         if status not in (200, 204):
-            raise ProfileError("Clash 没有接受新配置（HTTP %s）：%s" % (status, body[:200]))
+            raise ReloadRejected("HTTP %s：%s" % (status, str(body)[:300]))
+
+    def check_current(self, runtime_text):
+        """Refuse to build on a clash-verge.yaml that is not what the core is running."""
+        names = runtime_group_names(runtime_text)
+        if names is None:
+            return
+        status, body = self.controller("GET", "/proxies", None)
+        if status != 200:
+            raise ProfileError("读取 Clash 当前分组失败（HTTP %s），未做任何改动" % status)
+        proxies = json.loads(body or "{}").get("proxies") or {}
+        running = {name for name, proxy in proxies.items()
+                   if (proxy or {}).get("type") in GROUP_TYPES and name != "GLOBAL"}
+        missing = [name for name in names if name not in proxies]
+        extra = sorted(running - set(names))
+        if missing or extra:
+            detail = "；".join(part for part in (
+                "文件里有、Clash 里没有：%s" % "、".join(missing[:5]) if missing else "",
+                "Clash 里有、文件里没有：%s" % "、".join(extra[:5]) if extra else "") if part)
+            raise ProfileError("Clash 正在运行的配置与 %s 不一致（%s），未做任何改动；"
+                               "请在 Clash Verge 里重新选中当前订阅后再试" % (self.target.runtime.name, detail))
 
     def _selections(self, names):
         status, body = self.controller("GET", "/proxies", None)
@@ -438,23 +485,39 @@ class Writer(object):
         self.validate(runtime_text)
         files = {"groups": groups_file, "rules": rules_file, "runtime": self.target.runtime}
         originals = {label: path.read_text(encoding="utf-8") for label, path in files.items()}
+        self.check_current(originals["runtime"])
         backup = self._backup(files, meta)
         selections = self._selections(keep_selection)
+
+        def put_back():
+            for label, path in files.items():
+                _atomic_write(path, originals[label])
+
         try:
             _atomic_write(groups_file, groups_text)
             _atomic_write(rules_file, rules_text)
             _atomic_write(self.target.runtime, runtime_text)
-            self._reload()
-            if verify:
-                verify()
+            self._reload(runtime_text)
+        except ReloadRejected as error:
+            put_back()
+            raise ProfileError("Clash 没有接受新配置（%s）。Clash 仍按原配置运行，文件已恢复原样" % error)
         except Exception as error:
-            for label, path in files.items():
-                _atomic_write(path, originals[label])
+            put_back()
+            self._reload_original(originals["runtime"], error)
+            raise ProfileError("写入没有完成，已恢复原配置：%s" % error)
+        if verify:
             try:
-                self._reload()
-            except Exception as reload_error:
-                raise ProfileError("写入后检查失败（%s），文件已恢复，但重新加载原配置也失败（%s）；"
-                                   "请在 Clash Verge 里重新选中当前订阅" % (error, reload_error))
-            raise ProfileError("写入后检查失败，已恢复原配置：%s" % error)
+                verify()
+            except Exception as error:
+                put_back()
+                self._reload_original(originals["runtime"], error)
+                raise ProfileError("写入后检查失败，已恢复原配置：%s" % error)
         self._reselect({k: v for k, v in selections.items() if v})
         return backup
+
+    def _reload_original(self, text, error):
+        try:
+            self._reload(text)
+        except Exception as reload_error:
+            raise ProfileError("写入后检查失败（%s），文件已恢复，但重新加载原配置也失败（%s）；"
+                               "请在 Clash Verge 里重新选中当前订阅" % (error, reload_error))

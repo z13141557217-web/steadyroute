@@ -1,4 +1,4 @@
-"""Interactive v0.5.1 preview: the real dashboard.html replaying the recorded end-to-end run, and the
+"""Interactive preview: the real dashboard.html replaying the recorded end-to-end run, and the
 real settings.html on a simulated backend built from responses recorded in the same run."""
 import json
 import pathlib
@@ -7,13 +7,14 @@ import re
 HERE = pathlib.Path(__file__).resolve().parent
 SRC = HERE.parents[1] / "src" / "steadyroute"
 OUT = HERE / "interactive"
+VERSION = "v" + (HERE.parents[1] / "VERSION").read_text(encoding="utf-8").strip()
 OUT.mkdir(exist_ok=True)
 REC = json.load(open(str(HERE / "work" / "recording.json"), encoding="utf-8"))
 
 t0 = REC["status"][0]["at"]
 snapshots = [{"t": round(s["at"] - t0, 2), "now0": t0, "data": s["data"]} for s in REC["status"]]
 markers = [{"t": round(m["at"] - t0, 1), "label": m["label"]} for m in REC["markers"]]
-scenario = [{"id": "e2e", "title": "v0.5.1 迁移实录：安装 → 确认迁移 → 台湾节点故障", "duration": int(snapshots[-1]["t"]) + 1,
+scenario = [{"id": "e2e", "title": VERSION + " 迁移实录：安装 → 确认迁移 → 台湾节点故障", "duration": int(snapshots[-1]["t"]) + 1,
              "snapshots": snapshots, "markers": markers}]
 
 
@@ -57,11 +58,11 @@ def links(body):
 dash = (SRC / "dashboard.html").read_text(encoding="utf-8")
 head = dash[dash.index("<head>") + 6:dash.index("</head>")]
 body = dash[dash.index("<body>") + 6:dash.index("</body>")]
-head = re.sub(r"<title>.*?</title>", "<title>稳航 v0.5.1 预览</title>", head)
+head = re.sub(r"<title>.*?</title>", "<title>稳航 %s 预览</title>" % VERSION, head)
 body = links(body).replace("`<a href=\"#/guide#${t.anchor || ''}\">", "`<a href=\"#/guide#${t.anchor || ''}\">")
 shim = """<script>(function(){window.__replay={snap:null,now:0};window.fetch=function(){var s=window.__replay.snap;return Promise.resolve({ok:!!s,status:s?200:503,json:function(){return Promise.resolve(s)}})};var real=Date.now.bind(Date);Date.now=function(){return window.__replay.now?window.__replay.now*1000:real()};})();</script>"""
 bar = """<div class="pv" role="region" aria-label="预览控制">
-  <span class="tag">预览 · v0.5.1 · 端到端实录（模拟 Clash）</span>
+  <span class="tag">预览 · v0.5.1 · 端到端实录（模拟 Clash 服务模式）</span>
   <button type="button" id="pv-play">暂停</button>
   <button type="button" id="pv-1x" aria-pressed="true">1×</button>
   <button type="button" id="pv-10x" aria-pressed="false">10×</button>
@@ -93,7 +94,7 @@ controller = """<script>(function(){
   scrub.addEventListener('input',function(){t=Number(scrub.value);lastSnap=null;apply(true)});
   scrub.max=String(cur.duration);apply(true);requestAnimationFrame(tick);
 })();</script>"""
-page = head + BAR_CSS + shim + TOAST_JS + body.replace("<script>\n'use strict';", bar + "\n<script>\n'use strict';", 1) + \
+page = head + BAR_CSS + shim + TOAST_JS + body.replace("<script>\n'use strict';", bar.replace("v0.5.1", VERSION) + "\n<script>\n'use strict';", 1) + \
     '<script type="application/json" id="pv-data">' + dump(scenario) + "</script>\n" + controller
 (OUT / "index.html").write_text(page, encoding="utf-8")
 
@@ -103,7 +104,7 @@ css = (SRC / "pages.css").read_text(encoding="utf-8")
 shead = settings[settings.index("<head>") + 6:settings.index("</head>")]
 sbody = settings[settings.index("<body>") + 6:settings.index("</body>")]
 shead = shead.replace('<link rel="stylesheet" href="/assets/pages.css">', "<style>\n" + css + "\n</style>")
-shead = re.sub(r"<title>.*?</title>", "<title>稳航 v0.5.1 设置预览</title>", shead)
+shead = re.sub(r"<title>.*?</title>", "<title>稳航 %s 设置预览</title>" % VERSION, shead)
 sbody = links(sbody)
 last_status = json.loads(json.dumps(REC["status"][-1]["data"]))
 last_status["service"].pop("stale_at", None)

@@ -14,6 +14,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import cycle_harness  # noqa: E402
 
 import ai_rules  # noqa: E402
+import clash_fakes  # noqa: E402
 import clash_profile  # noqa: E402
 import settings_service  # noqa: E402
 
@@ -32,6 +33,7 @@ class FakeClash(object):
         self.calls = []
         self.version = "v1.19.31"
         self.extra_groups = []
+        self.loaded = clash_fakes.LoadedConfig()
         self.rules = [{"type": "DomainSuffix", "payload": "claude.ai", "proxy": "AI 台湾家宽线路"},
                       {"type": "Match", "payload": "", "proxy": "🐟 漏网之鱼"}]
 
@@ -42,7 +44,7 @@ class FakeClash(object):
         data["家宽出口"] = {"type": "Selector", "now": NODES[4], "all": NODES[3:5]}
         for name in self.extra_groups:
             data[name] = {"type": "Selector", "now": NODES[3], "all": [NODES[3]]}
-        return data
+        return self.loaded.groups(data, {"type": "Selector", "now": NODES[3], "all": [NODES[3]]})
 
     def __call__(self, method, path, payload):
         self.calls.append((method, path))
@@ -54,6 +56,8 @@ class FakeClash(object):
             return 200, json.dumps({"ipv6": False, "tun": {"enable": True}})
         if method == "GET" and path == "/rules":
             return 200, json.dumps({"rules": self.rules}, ensure_ascii=False)
+        if method == "PUT" and path.startswith("/configs"):
+            return self.loaded.put(payload)
         return 204, ""
 
 
@@ -254,7 +258,9 @@ class SettingsServiceTests(ServiceBase):
             "exclude_groups": [], "include_groups": ["AI 台湾家宽线路"],
             "business_test_urls": ["https://www.gstatic.com/generate_204"]})), encoding="utf-8")
         rows = {row["name"]: row["status"] for row in self.service.snapshot()["group_details"]}
-        self.assertEqual(rows, {"AI 台湾家宽线路": "switching", "家宽出口": "excluded"})
+        self.assertEqual(rows.pop("AI 台湾家宽线路"), "switching")
+        self.assertEqual(rows.pop("家宽出口"), "excluded")
+        self.assertEqual(set(rows.values()), {"excluded"}, "every other group stays off after an upgrade")
         before = self.files()
         result = self.service.apply({"takeover": {"group": "家宽出口", "on": True}})
         self.assertFalse(result["clash_change"])
