@@ -34,6 +34,10 @@ class FakeClash(object):
         self.version = "v1.19.31"
         self.extra_groups = []
         self.loaded = clash_fakes.LoadedConfig()
+        self.live_rules = False      # True: GET /rules answers from the loaded config, like the core
+        self.offline = False
+        self.refuse_reload = False
+        self.ignore_reload = False
         self.rules = [{"type": "DomainSuffix", "payload": "claude.ai", "proxy": "AI 台湾家宽线路"},
                       {"type": "Match", "payload": "", "proxy": "🐟 漏网之鱼"}]
 
@@ -47,6 +51,8 @@ class FakeClash(object):
         return self.loaded.groups(data, {"type": "Selector", "now": NODES[3], "all": [NODES[3]]})
 
     def __call__(self, method, path, payload):
+        if self.offline:
+            raise OSError("controller socket is gone")
         self.calls.append((method, path))
         if method == "GET" and path == "/proxies":
             return 200, json.dumps({"proxies": self.proxies()}, ensure_ascii=False)
@@ -55,8 +61,12 @@ class FakeClash(object):
         if method == "GET" and path == "/configs":
             return 200, json.dumps({"ipv6": False, "tun": {"enable": True}})
         if method == "GET" and path == "/rules":
-            return 200, json.dumps({"rules": self.rules}, ensure_ascii=False)
+            return 200, json.dumps({"rules": self.loaded.rules() if self.live_rules else self.rules}, ensure_ascii=False)
         if method == "PUT" and path.startswith("/configs"):
+            if self.refuse_reload:
+                return 400, json.dumps({"message": "yaml: line 3: mapping values are not allowed"})
+            if self.ignore_reload:
+                return 204, ""
             return self.loaded.put(payload)
         return 204, ""
 
@@ -356,6 +366,154 @@ class SettingsServiceTests(ServiceBase):
         self.assertEqual(rows["DOMAIN-SUFFIX,clau.de"]["exit_country"], "香港")
         self.assertEqual(rows["DOMAIN-SUFFIX,clau.de"]["chain"], ["🐟 漏网之鱼", "家宽出口", "香港 家宽 01"])
         self.assertEqual(report["total"], 34)
+
+
+class LineWatchTests(ServiceBase):
+    """What was written into Clash is compared with what Clash runs, and written again when it is gone."""
+
+    def setUp(self):
+        super().setUp()
+        self.clash.live_rules = True
+        self.original = self.clash.loaded.text
+        self.service.apply({"ai_line": {"enabled": True, "country": "TW", "group_name": "AI 台湾家宽线路"}})
+        self.written = self.clash.loaded.text
+        self.clash.calls.clear()
+
+    def reloads(self):
+        return [call for call in self.clash.calls if call == ("PUT", "/configs?force=true")]
+
+    def overwrite(self):
+        """Clash Verge reloads the config it keeps in memory: the one from before our change."""
+        self.clash.loaded.text = self.original
+        (self.clash_home / "clash-verge.yaml").write_text(self.original, encoding="utf-8")
+
+    def tick(self, seconds=settings_service.WATCH_SECONDS):
+        self.clock[0] += seconds
+        return self.service.watch()
+
+    def test_nothing_happens_while_the_lines_are_in_effect(self):
+        self.assertEqual(self.service.line_status()["state"], "off", "not looked yet")
+        self.assertIsNone(self.tick())
+        status = self.service.line_status()
+        self.assertEqual((status["state"], status["problem"], status["repairs"]), ("ok", None, 0))
+        self.assertEqual(self.reloads(), [])
+        self.assertEqual(self.service.snapshot()["line_status"]["state"], "ok")
+
+    def test_overwritten_config_is_written_again_on_the_second_look(self):
+        self.tick()
+        self.overwrite()
+        self.assertIsNone(self.tick(), "one look is not enough: Clash Verge may be reloading")
+        status = self.service.line_status()
+        self.assertEqual(status["state"], "missing")
+        self.assertIn("AI 规则", status["problem"])
+        self.assertEqual(self.reloads(), [])
+        since = status["since"]
+        self.assertEqual(self.tick(), "repaired")
+        status = self.service.line_status()
+        self.assertEqual((status["state"], status["problem"], status["repairs"], status["error"]), ("ok", None, 1, None))
+        self.assertEqual(status["repaired_at"], int(self.clock[0]))
+        self.assertEqual(status["repaired_at"] - since, settings_service.WATCH_SECONDS)
+        self.assertEqual(len(self.reloads()), 1)
+        self.assertEqual(self.clash.loaded.text, self.written)
+        self.assertIsNone(self.tick())
+        self.assertEqual(len(self.reloads()), 1)
+
+    def test_missing_group_alone_is_noticed(self):
+        self.service.apply({"ai_line": {"enabled": False}})
+        config = json.loads(self.config_path.read_text(encoding="utf-8"))
+        config["managed_lines"] = [{"group_name": "香港家宽线路", "country": "HK"}]
+        self.config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+        _plan, applied = self.service.manager(self.service.config()).apply()
+        settings_service._atomic_json(self.service.applied_path, applied)
+        self.assertEqual(applied["rules"], [])
+        self.tick()
+        self.assertEqual(self.service.line_status()["state"], "ok")
+        self.overwrite()
+        self.tick()
+        self.assertEqual(self.service.line_status()["problem"], "Clash 中没有分组「香港家宽线路」")
+        self.assertEqual(self.tick(), "repaired")
+        self.assertIn("香港家宽线路", self.clash.loaded.text)
+
+    def test_clash_closed_is_not_a_missing_line(self):
+        self.tick()
+        self.clash.offline = True
+        for _ in range(4):
+            self.assertIsNone(self.tick())
+        self.assertEqual(self.service.line_status()["state"], "unknown")
+        self.clash.offline = False
+        self.tick()
+        self.assertEqual(self.service.line_status()["state"], "ok")
+        self.assertEqual(self.reloads(), [])
+
+    def test_refused_rewrite_is_retried_later_not_every_look(self):
+        self.overwrite()
+        self.clash.refuse_reload = True
+        self.tick()
+        self.tick()
+        status = self.service.line_status()
+        self.assertEqual(status["state"], "missing")
+        self.assertIn("Clash 没有接受新配置", status["error"])
+        self.assertEqual(status["next_attempt_at"], int(self.clock[0]) + settings_service.REPAIR_RETRY)
+        self.assertEqual(len(self.reloads()), 1)
+        self.tick()
+        self.tick()
+        self.assertEqual(len(self.reloads()), 1, "not before the retry time")
+        self.tick()
+        self.assertEqual(len(self.reloads()), 2)
+        self.assertEqual(self.service.line_status()["next_attempt_at"], int(self.clock[0]) + 2 * settings_service.REPAIR_RETRY)
+        self.clash.refuse_reload = False
+        self.assertEqual(self.tick(2 * settings_service.REPAIR_RETRY), "repaired")
+        self.assertEqual(self.service.line_status()["state"], "ok")
+
+    def test_rewrite_that_changes_nothing_is_not_repeated(self):
+        """Clash takes the config and the lines are still not there: reloading again would only cut connections."""
+        self.overwrite()
+        self.clash.ignore_reload = True
+        self.tick()
+        self.assertEqual(self.tick(), "repaired", "Clash answered 204")
+        status = self.service.line_status()
+        self.assertEqual((status["state"], status["stopped"]), ("missing", True))
+        self.assertIn("已停止自动写入", status["error"])
+        count = len(self.reloads())
+        for _ in range(5):
+            self.tick(600)
+        self.assertEqual(len(self.reloads()), count)
+        # the settings page writing again, or the lines coming back, starts over
+        self.clash.ignore_reload = False
+        self.clash.loaded.text = self.written
+        self.tick()
+        self.assertEqual((self.service.line_status()["state"], self.service.line_status()["stopped"]), ("ok", False))
+
+    def test_something_undoing_it_all_the_time_is_not_fought_forever(self):
+        for _ in range(settings_service.REPAIRS_PER_HOUR):
+            self.overwrite()
+            self.tick()
+            self.assertEqual(self.tick(), "repaired")
+        self.overwrite()
+        self.tick()
+        self.assertIsNone(self.tick())
+        status = self.service.line_status()
+        self.assertEqual(status["state"], "missing")
+        self.assertIn("已暂停自动写入", status["error"])
+        self.assertEqual(len(self.reloads()), settings_service.REPAIRS_PER_HOUR)
+        self.assertEqual(self.tick(settings_service.HOUR), "repaired")
+
+    def test_a_change_in_progress_is_left_alone(self):
+        self.overwrite()
+        self.tick()
+        with self.service.lock:
+            self.assertIsNone(self.tick())
+            self.assertIsNone(self.tick())
+        self.assertEqual(self.reloads(), [])
+        self.assertEqual(self.tick(), "repaired")
+
+    def test_switched_off_line_is_not_watched(self):
+        self.tick()
+        self.service.apply({"ai_line": {"enabled": False}})
+        self.clash.calls.clear()
+        self.assertIsNone(self.tick())
+        self.assertEqual(self.service.line_status()["state"], "off")
+        self.assertEqual(self.clash.calls, [])
 
 
 class AiCheckTests(unittest.TestCase):

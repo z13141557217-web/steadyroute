@@ -38,7 +38,7 @@ SteadyRoute 后端（单进程，LaunchAgent com.steadyroute）
 | `node_catalog.py` | 只读节点目录（`/api/nodes`） |
 | `logging_setup.py` | 有界日志和异常入口 |
 | `runtime_metrics.py` | 内存与周期指标 |
-| `settings_service.py` | 设置页后端：读取与修改设置、写入 / 撤销 Clash、每周同步、每小时自愈、体检 |
+| `settings_service.py` | 设置页后端：读取与修改设置、写入 / 撤销 Clash、运行核对、每周同步、每小时自愈、体检 |
 | `ai_line.py` | AI 专线与托管家宽线路：分组定义、写入计划、应用与撤销 |
 | `ai_rules.py` | AI 规则：net.coffee 快照与同步安全检查、社区规则、进程规则、手动域名 |
 | `ai_check.py` | AI 分流体检：只读遍历 Clash 当前规则并跟踪出口 |
@@ -150,7 +150,14 @@ net.coffee 的规则原样采用，包括最后的 `GEOSITE,category-ntp`（缺�
 
 一个独立线程，不占用探测线程：
 
-- 每小时：当前订阅变了或专线规则从运行配置中消失时，重新写入（自愈）。
+- 每 20 秒（运行核对，`SettingsService.watch`）：读内核的 `/proxies` 与 `/rules`，写入过的分组必须
+  都在，写入过的域名规则（DOMAIN / DOMAIN-SUFFIX / DOMAIN-KEYWORD）必须都在且指向专线分组。
+  连续两次不符才重新写入（Clash Verge 可能正在重载）；写入失败按 1、2、4 … 30 分钟退避；
+  写入成功但内核里仍然没有时停止自动写入；一小时内最多重新写入 6 次。状态经
+  `GET /api/settings` 的 `line_status` 和 `GET /api/status` 各分组的 `line_state` 给出。
+  依据是内核而不是文件：Clash Verge 用它内存里的旧配置重载时，扩展文件仍然是对的，内核却不再
+  运行专线。
+- 每小时：当前订阅变了或专线规则从运行配置文件中消失时，重新写入（自愈）。
 - 每周：同步 net.coffee 规则，有变化时重新写入；通过 `POST /configs/geo` 更新 geodata。
 
 所有对 Clash 的修改由同一把锁串行化。

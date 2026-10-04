@@ -1066,6 +1066,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "region_label": region_label_for_group(group["name"]),
             "auto_lock": AUTO_LOCK_STATUS.get(group["name"]),
             "ai_line": ai_line_group() == group["name"],
+            "line_state": line_state_for(group["name"]),
             "current": group["current"]["name"] if group["current"] else group_state.get("last_seen"),
             "active_connections": sum(
                 1 for connection in connections if group["name"] in (connection.get("chains") or [])
@@ -1425,17 +1426,38 @@ def settings_post(route, body):
     return 404, {"error": "not_found"}
 
 
+def line_state_for(group_name):
+    """"ok" / "missing" / "unknown" for a group SteadyRoute wrote into Clash, else None."""
+    service = SETTINGS
+    if service is None:
+        return None
+    try:
+        if group_name not in (service.applied().get("groups") or []):
+            return None
+        state = service.line_status()["state"]
+    except Exception:
+        return None
+    return state if state in ("ok", "missing", "unknown") else None
+
+
 def maintenance_loop():
-    """Hourly self-heal, weekly net.coffee sync and geodata update, off the probing thread."""
-    time.sleep(90)
+    """Off the probing thread. Every 20 s: are the lines written into Clash still what Clash
+    runs (re-written at once when not). Hourly self-heal, weekly net.coffee sync and geodata update."""
+    next_maintenance = time.monotonic() + 90
     while True:
+        time.sleep(settings_service.WATCH_SECONDS)
         service = settings_service_instance()
-        if service is not None:
+        if service is None:
+            continue
+        if service.watch() == "repaired":
+            logging_setup.write_event("lines_rewritten", status=service.line_status())
+            WAKE_EVENT.set()
+        if time.monotonic() >= next_maintenance:
+            next_maintenance = time.monotonic() + 3600
             try:
                 service.maintenance()
             except Exception as error:
                 log_warning("maintenance failed: %s" % error)
-        time.sleep(3600)
 
 
 def start_dashboard():
