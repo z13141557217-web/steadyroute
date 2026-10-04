@@ -458,6 +458,39 @@ class UninstallTests(InstallerBase):
         self.assertIn("核心校验失败", str(caught.exception))
         self.assertTrue(self.app.exists())
 
+    def _late_connection(self, after):
+        polls = [0]
+
+        def status():
+            snapshot = self.status()
+            if snapshot:
+                polls[0] += 1
+                snapshot["service"]["controller_connected"] = polls[0] > after
+            return snapshot
+        return status
+
+    def test_summary_waits_for_the_first_connection_to_clash(self):
+        """Right after start the service has not run a cycle yet; that is not "Clash Verge is closed"."""
+        socket_file = self.home / "verge-mihomo.sock"
+        socket_file.write_text("", encoding="utf-8")
+        self.install(sockets=[str(socket_file)], status=self._late_connection(4))
+        self.assertFalse([line for line in self.printed if "还没连上" in line])
+        self.assertTrue([line for line in self.printed if "家宽候选" in line])
+
+    def test_summary_says_so_when_clash_never_connects(self):
+        socket_file = self.home / "verge-mihomo.sock"
+        socket_file.write_text("", encoding="utf-8")
+        started = self.clock[0]
+        self.install(sockets=[str(socket_file)], status=self._late_connection(10 ** 6))
+        self.assertTrue([line for line in self.printed if "还没连上" in line])
+        self.assertLessEqual(self.clock[0] - started, installer.CONNECT_WAIT_SECONDS + 5)
+        # Clash Verge closed: nothing to wait for
+        self.printed.clear()
+        started = self.clock[0]
+        self.install(status=self._late_connection(10 ** 6))
+        self.assertTrue([line for line in self.printed if "还没连上" in line])
+        self.assertLess(self.clock[0] - started, 5)
+
     def test_installed_modules_restore_clash(self):
         """The real remove_all of the installed copy, on a Clash Verge folder with our lines in it."""
         import settings_service
@@ -466,13 +499,18 @@ class UninstallTests(InstallerBase):
         shutil.copytree(str(FIXTURES / "clash_verge"), str(clash_home))
         before = (clash_home / "profiles/gkX1aa.yaml").read_text(encoding="utf-8")
 
+        import clash_fakes
+        loaded = clash_fakes.LoadedConfig()
+
         class Controller(object):
             def __call__(inner, method, path, payload):
                 if path == "/version":
                     return 200, json.dumps({"version": "v1.19.31"})
                 if path == "/proxies":
-                    names = ["台湾 HiNet 家宽 01 🇨🇳", "AI 台湾家宽线路", "香港家宽自动备援"]
-                    return 200, json.dumps({"proxies": {name: {"type": "Hysteria2"} for name in names}})
+                    data = {"台湾 HiNet 家宽 01 🇨🇳": {"type": "Hysteria2"}}
+                    return 200, json.dumps({"proxies": loaded.groups(data, {"type": "Selector", "all": []})})
+                if method == "PUT" and path.startswith("/configs"):
+                    return loaded.put(payload)
                 return 204, ""
 
         def factory():

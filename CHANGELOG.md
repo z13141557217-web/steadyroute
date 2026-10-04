@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-04
+
+### Fixed
+
+- Clash Verge 服务模式下专线无法写入。v0.5.1 用 `PUT /configs` 传 `clash-verge.yaml` 的路径让内核重载；
+  Mihomo 1.19 起内核只打开自身 home 目录（和 `SAFE_PATHS`）下的文件，而服务模式下内核的 home 是
+  `/Library/Application Support/clash-verge-service/users/<uid>/runtime`，于是返回 HTTP 400
+  `path is not subpath of home directory or SAFE_PATHS`，设置页显示“没有生效”。现在把配置内容放在
+  请求体的 `payload` 里交给内核，不传路径，两种模式都可用。
+- 安装完成的摘要在服务刚启动、尚未完成第一轮检测时取状态，会误报“还没连上 Clash Verge”。现在
+  Clash Verge 在运行时最多等 15 秒，连上后再显示接管的线路。
+
+### Changed
+
+- 写入前核对：`clash-verge.yaml` 里的分组与内核 `/proxies` 中的分组必须一致，否则不做任何改动，并提示在
+  Clash Verge 里重新选中当前订阅（避免把一份过期的运行配置加载进内核）。分组写法无法逐项读出时跳过核对。
+- 失败处理按内核是否已加载新配置区分：内核以错误应答时它仍在运行原配置，只恢复文件，不再尝试重载，也不再
+  提示“重新选中当前订阅”；内核已加载后核对失败，恢复文件并把原配置重新交给内核。
+- 控制接口的错误信息按文本显示（原来是 `b'…'` 字节写法）并保留前 600 个字符。
+- `sim/e2e` 的模拟 Clash 按服务模式行为工作：home 之外的路径以 Mihomo 的原文拒绝，只接受以内容加载。
+
 ## [0.5.1] - 2026-09-30
 
 ### Added

@@ -13,6 +13,7 @@ import cycle_harness  # noqa: E402,F401  (puts src/steadyroute on sys.path)
 
 import ai_line  # noqa: E402
 import ai_rules  # noqa: E402
+import clash_fakes  # noqa: E402
 import clash_profile  # noqa: E402
 
 try:
@@ -41,13 +42,15 @@ class FakeController(object):
         self.calls = []
         self.fail_reload = False
         self.groups_after = None
+        self.loaded = clash_fakes.LoadedConfig()
 
     def __call__(self, method, path, payload):
         self.calls.append((method, path, payload))
         if method == "PUT" and path.startswith("/configs"):
-            return (400, "bad config") if self.fail_reload else (204, "")
+            return (400, "bad config") if self.fail_reload else self.loaded.put(payload)
         if method == "GET" and path == "/proxies":
-            return 200, json.dumps({"proxies": proxies_payload(self.groups_after)}, ensure_ascii=False)
+            data = self.loaded.groups(proxies_payload(), {"type": "Selector", "now": TW_NODES[0], "all": TW_NODES})
+            return 200, json.dumps({"proxies": data}, ensure_ascii=False)
         return 204, ""
 
 
@@ -262,6 +265,61 @@ class ManagerTests(Base):
         with self.assertRaises(clash_profile.ProfileError):
             self.manager(MIGRATED).apply()
         self.assertEqual({name: self.read(name) for name in before}, before)
+
+    def test_config_is_handed_to_the_core_as_text_never_as_a_path(self):
+        """Clash Verge's service mode: the core's home is a system folder and it opens no file outside it."""
+        self.controller.loaded.home = "/Library/Application Support/clash-verge-service/users/501/runtime"
+        _plan, applied = self.manager(MIGRATED).apply()
+        self.assertEqual(applied["groups"], ["AI 台湾家宽线路", "香港家宽自动备援"])
+        self.assertEqual(self.controller.loaded.reloads, ["payload"])
+        self.assertEqual(self.controller.loaded.text, self.read("clash-verge.yaml"))
+        reload = [call for call in self.controller.calls if call[:2] == ("PUT", "/configs?force=true")][0]
+        self.assertEqual(reload[2]["path"], "")
+
+    def test_refused_config_leaves_the_core_alone(self):
+        """A config the core answers with an error was never loaded: nothing to reload, nothing to re-select."""
+        before = {name: self.read(name) for name in ("clash-verge.yaml", "profiles/gkX1aa.yaml", "profiles/rkX1aa.yaml")}
+        running = self.controller.loaded.text
+        self.controller.fail_reload = True
+        with self.assertRaises(clash_profile.ProfileError) as caught:
+            self.manager(MIGRATED).apply()
+        self.assertIn("Clash 仍按原配置运行", str(caught.exception))
+        self.assertNotIn("重新选中", str(caught.exception))
+        self.assertEqual({name: self.read(name) for name in before}, before)
+        self.assertEqual(self.controller.loaded.text, running)
+        self.assertEqual(len([c for c in self.controller.calls if c[0] == "PUT" and c[1].startswith("/configs")]), 1)
+
+    def test_failed_check_after_reload_puts_the_old_config_back_into_the_core(self):
+        before = self.read("clash-verge.yaml")
+        manager = self.manager(MIGRATED)
+        manager.proxies_reader = lambda: {}          # the groups never show up
+        with self.assertRaises(clash_profile.ProfileError) as caught:
+            manager.apply()
+        self.assertIn("已恢复原配置", str(caught.exception))
+        self.assertEqual(self.read("clash-verge.yaml"), before)
+        self.assertEqual(self.controller.loaded.reloads, ["payload", "payload"])
+        self.assertEqual(self.controller.loaded.text, before)
+
+    def test_runtime_file_that_is_not_what_the_core_runs_is_not_touched(self):
+        """An out-of-date clash-verge.yaml would replace the running config with an old one."""
+        self.controller.loaded.text = self.controller.loaded.text.replace("自定义稳定线路", "另一份订阅的分组")
+        before = {name: self.read(name) for name in ("clash-verge.yaml", "profiles/gkX1aa.yaml", "profiles/rkX1aa.yaml")}
+        with self.assertRaises(clash_profile.ProfileError) as caught:
+            self.manager(MIGRATED).apply()
+        self.assertIn("不一致", str(caught.exception))
+        self.assertIn("自定义稳定线路", str(caught.exception))
+        self.assertIn("另一份订阅的分组", str(caught.exception))
+        self.assertEqual({name: self.read(name) for name in before}, before)
+        self.assertFalse([c for c in self.controller.calls if c[0] == "PUT"])
+        self.assertFalse((pathlib.Path(self.tmp.name) / "backups").exists())
+
+    def test_group_names_of_a_runtime_config(self):
+        self.assertEqual(clash_profile.runtime_group_names(self.read("clash-verge.yaml"))[:2],
+                         ["AI 台湾家宽线路", "SteadyRoute 发现·台湾家宽"])
+        self.assertEqual(clash_profile.runtime_group_names("proxy-groups:\nrules:\n"), [])
+        # a layout whose names cannot all be read is not judged at all
+        self.assertIsNone(clash_profile.runtime_group_names("proxy-groups:\n- type: select\n  name: A\n"))
+        self.assertIsNone(clash_profile.runtime_group_names("proxy-groups: [{name: A}]\n"))
 
     def test_disable_puts_clash_back(self):
         before = {name: self.read(name) for name in ("profiles/gkX1aa.yaml", "profiles/rkX1aa.yaml")}

@@ -1,4 +1,4 @@
-"""v0.5.1 end-to-end: migrate a running v0.5.0 fixed-profile install on a fake Mac, accept the
+"""End-to-end (v0.5.1 onwards): migrate a running v0.5.0 fixed-profile install on a fake Mac, accept the
 migration on the settings page over HTTP, run the AI routing check, fail a node, uninstall.
 
 Usage: python3 run.py WORKDIR PY39
@@ -18,6 +18,7 @@ import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+VERSION = (REPO / "VERSION").read_text(encoding="utf-8").strip()
 sys.path.insert(0, str(HERE))
 import fake_clash  # noqa: E402
 import world  # noqa: E402
@@ -141,8 +142,8 @@ CLASH = fake_clash.Clash(str(CLASH_HOME / "clash-verge.yaml"), world.LATENCY)
 fake_clash.serve(CLASH, SOCKET)
 cid = CLASH.open_stream("AI 台湾家宽线路", host="claude.ai", process="Claude")
 
-# ---- 1. the old install: v0.5.0 code from main, fixed Taiwan / Hong Kong settings
-subprocess.run(["git", "-C", str(REPO), "archive", "main", "src/steadyroute", "-o", str(WORK / "old.tar")], check=True)
+# ---- 1. the old install: v0.5.0 code from its tag, fixed Taiwan / Hong Kong settings
+subprocess.run(["git", "-C", str(REPO), "archive", "v0.5.0", "src/steadyroute", "-o", str(WORK / "old.tar")], check=True)
 subprocess.run(["tar", "-xf", str(WORK / "old.tar"), "-C", str(WORK)], check=True)
 shutil.copytree(str(WORK / "src/steadyroute"), str(OLD_APP))
 (OLD_APP / "config").mkdir(exist_ok=True)
@@ -201,7 +202,7 @@ step("installed", seconds=round(time.time() - t0, 1), output=list(printed),
      logs=sorted(p.name for p in (HOME / "Library/Logs/SteadyRoute").iterdir()))
 assert files() == ORIGINAL, "installing must not touch Clash"
 time.sleep(25)
-status = wait_status("0.5.1")
+status = wait_status(VERSION)
 step("after install", groups=[(g["name"], (g.get("auto_lock") or {}).get("country_label"), g["current"])
                               for g in status["groups"]], idle=status["service"].get("auto_lock_idle"))
 RESULT["status_after_install"] = status
@@ -246,6 +247,13 @@ bad, _ = http("POST", "/api/settings/apply", {"migration": "accept"},
               {"Origin": "http://evil.example", "Content-Type": "application/json", "X-SteadyRoute": "1"})
 step("foreign origin refused", status=bad)
 
+try:   # what v0.5.1 did, and what a real Clash Verge in service mode answered
+    CLASH.put_config({"path": str(CLASH_HOME / "clash-verge.yaml")})
+    refusal = None
+except ValueError as error:
+    refusal = str(error)
+step("core refuses a file outside its home", refused=bool(refusal), message=(refusal or "")[:160], core_home=CLASH.home)
+CLASH.refused = 0
 # ---- 4. preview and accept the migration
 code, preview = post("/api/settings/preview", {"migration": "accept"})
 RESULT["preview"] = preview
@@ -265,7 +273,7 @@ for key, change in (("ai_jp", {"ai_line": {"enabled": True, "country": "JP"}}),
                     ("exclude_only", {"exclude_groups": ["家宽出口"]})):
     REC["api"]["preview_" + key] = post("/api/settings/preview", change)[1]
 REC["api"]["dismiss_settings"] = None
-step("apply", code=code, result=applied, seconds=round(time.time() - t0, 2), reloads=CLASH.reloads)
+step("apply", code=code, result=applied, seconds=round(time.time() - t0, 2), reloads=CLASH.reloads, refused_paths=CLASH.refused)
 after_files = files()
 RESULT["files_after"] = after_files
 sel_after = selections()
@@ -283,7 +291,7 @@ RESULT["check_after"] = after_check
 step("ai check after", **check_summary(after_check))
 
 time.sleep(25)
-status = wait_status("0.5.1")
+status = wait_status(VERSION)
 RESULT["status_after_apply"] = status
 step("dashboard", groups=[(g["name"], g.get("ai_line"), (g.get("auto_lock") or {}).get("country_label"), g["current"],
                            g.get("hot_standby"), g.get("decision")) for g in status["groups"]])

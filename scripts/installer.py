@@ -41,6 +41,7 @@ LABEL = "com.steadyroute"
 PORT = 17654
 KEEP_BACKUPS = 3
 HEALTH_TIMEOUT_SECONDS = 40
+CONNECT_WAIT_SECONDS = 15   # the first cycle after start connects to Clash; do not report "not connected" before it
 MIN_PYTHON = (3, 9)
 CLASH_APP_ID = "io.github.clash-verge-rev.clash-verge-rev"
 CLASH_APPS = ("/Applications/Clash Verge.app", "~/Applications/Clash Verge.app")
@@ -402,12 +403,19 @@ class Installer(object):
     # ---------------------------------------------------------------- health
     def wait_healthy(self, version):
         deadline = self.clock() + HEALTH_TIMEOUT_SECONDS
+        connect_deadline = None
         last = None
         while True:
             snapshot = self.status()
             service = (snapshot or {}).get("service") or {}
             if service.get("version") == version and service.get("profile") == "auto_lock":
-                return snapshot
+                if connect_deadline is None:
+                    connect_deadline = self.clock() + CONNECT_WAIT_SECONDS
+                # Clash Verge is running: wait for the first cycle so the summary shows the real lines.
+                if service.get("controller_connected") or not self.clash_socket() or self.clock() >= connect_deadline:
+                    return snapshot
+                self.sleep(1)
+                continue
             if snapshot:
                 last = service.get("version")
             if self.clock() >= deadline:

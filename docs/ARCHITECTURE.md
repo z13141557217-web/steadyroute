@@ -95,12 +95,20 @@ Clash Verge Rev 为每个订阅保存两个扩展文件：`profiles.yaml` 中当
 ```text
 计划（不写文件，供预览）
   → 用 Clash Verge 内核校验新运行配置（verge-mihomo -d <home> -f <staged> -t）
+  → 核对运行配置文件里的分组与内核 /proxies 中的分组一致（不一致则不做任何改动）
   → 备份三个文件和 meta.json 到 clash-backups/（保留 10 份）
   → 原子写入扩展分组、扩展规则、运行配置
-  → PUT /configs?force=true 重载
+  → PUT /configs?force=true，配置内容放在请求体的 payload 里（不传文件路径）
   → 核对新分组已出现在 /proxies，恢复这些分组原来选中的节点
-  → 任一步失败：恢复全部文件并重载原配置
+  → 内核拒绝新配置：内核仍在运行原配置，只恢复文件
+  → 内核已加载后核对失败：恢复文件并把原配置重新交给内核
 ```
+
+重载不传文件路径的原因：Mihomo 1.19 起内核只打开自身 home 目录（和 `SAFE_PATHS`）下的文件。
+Clash Verge 以服务模式运行时，内核的 home 是
+`/Library/Application Support/clash-verge-service/users/<uid>/runtime`，而 `clash-verge.yaml`
+在用户目录的 `io.github.clash-verge-rev.clash-verge-rev` 下，按路径重载会被拒绝（HTTP 400，
+`path is not subpath of home directory or SAFE_PATHS`）。以内容加载在两种模式下都可用。
 
 内核缺少可选规则所需的数据库（`GEOSITE,category-ai-!cn`、`IP-ASN,399358`）时，去掉该规则
 重新校验，并在设置页列出被丢弃的规则。写入结果记录在 `clash-applied.json`，包括被替换的

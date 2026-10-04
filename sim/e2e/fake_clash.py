@@ -1,5 +1,8 @@
 """Fake Clash Verge for the v0.5.1 end-to-end run: a Mihomo controller on a Unix socket whose
 groups, rules and members are computed from the runtime clash-verge.yaml, reloaded on PUT /configs.
+
+Like Clash Verge in service mode, the core's home is a system folder: PUT /configs with a file
+path outside it is refused with Mihomo's own message, and only a config sent as text is loaded.
 """
 
 import http.server
@@ -53,10 +56,15 @@ def members(group, nodes):
     return found or [group.get("empty-fallback", "COMPATIBLE")]
 
 
+SERVICE_HOME = "/Library/Application Support/clash-verge-service/users/%d/runtime" % os.getuid()
+
+
 class Clash(fake_mihomo.World):
-    def __init__(self, runtime_path, latency):
+    def __init__(self, runtime_path, latency, home=SERVICE_HOME):
         super().__init__({}, latency, {name: 6 for name in latency})
         self.runtime_path = runtime_path
+        self.home = home
+        self.refused = 0
         self.types = {}
         self.hidden = set()
         self.rules = []
@@ -65,7 +73,22 @@ class Clash(fake_mihomo.World):
         self.load(runtime_path)
 
     def load(self, path):
-        config = yaml.safe_load(open(path, encoding="utf-8"))
+        self.load_text(open(path, encoding="utf-8").read(), path)
+
+    def put_config(self, request):
+        """PUT /configs as Mihomo 1.19 handles it: text in "payload", else a path under its home."""
+        if request.get("payload"):
+            return self.load_text(request["payload"], "payload")
+        path = request.get("path") or ""
+        if not os.path.abspath(path).startswith(self.home.rstrip("/") + "/"):
+            self.refused += 1
+            self.record("refused", path=path)
+            raise ValueError("path is not subpath of home directory or SAFE_PATHS: %s \n allowed paths: [%s]"
+                             % (path, self.home))
+        self.load(path)
+
+    def load_text(self, text, path):
+        config = yaml.safe_load(text)
         nodes = [p["name"] for p in config.get("proxies") or []]
         groups, types, hidden = {}, {}, set()
         for group in config.get("proxy-groups") or []:
@@ -118,7 +141,7 @@ def make_handler(clash):
             if route == "/configs":
                 payload = self.read_json()
                 try:
-                    clash.load(payload["path"])
+                    clash.put_config(payload)
                 except Exception as error:
                     return self.reply(400, {"message": str(error)})
                 return self.reply(204, None)

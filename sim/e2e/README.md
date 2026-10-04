@@ -1,6 +1,6 @@
 # 端到端演练与可交互预览（仅 Linux，开发用）
 
-在隔离的假 Mac 目录里用真实的安装器、旧版（main）与当前版本程序完整走一遍：旧版运行 → `install.command`
+在隔离的假 Mac 目录里用真实的安装器、旧版（标签 v0.5.0）与当前版本程序完整走一遍：旧版运行 → `install.command`
 迁移 → 设置页升级线路 → AI 分流体检 → 节点故障 → 关闭 / 重新开启专线 → 卸载。Clash Verge 的文件、内核校验
 和 Mihomo 控制器是模拟的（`world.py`、`fake_core.py`、`fake_clash.py`）。
 
