@@ -278,6 +278,7 @@ main.wrap { padding-block: 18px 40px; display: grid; grid-template-columns: minm
   color: var(--accent); background: var(--accent-soft);
 }
 .r-title h2 { font-size: 14.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.ai-badge[data-lost="1"] { color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn); }
 .ai-badge { flex: 0 0 auto; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 650; line-height: 20px; color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); white-space: nowrap; }
 .r-link { flex: 0 0 auto; font-size: 12px; white-space: nowrap; }
 .decision {
@@ -870,6 +871,10 @@ function renderHead(d) {
     head = s.profile === 'auto_lock' ? '暂无接管线路' : '等待线路配置'; sev = 'warn';
     sub = s.profile === 'auto_lock' ? '仅接管在 Clash 中直接选中节点的分组；各分组未接管的原因见下方。' : '';
   }
+  else if (d.groups.some(g => g.ai_line && g.line_state === 'missing')) {
+    head = 'AI 专线未生效'; sev = 'warn';
+    sub = 'Clash 正在运行的配置中没有 AI 专线的规则，AI 服务暂按 Clash 原有规则分流；稳航正在重新写入，详情见设置页。';
+  }
   else if (troubled.length) {
     const g = troubled[0];
     head = `${groupRegion(g)}线路${g.decision_severity === 'critical' ? '故障' : '需要留意'}`;
@@ -1006,6 +1011,14 @@ function renderRoutes(d) {
     if (card.dataset.tone !== tone) card.dataset.tone = tone;
     setText(f('code'), regionCode(g));
     if (f('ai').hidden === !!g.ai_line) { f('ai').hidden = !g.ai_line; f('ai-check').hidden = !g.ai_line; }
+    /* the line is written, but Clash is running a config without it (re-written by the service) */
+    const lost = g.ai_line && g.line_state === 'missing';
+    if ((f('ai').dataset.lost === '1') !== lost) {
+      f('ai').dataset.lost = lost ? '1' : '0';
+      setText(f('ai'), lost ? 'AI 专线未生效' : 'AI 专线');
+      f('ai').title = lost ? 'Clash 正在运行的配置中没有 AI 专线的规则，稳航正在重新写入；详情见设置页'
+        : 'AI 家宽专线：ChatGPT、Claude 等 AI 服务的流量经此分组';
+    }
     /* Share edition: the lock is the key fact, so it sits on the current-node line where it
        never gets squeezed out; the fixed profile keeps its short note beside the title. */
     setText(f('region'), g.auto_lock ? '' : lockText(g));

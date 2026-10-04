@@ -134,12 +134,13 @@ sbar = """<div class="pv" role="region" aria-label="预览控制">
   <span class="tag">预览 · 设置页 · 模拟后端（订阅与规则取自端到端运行）</span>
   <span id="pv-state"></span>
   <button type="button" id="pv-reset">恢复到迁移前</button>
+  <button type="button" id="pv-lose">模拟：Clash Verge 加载旧配置</button>
   <a href="index.html">← 看板实录</a>
-  <span class="script">所有操作都可试：升级或保持旧线路、选择出口国家、添加 / 移除网站、开关分组的自动切换、高级信息里的立即同步（预览不联网，会演示失败后的重试）。改动只在本预览内生效。</span>
+  <span class="script">“模拟：Clash Verge 加载旧配置”演示专线从 Clash 中消失后，稳航发现并重新写入（预览中 12 秒，实际不超过 40 秒）。其余操作都可试：升级或保持旧线路、选择出口国家、添加 / 移除网站、开关分组的自动切换、高级信息里的立即同步（预览不联网，会演示失败后的重试）。改动只在本预览内生效。</span>
 </div>"""
 backend = """<script>(function(){
   var API=JSON.parse(document.getElementById('pv-api').textContent);
-  var KEY='sr-v051-preview-2';
+  var KEY='sr-v053-preview-1';
   function clone(v){return JSON.parse(JSON.stringify(v))}
   function fresh(){return {phase:'before',ai:{enabled:false,country:null,group:'AI 家宽专线'},managed:[],manual:[],exclude:[],on:{},
     applied:{groups:[],rules:0,at:null},clash:clone(API.old_defs),taken:[]}}
@@ -207,10 +208,16 @@ backend = """<script>(function(){
       var orig=r.status==='excluded'?false:true, want=(r.name in S.on)?S.on[r.name]:(line?true:orig);
       if(!want)r.status='excluded';else if(r.status==='excluded')r.status=(r.residential?(r.country?'switching':'unknown'):'no_residential')});
     s.group_details=rows;
+    var nowT=Date.now()/1000,lost=S.lost&&nowT<S.lost.until;
+    if(S.lost&&!lost){S.repaired=S.lost.until;S.repairs=(S.repairs||0)+1;S.lost=null;save()}
+    s.line_status=!S.applied.groups.length?{state:'off',interval:20}:lost?{state:'missing',problem:S.lost.problem,since:S.lost.since,checked_at:nowT,
+      repaired_at:S.repaired||null,repairs:S.repairs||0,error:null,next_attempt_at:null,stopped:false,interval:20}
+      :{state:'ok',problem:null,since:null,checked_at:nowT,repaired_at:S.repaired||null,repairs:S.repairs||0,error:null,next_attempt_at:null,stopped:false,interval:20};
     if(S.sync){s.rules_source.checked_at=S.sync.at;s.rules_source.next_check_at=S.sync.next;s.rules_source.last_error=S.sync.error;s.rules_source.failures=S.sync.failures}
     return s}
   function checkSnap(){
     if(!S.ai.enabled)return S.phase==='before'?API.check_before:API.check_off;
+    if(S.lost&&Date.now()/1000<S.lost.until)return S.ai.group==='AI 台湾家宽线路'?API.check_before:API.check_off;
     var node=(S.clash[S.ai.group]||[])[0],r=clone(API.check_after);
     if(S.ai.group==='AI 台湾家宽线路'&&S.ai.country==='TW')return r;
     r.line_group=S.ai.group;r.line_country=lab(S.ai.country);
@@ -235,7 +242,12 @@ backend = """<script>(function(){
       var result=p.clash_change?commit(n,p):{clash_change:false};save();return reply(200,result)}
     return reply(404,{error:'not_found'})};
   document.addEventListener('DOMContentLoaded',function(){label();
-    document.getElementById('pv-reset').addEventListener('click',function(){S=fresh();save();location.reload()})});
+    document.getElementById('pv-reset').addEventListener('click',function(){S=fresh();save();location.reload()});
+    document.getElementById('pv-lose').addEventListener('click',function(){
+      if(!S.applied.groups.length){window.__pvToast&&window.__pvToast('先升级线路或选择出口国家，专线写入后才有可丢失的内容。');return}
+      var t=Date.now()/1000;
+      S.lost={since:t,until:t+12,problem:S.ai.enabled?'Clash 中缺少 '+S.applied.rules+' 条 AI 规则（共写入 '+S.applied.rules+' 条）':'Clash 中没有分组「'+S.applied.groups[0]+'」'};save();
+      if(typeof load==='function')load()})});
 })();</script>"""
 spage = '<!doctype html>\n<html lang="zh-CN">\n<head>\n' + shead + BAR_CSS + TOAST_JS + \
     '<script type="application/json" id="pv-api">' + dump(api) + "</script>\n" + backend + "</head>\n<body>\n" + \

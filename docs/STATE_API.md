@@ -176,7 +176,12 @@ type, udp, residential, group, role, delay_ms, delay_at}`。`role` 为 `current`
   最近一次变化）、`geo`、`unsupported`（不能作为 AI 专线的地区）、`migration`（旧版迁移建议，
   没有时为 `null`）、`ai_rules_counts`，以及从控制器读取的 `countries`、`groups`、`ipv6`、
   `tun` 和 `clash`（能否定位当前订阅的扩展文件、是否找到内核）。控制器不可用时给出
-  `controller_error`，其余字段照常返回。
+  `controller_error`，其余字段照常返回。`line_status` 是运行核对的结果：`state`
+  （`off` 未写入专线 / `ok` 与写入内容一致 / `missing` 内核里没有 / `unknown` 连不上内核）、
+  `problem`（缺少什么）、`since`、`checked_at`、`repaired_at`（最近一次自动重新写入）、
+  `repairs`（一小时内的次数）、`error`、`next_attempt_at`、`stopped`（已停止自动写入）、`interval`。
+  `GET /api/status` 的 `groups[]` 增加 `line_state`：稳航写入的分组为 `ok` / `missing` / `unknown`，
+  其他分组为 `null`。
 - `GET /api/ai-check`：AI 分流体检。按 Clash 当前规则顺序，只读判断 34 条 net.coffee 条目
   各自命中的规则、分组链路、出口节点和国家，返回 `rows`、`total`、`ok`、`line_group`、
   `line_country`。

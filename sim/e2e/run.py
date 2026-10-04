@@ -313,6 +313,37 @@ cross = [e for e in selects if (e["group"] in ("AI 台湾家宽线路",) and e["
          or (e["group"] == "香港家宽自动备援" and e["node"] not in world.HK)]
 step("cross-region selections", count=len(cross), selects=len(selects))
 
+# ---- 5a. Clash Verge reloads the config it keeps in memory (the one from before our change):
+#          the files it rebuilds from still hold our block, the core no longer runs it
+written_runtime = files()["clash-verge.yaml"]
+reloads_before = CLASH.reloads
+mark("Clash Verge 重新加载了旧配置：AI 专线从 Clash 中消失")
+(CLASH_HOME / "clash-verge.yaml").write_text(ORIGINAL["clash-verge.yaml"], encoding="utf-8")
+CLASH.load_text(ORIGINAL["clash-verge.yaml"], "clash verge (old config)")
+t0 = time.time()
+during_check = http("GET", "/api/ai-check")[1]
+noticed = repaired = None
+shown = {}
+while time.time() - t0 < 90 and repaired is None:
+    watch = http("GET", "/api/settings")[1]["line_status"]
+    if watch["state"] == "missing" and noticed is None:
+        noticed = round(time.time() - t0, 1)
+        shown = {"problem": watch["problem"],
+                 "dashboard": [(g["name"], g.get("line_state")) for g in http("GET", "/api/status")[1]["groups"] if g.get("ai_line")]}
+        REC["api"]["settings_missing"] = http("GET", "/api/settings")[1]
+    if watch["state"] == "ok" and watch["repairs"]:
+        repaired = round(time.time() - t0, 1)
+    time.sleep(0.5)
+healed_check = http("GET", "/api/ai-check")[1]
+step("lines rewritten after clash verge reloaded its old config", noticed_seconds=noticed, repaired_seconds=repaired,
+     shown=shown, check_while_missing=[during_check["ok"], during_check["total"]],
+     check_after=[healed_check["ok"], healed_check["total"]], reloads_by_steadyroute=CLASH.reloads - reloads_before - 1,
+     runtime_same_as_written=files()["clash-verge.yaml"] == written_runtime,
+     node_kept=CLASH.groups["AI 台湾家宽线路"]["now"] == new)
+mark("稳航发现后重新写入：AI 专线恢复")
+assert repaired is not None, "the lines were not written again"
+time.sleep(25)
+
 # ---- 5b. AI line off (the old group comes back, user rules stay valid) and on again
 mark("关闭 AI 专线：恢复原来的分组定义")
 code, off = post("/api/settings/apply", {"ai_line": {"enabled": False}})

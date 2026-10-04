@@ -3,6 +3,11 @@ the weekly rule sync and the AI routing check. Standard library only.
 
 Nothing here runs on its own; the router calls it from the HTTP handler (settings page) and
 from one background maintenance thread. One lock serialises every change to Clash.
+
+What was written into Clash is watched against what Clash is running (watch(), every 20 s):
+the files can be right while the core runs something else, e.g. after Clash Verge reloads the
+config it keeps in memory. Lines that are gone are written again at once, and the settings page
+and the dashboard say so while they are missing.
 """
 
 import copy
@@ -33,6 +38,11 @@ RETRY = 6 * HOUR
 # empty-fallback (the line refuses connections instead of going direct when no node matches)
 # arrived in mihomo v1.19.27; older cores ignore the key and fall back to COMPATIBLE = DIRECT.
 MIN_CORE = (1, 19, 27)
+WATCH_SECONDS = 20            # how often the lines we wrote are compared with what Clash runs
+WATCH_STRIKES = 2             # looks in a row before re-writing: Clash Verge may be mid-reload
+REPAIR_RETRY = 60             # after a re-write that failed: 1, 2, 4 … minutes
+REPAIR_RETRY_MAX = 30 * 60
+REPAIRS_PER_HOUR = 6          # something else keeps undoing it: stop reloading Clash over and over
 EDITABLE = ("exclude_groups", "takeover", "ai_line", "manual", "migration")
 
 
@@ -103,6 +113,7 @@ class SettingsService(object):
         self.lock = threading.Lock()
         self.applied_path = self.base_dir / "clash-applied.json"
         self.rules_path = self.base_dir / "ai-rules.json"
+        self._watch = self._fresh_watch()
 
     # ------------------------------------------------------------ state files
     def config(self):
@@ -229,6 +240,7 @@ class SettingsService(object):
             "geo": {"updated_at": rules_state.get("geo_updated_at"), "last_error": rules_state.get("geo_error")},
             "unsupported": ai_line.AI_UNSUPPORTED,
             "migration": config.get("migration"),
+            "line_status": self.line_status(),
             "ai_rules_counts": {
                 "netcoffee": len(set(map(tuple, rules_state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)) |
                                  set(map(tuple, rules_state.get("gpt") or ai_rules.NETCOFFEE_GPT))),
@@ -252,6 +264,121 @@ class SettingsService(object):
         except clash_profile.ProfileError as error:
             result["clash"] = {"ok": False, "error": str(error), "core": bool(self.core)}
         return result
+
+    # ------------------------------------------------------------ is it still in effect
+    @staticmethod
+    def _fresh_watch():
+        return {"state": "off", "problem": None, "since": None, "checked_at": None, "strikes": 0,
+                "repaired_at": None, "repair_times": [], "failures": 0, "next_attempt_at": 0,
+                "error": None, "stuck": None}
+
+    def line_status(self):
+        """For the settings page and the dashboard: are our lines what Clash is running right now."""
+        watch = self._watch
+        return {"state": watch["state"], "problem": watch["problem"], "since": watch["since"],
+                "checked_at": watch["checked_at"], "repaired_at": watch["repaired_at"],
+                "repairs": len([at for at in watch["repair_times"] if self.clock() - at < HOUR]), "error": watch["error"],
+                "next_attempt_at": watch["next_attempt_at"] if watch["state"] == "missing" and watch["error"] else None,
+                "stopped": bool(watch["stuck"]) and watch["state"] == "missing", "interval": WATCH_SECONDS}
+
+    def line_problems(self, applied):
+        """What of `applied` Clash is not running, as text; "" when everything is there.
+
+        Groups by name. Rules: every domain rule we wrote must be in Clash's live rule list with
+        our group as its target (the same reading of /rules the AI routing check uses); the other
+        rule types are written by the same change and not compared, their text form varies by core.
+        """
+        proxies = self.proxies()
+        parts = []
+        gone = [name for name in applied.get("groups") or []
+                if (proxies.get(name) or {}).get("type") not in clash_profile.GROUP_TYPES]
+        if gone:
+            parts.append("Clash 中没有分组「%s」" % "」「".join(gone))
+        ours = []
+        for line in applied.get("rules") or []:
+            kind, _, rest = str(line).partition(",")
+            value, _, group = rest.partition(",")
+            if kind in ("DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD"):
+                ours.append((ai_check.norm(kind), value.strip().lower(), group.split(",")[0]))
+        if ours:
+            live = {(ai_check.norm(rule.get("type")), str(rule.get("payload") or "").strip().lower(), rule.get("proxy"))
+                    for rule in self._get("/rules").get("rules") or []}
+            lost = [rule for rule in ours if rule not in live]
+            if lost:
+                parts.append("Clash 中缺少 %d 条 AI 规则（共写入 %d 条）" % (
+                    len(applied["rules"]) if len(lost) == len(ours) else len(lost), len(applied["rules"])))
+        return "；".join(parts)
+
+    def watch(self):
+        """One look, and a re-write when the lines have been gone for two looks. Never raises.
+
+        Returns "repaired" when Clash was written again, else None.
+        """
+        if not self.lock.acquire(False):      # the settings page is changing Clash right now
+            return None
+        try:
+            return self._watch_locked()
+        except Exception as error:            # never let the watch thread die
+            self.log("line watch failed: %s" % error)
+            return None
+        finally:
+            self.lock.release()
+
+    def _watch_locked(self):
+        now = self.clock()
+        watch = self._watch
+        config, applied = self.config(), self.applied()
+        if not (self._wants_lines(config) and applied.get("groups")):
+            self._watch = self._fresh_watch()
+            return None
+        try:
+            problem = self.line_problems(applied)
+        except Exception:
+            # Clash Verge closed or restarting: nothing can be said, and nothing is routed either
+            watch.update({"state": "unknown", "strikes": 0, "checked_at": int(now)})
+            return None
+        watch["checked_at"] = int(now)
+        if not problem:
+            watch.update({"state": "ok", "problem": None, "since": None, "strikes": 0, "failures": 0,
+                          "next_attempt_at": 0, "error": None, "stuck": None})
+            return None
+        if watch["state"] != "missing":
+            watch["since"] = int(now)
+            self.log("lines not in effect: %s" % problem)
+        watch.update({"state": "missing", "problem": problem, "strikes": watch["strikes"] + 1})
+        if watch["strikes"] < WATCH_STRIKES or now < watch["next_attempt_at"]:
+            return None
+        if watch["stuck"] == problem:
+            return None
+        watch["repair_times"] = [at for at in watch["repair_times"] if now - at < HOUR]
+        if len(watch["repair_times"]) >= REPAIRS_PER_HOUR:
+            watch["error"] = "一小时内已自动重新写入 %d 次，仍被改回，已暂停自动写入" % REPAIRS_PER_HOUR
+            return None
+        try:
+            self.check_core()
+            _plan, new_applied = self.manager(config, applied).apply()
+            _atomic_json(self.applied_path, new_applied)
+        except Exception as error:
+            watch["failures"] += 1
+            delay = min(REPAIR_RETRY * 2 ** (watch["failures"] - 1), REPAIR_RETRY_MAX)
+            watch.update({"error": str(error), "next_attempt_at": int(now + delay)})
+            self.log("lines re-write failed (%s), next try in %d s" % (error, delay))
+            return None
+        watch["repair_times"].append(now)
+        watch.update({"repaired_at": int(now), "failures": 0, "next_attempt_at": 0, "error": None})
+        self.log("lines re-written into Clash (%s)" % problem)
+        try:
+            still = self.line_problems(new_applied)
+        except Exception:
+            still = ""
+        if still:
+            # Clash took the config and the lines are still not there: writing again changes nothing.
+            watch.update({"problem": still, "stuck": still,
+                          "error": "重新写入后 Clash 中仍然没有这些内容，已停止自动写入"})
+            self.log("lines still not in effect after re-write: %s" % still)
+        else:
+            watch.update({"state": "ok", "problem": None, "since": None, "strikes": 0, "stuck": None})
+        return "repaired"
 
     def _needs_clash(self, old, new):
         keys = lambda config: (config.get("ai_line"), config.get("managed_lines"), (config.get("ai_rules") or {}).get("manual"))
@@ -304,6 +431,7 @@ class SettingsService(object):
                     applied = manager.disable()
                     result = {"clash_change": True, "action": "disable"}
                 _atomic_json(self.applied_path, applied)
+                self._watch = self._fresh_watch()
             self.save_config(new)
             self.log("settings changed: %s" % json.dumps(result, ensure_ascii=False))
             return result

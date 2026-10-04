@@ -292,6 +292,7 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
         <dt>地理数据库</dt><dd id="geo">—</dd>
         <dt>Clash 网络</dt><dd id="net">—</dd>
         <dt>写入位置</dt><dd id="where">—</dd>
+        <dt>运行核对</dt><dd id="watch">—</dd>
       </dl>
     </div>
   </details>
@@ -378,6 +379,17 @@ const countryLabel = code => {
 const line = () => (snap && snap.ai_line) || {};
 const live = () => !!(line().enabled && ((snap.applied && snap.applied.groups) || []).includes(line().group_name));
 const liveRules = () => live() ? snap.applied_rule_count : 0;
+/* written by SteadyRoute, but not what Clash is running right now (checked every 20 s by the service) */
+const watch = () => (snap && snap.line_status) || {};
+const missing = () => watch().state === 'missing';
+function missingNote() {
+  const w = watch();
+  let text = `<b>专线当前未生效：</b>${esc(w.problem || 'Clash 正在运行的配置中没有稳航写入的内容')}。`;
+  if (w.stopped) text += `${esc(w.error)}；重新选择出口国家，或在 Clash Verge 里重新选中当前订阅后恢复。`;
+  else if (w.error) text += `重新写入未成功：${esc(w.error)}${w.next_attempt_at ? `；${esc(when(w.next_attempt_at))} 重试` : ''}。`;
+  else text += '稳航正在重新写入，通常在 1 分钟内恢复。';
+  return text;
+}
 
 /* ---- render ---- */
 function render() {
@@ -388,6 +400,7 @@ function render() {
   if (s.clash && !s.clash.ok) notes.push(`<b>无法写入 Clash：</b>${esc(s.clash.error)}`);
   else if (s.clash && !s.clash.core) notes.push('<b>没有找到 Clash Verge 内核</b>，无法在写入前校验配置；请确认 Clash Verge 安装在“应用程序”中。');
   if (s.controller_error) notes.push(`<b>暂时连不上 Clash：</b>${esc(s.controller_error)}`);
+  else if (missing()) notes.push(missingNote());
   $('#clash-note').hidden = !notes.length;
   $('#clash-note-text').innerHTML = notes.join('<br>');
 
@@ -420,8 +433,8 @@ function render() {
   if (box.__html !== html) { box.innerHTML = html; box.__html = html; }
 
   const state = $('#ai-state');
-  state.className = live() ? 'state on' : l.enabled ? 'state warn' : 'state';
-  state.textContent = live() ? `${countryLabel(l.country)} · 已生效` : l.enabled ? '尚未写入 Clash' : '未启用';
+  state.className = live() && !missing() ? 'state on' : l.enabled ? 'state warn' : 'state';
+  state.textContent = live() ? `${countryLabel(l.country)} · ${missing() ? '未生效' : '已生效'}` : l.enabled ? '尚未写入 Clash' : '未启用';
 
   let result = '';
   if (live()) {
@@ -491,6 +504,12 @@ function render() {
   if (s.ipv6 != null) net.push(`IPv6 ${s.ipv6 ? '开启' : '关闭'}`);
   $('#net').innerHTML = net.length ? esc(net.join(' · ')) + (s.tun === false
     ? '<br><span class="warnline">TUN 模式关闭时，只有走系统代理的应用会经过专线；AI 桌面 App 与命令行可能直连。</span>' : '') : '—';
+  const w = watch();
+  let watching = w.state === 'off' || !w.state ? '未向 Clash 写入专线，无需核对'
+    : `每 ${w.interval || 20} 秒核对 Clash 正在运行的分组与规则 · ` + (w.state === 'ok' ? '与写入内容一致'
+      : w.state === 'missing' ? '<span class="warnline">专线未生效</span>' : '暂时连不上 Clash');
+  if (w.repaired_at) watching += `<br><span class="muted">最近一次自动重新写入：${esc(when(w.repaired_at))}</span>`;
+  $('#watch').innerHTML = watching;
   $('#where').textContent = s.clash && s.clash.profile_uid
     ? `Clash Verge 当前订阅（${s.clash.profile_uid}）的扩展分组与扩展规则文件，稳航标记块内；更新订阅不会丢失。` : '—';
 }
@@ -722,8 +741,11 @@ async function load() {
     const r = await fetch('/api/settings', { cache: 'no-store' });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    const before = snap ? watch().state : null;
     snap = d;
     render();
+    /* the line went missing or came back: the result line must not keep the earlier count */
+    if (before && before !== watch().state && live() && (before === 'missing' || missing())) { check = null; render(); runCheck(); }
   } catch (error) {
     toast(`读取设置失败：${error.message}`, true);
   }
@@ -737,6 +759,8 @@ load().then(() => {
 });
 setInterval(pollStatus, 10000);
 setInterval(() => { if (!busy && !$('#dlg').open) load(); }, 30000);
+/* while a line is missing the service re-writes it within a minute: follow it more closely */
+setInterval(() => { if (missing() && !busy && !$('#dlg').open) load(); }, 5000);
 </script>
 </body>
 </html>
