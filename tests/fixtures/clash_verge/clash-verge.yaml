@@ -1,0 +1,59 @@
+mixed-port: 7897
+mode: rule
+log-level: info
+ipv6: false
+proxies:
+- name: '台湾 HiNet 家宽 02 🇨🇳'
+  type: socks5
+  server: 203.0.113.1
+  port: 443
+- name: '台湾 HiNet 家宽 01 🇨🇳'
+  type: socks5
+  server: 203.0.113.3
+  port: 443
+- name: 🇯🇵 日本 家宽 01
+  type: socks5
+  server: 203.0.113.9
+  port: 443
+- name: 香港 BGP 01
+  type: socks5
+  server: 203.0.113.4
+  port: 443
+- name: 香港 家宽 01
+  type: socks5
+  server: 203.0.113.5
+  port: 443
+proxy-groups:
+- name: AI 台湾家宽线路
+  type: select
+  interrupt-exist-connections: false
+  proxies:
+  - '台湾 HiNet 家宽 01 🇨🇳'
+  - '台湾 HiNet 家宽 02 🇨🇳'
+  disable-udp: true
+- name: SteadyRoute 发现·台湾家宽
+  type: select
+  include-all-proxies: true
+  filter: (?i)(?:台湾.*家宽)
+  hidden: true
+- name: 自定义稳定线路
+  type: fallback
+  url: https://example.com/
+  interval: 60
+  proxies:
+  - 香港 BGP 01
+- name: 家宽出口
+  type: select
+  proxies:
+  - 香港 家宽 01
+  - 🇯🇵 日本 家宽 01
+- name: 🐟 漏网之鱼
+  type: select
+  proxies:
+  - 家宽出口
+  - DIRECT
+rules:
+- AND,((NETWORK,udp),(DST-PORT,3478-3481)),REJECT
+- DOMAIN-SUFFIX,claude.ai,AI 台湾家宽线路
+- DOMAIN-SUFFIX,openai.com,AI 台湾家宽线路
+- MATCH,🐟 漏网之鱼

@@ -1,143 +1,144 @@
 # 运维手册
 
+安装、升级、迁移和卸载见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+
 ## 日常检查
 
-运行：
-
 ```bash
-./scripts/status.sh
+python3 scripts/installer.py status
 ```
 
-关注：
+再打开看板 `http://127.0.0.1:17654/`，关注：
 
-- LaunchAgent 是否 running。
-- 最近周期是否及时。
-- 当前台湾/香港节点是否属于候选集。
+- 服务是否在运行、版本是否正确、最近一轮检测是否及时。
+- 每个接管的分组锁定的国家是否符合预期，当前节点是否是该国家的家宽。
+- 未接管的分组及原因（无家宽节点、国家未识别、当前选择的是另一个分组）。
 - 是否存在长期隔离或空候选。
-- 日志是否接近上限。
-- RSS、CPU 和本地接口响应是否异常。
+- 内存当前值、峰值和趋势，日志目录大小。
 - `/api/v1/status` 的 `service.state_stale`、`controller_connected` 和 `diagnostics.snapshot_id`。
-- `/candidate-acceptance` 的 generation、静态/动态差异、warming、retired、group status
-  与 fail-closed；它只读缓存，不代表已接管。
 
-## 动态候选影子告警
+启用了 AI 家宽专线时，再看设置页 `/settings`：专线状态、规则来源的最近同步时间与错误、
+geodata 更新时间，并按需运行“AI 分流体检”。
 
-- `GROUP_MISSING` 或控制器 offline：保留最后集合，禁止手工清空状态；等待恢复并确认
+## 接管规则
+
+- 稳航只使用 `auto_lock` 方式：Clash 中每个直接选中节点的 select 分组都会被接管，按当前
+  节点的国家锁定，之后只在该国家的家宽节点之间切换。
+- 铁律：任何情况下都不会切到其他国家、机房节点或 `DIRECT`。同国家家宽全部不可用时保持
+  当前选择并报警。
+- 用户在 Clash 中把分组切到另一个国家的节点，稳航改锁到新国家；同国家内手动换节点按
+  “手动选择保护”保留 60 分钟，故障仍立即切换。
+- 不希望被接管的分组在设置页“自动切换的分组”中关闭（`auto_lock.exclude_groups`）。从旧版升级的安装使用允许名单 `auto_lock.include_groups`，只包含旧版原本切换的分组，其他分组需在设置页开启。
+- 某个分组需要专门的业务检测地址时，写在 `auto_lock.group_business_urls`。
+
+## 候选集合告警
+
+- `GROUP_MISSING` 或控制器 offline：保留最后的候选集合，禁止手工清空状态；等待恢复并确认
   `GROUP_RECOVERED`。
-- 单次空组：属于 pending，不处置为删除；连续成功空快照才形成 `NO_CANDIDATE`。
-- `CURRENT_NODE_REMOVED`：影子模式只检查成熟同策略建议，不执行 PUT。
-- `NO_CANDIDATE`：确认 Mihomo 组仍是 `empty-fallback: REJECT`；不得改成 DIRECT 或
-  COMPATIBLE 临时恢复。
-- 误收/漏收：保持 shadow，修正 `route-policies.json`，重新生成并 staged 校验后再观察。
-- `SteadyRoute 发现·*` 是隐藏的内部发现组；它们应存在于 `/proxies` 且返回
-  `hidden=true`，但不应出现在 Clash Verge 代理页。若再次可见，停止发布并回滚增强配置。
-- `manual_hold` 的兼容语义是最长 60 分钟“人工偏好保护”：只暂停性能回优。当前节点
-  连续失败、消失或没有安全候选时仍执行故障保护；看板必须显示剩余时间和安全开关。
+- 单次空组属于 pending；只有连续成功的空快照才形成 `NO_CANDIDATE`。
+- `NO_CANDIDATE`：该国家已没有可用家宽。不要把分组改成 DIRECT 或其他国家临时恢复；检查
+  订阅是否仍提供该国家的家宽节点。
+- `CURRENT_NODE_REMOVED`：当前节点从订阅中消失，稳航会切到同国家的成熟候选。
 
-## 检测时效与故障保护（v0.4.3）
+## 检测时效与故障保护
 
 - `service.state.code = local_network_offline`：本机直连检测失败。此时不累计失败、不切换、
-  不隔离；网络恢复后自动记录 `LOCAL_NETWORK_RECOVERED`。若长时间不恢复，先检查本机网络
-  与 Clash Verge 是否运行，不要手动切换节点。
-- `BUSINESS_TARGET_UNREACHABLE`：当前节点与热备访问同一 AI 业务地址都失败，判定为目标
-  站点问题；5 分钟内预检跳过该地址。节点本身不受惩罚。
-- `FAILOVER_STORM`：10 分钟内同组故障切换 ≥ 3 次，之后每次切换都做完整业务预检。持续
-  出现时优先检查订阅整体质量或本机网络。
-- 看板"检测延迟"：超过 `stale_at`（完成时间 + 50 秒）仍未完成新周期。检查 LaunchAgent
-  是否运行、`service.cycle_duration_p95_ms` 是否异常。
+  不隔离；网络恢复后自动记录 `LOCAL_NETWORK_RECOVERED`。长时间不恢复时先检查本机网络与
+  Clash Verge 是否运行，不要手动切换节点。
+- `BUSINESS_TARGET_UNREACHABLE`：当前节点与热备访问同一业务地址都失败，判定为目标站点
+  问题；5 分钟内预检跳过该地址，节点不受惩罚。
+- `FAILOVER_STORM`：10 分钟内同组故障切换 ≥ 3 次，之后每次切换都做完整业务预检。持续出现
+  时优先检查订阅整体质量或本机网络。
+- 看板“检测延迟”：超过 `stale_at`（完成时间 + 50 秒）仍未完成新周期。检查服务是否运行、
+  `service.cycle_duration_p95_ms` 是否异常。
 
-## 日志（v0.4.4）
+## AI 家宽专线
 
-目录：`~/Library/Logs/Clash-Verge-Stability-Router/`。应用自己轮换，不需要 newsyslog 或手工清理。
+专线是可选功能，只在设置页确认后写入 Clash Verge。写入位置和保护措施见
+[ARCHITECTURE.md](ARCHITECTURE.md#ai-家宽专线)。
+
+- **写入失败**：稳航用 Clash Verge 自带内核校验新配置，写入后重载并核对分组；任一步失败都
+  恢复全部文件并重载原配置，设置页显示原因。重载原配置也失败时，提示在 Clash Verge 中重新
+  选中当前订阅。
+- **部分规则被丢弃**：旧内核缺少 `category-ai-!cn` 或 ASN 数据库时，这两条可选规则会被
+  去掉，设置页列出被丢弃的规则；其余规则照常生效。
+- **规则同步失败**：每周从 ip.net.coffee 同步 Claude 与 ChatGPT / Codex 规则。页面无法
+  读取或未通过安全检查（规则数 3–200、锚点域名必须存在、只允许安全规则类型、单次删除不超过
+  一半）时，继续使用当前规则，设置页显示错误和日期。
+- **geodata**：每周通过控制器 `POST /configs/geo` 更新一次，失败原因显示在设置页。
+- **自愈**：每小时检查一次。切换了订阅、或专线规则从运行配置中消失时，自动重新写入。
+- **核对分流**：设置页“AI 分流体检”只读遍历 Clash 当前规则，列出 34 条 net.coffee 条目
+  各自命中的规则、分组链路、出口节点和国家。命中的不是专线、或出口国家不对时，按提示调整
+  自己的规则或专线国家。
+- **手工恢复**：`clash-backups/` 中每次写入前的三个文件（分组扩展、规则扩展、运行配置）和
+  `meta.json` 保留最近 10 份。优先在设置页关闭专线；只有设置页不可用时才手工复制备份，
+  复制后在 Clash Verge 中重新选中当前订阅。
+- 不要手动编辑扩展文件中 `# >>> SteadyRoute 稳航管理（请勿手动修改）` 与
+  `# <<< SteadyRoute 稳航管理` 之间的内容；下次写入或自愈会覆盖它。
+
+## 日志
+
+目录：`~/Library/Logs/SteadyRoute/`。应用自己轮换，不需要 newsyslog 或手工清理。
 
 | 文件 | 看什么 | 保留 / 上限 |
 |---|---|---|
 | `router.log` | 日常运行：测速汇总、keep、切换过程。平稳时每 10 分钟约 3 行 | 14 天 / 20 MiB |
-| `events.jsonl` | 决策：每次故障切换、性能回优、休眠恢复、同地区拦截、线路与服务状态变化，一行一条 JSON | 90 天 / 10 MiB |
-| `node-events.jsonl` | 节点状态变化（降级、恢复、隔离、新节点加入）；抖动节点会很多，单独存放 | 30 天 / 5 MiB |
+| `events.jsonl` | 决策：故障切换、回优、休眠恢复、同地区拦截、改锁、设置变更、线路与服务状态变化，一行一条 JSON | 90 天 / 10 MiB |
+| `node-events.jsonl` | 节点状态变化（降级、恢复、隔离、新节点加入） | 30 天 / 5 MiB |
 | `router-error.log` | 警告、错误、traceback；相同错误 10 分钟只记一次并注明重复次数 | 30 天 / 3 MiB |
 | `*-YYYY-MM-DD[.N].*.gz` | 历史文件（按天或满单文件上限切出，gzip） | 随上表 |
-| `router-legacy-<日期>.log.gz` | 升级到 v0.4.4 时压缩的旧无界日志 | 90 天 |
-| `bootstrap.log` / `bootstrap-error.log` | 仅进程启动前或日志系统失效时的输出，正常应为空或极小 | — |
+| `launchd.log` | 仅进程启动前或日志系统失效时的输出，正常应为空或极小 | — |
 
-常用查询：
-
-```bash
-LOG=~/Library/Logs/Clash-Verge-Stability-Router
-tail -n 20 "$LOG/events.jsonl"                        # 最近决策
-grep '"kind": "failover"' "$LOG/events.jsonl" | tail   # 故障切换（含 from/to/检测耗时/切换前 6 个探测点）
-gzcat "$LOG"/events-*.jsonl.gz | grep failover | wc -l # 历史切换次数
-tail -n 50 "$LOG/router-error.log"                     # 最近错误
-du -sh "$LOG"                                          # 总量，正常 < 5 MiB
-```
-
-告警：`bootstrap-error.log` 持续增长、`router-error.log` 每天都有同一错误、或目录总量超过
-40 MiB，按 SEV-3 处理。回滚到 v0.4.3 时，旧 plist 重新把标准输出指向 `router.log`，应用
-不再轮换，但已压缩的历史文件不受影响。
-
-## discovery group 上线检查
-
-应用部署和 Clash Verge group enhancement 是两个独立事务。`manage-clash-groups.py` 从
-注入的 `profiles.yaml` 读取 current remote subscription，再读取其 `option.groups`，不会
-猜测或写死 UID。它只允许同级、非符号链接、名为 `profiles` 的明确目录中的已有绑定文件。
-
-- `deploy` 与 `rollback` 默认只输出计划；写入必须显式 `--apply`。
-- apply 前确认生成文件与 `route-policies.json` 一致、模式仍为 shadow，并用指定 Mihomo
-  核心校验临时独立配置。
-- apply 先在 `profiles/.steadyroute-group-backups/` 保存原件、SHA 和元数据，再同目录原子
-  替换；传入 controller socket 时同时保存当前活动组选择，替换后校验失败会自动恢复。
-- Clash Verge 2.5.4 服务模式通常使用
-  `/var/run/clash-verge-service/users/<uid>/verge-mihomo.sock`；旧版本可能仍使用
-  `/tmp/verge/verge-mihomo.sock`。稳航运行时自动在受限候选中选择真实 socket。
-- 重载后运行 `restore-selections` 的默认 dry-run，确认节点仍属于原组后再 `--apply`；
-  该事务只 PUT 代理组选择，不 DELETE 连接。
-- 本工具不自动重载 Clash Verge。人工重载后运行：
+最近的决策：
 
 ```bash
-python3 scripts/verify-clash-discovery.py --socket "/tmp/verge/verge-mihomo.sock"
+tail -n 20 ~/Library/Logs/SteadyRoute/events.jsonl
 ```
 
-只有输出 `"ready": true` 且列出所有策略 discovery group 时才能开始影子观察。若仍有
-`GROUP_MISSING`，停止计时，不得把它当作动态筛选结果。
+故障切换记录（含 from / to、检测耗时、切换前的探测点）：
+
+```bash
+grep '"kind": "failover"' ~/Library/Logs/SteadyRoute/events.jsonl | tail
+```
+
+最近的错误和目录总量（正常 < 5 MiB）：
+
+```bash
+tail -n 50 ~/Library/Logs/SteadyRoute/router-error.log
+du -sh ~/Library/Logs/SteadyRoute
+```
+
+告警：`launchd.log` 持续增长、`router-error.log` 每天都有同一错误、或目录总量超过 40 MiB，
+按 SEV-3 处理。
 
 ## 状态 schema 故障
 
 - `state.v1-backup.json` 是 v1→v2 前的原子备份，不提交 Git。
 - `state.corrupt-<unix>.json` 或 `state.migration-failed-<unix>.json` 是本机诊断副本，
   不得复制到日志或看板。
-- 日志出现 `unsupported future state schema` 时停止用旧版本启动；不要删除或改写状态，
-  应恢复能识别该版本的程序或使用完整部署备份回滚。
-- 从 v0.3.0 候选回滚 v0.2.0 时使用完整目录备份，禁止把 v2 状态手工拼接到旧版本。
+- 日志出现 `unsupported future state schema` 时不要用旧版本启动，也不要删除或改写状态；
+  重新安装能识别该版本的程序。
 
 ## 故障等级
 
 | 等级 | 示例 | 处置 |
 |---|---|---|
-| SEV-1 | DIRECT 泄漏、所有候选为空、错误地区出口 | 立即停止自动切换并回滚 |
-| SEV-2 | 服务停止、控制器持续离线、错误节点切换 | 15 分钟内恢复或回滚 |
-| SEV-3 | 看板不可用、日志异常增长、单节点误判 | 当日修复 |
+| SEV-1 | DIRECT 泄漏、所有候选为空、错误国家出口、AI 流量未走专线 | 立即关闭专线或停止服务，回滚 |
+| SEV-2 | 服务停止、控制器持续离线、错误节点切换、专线写入后 Clash 无法加载 | 15 分钟内恢复或回滚 |
+| SEV-3 | 看板不可用、日志异常增长、单节点误判、规则同步持续失败 | 当日修复 |
 | SEV-4 | 文案、布局和非关键诊断问题 | 正常迭代 |
 
 ## 事件响应
 
 1. 记录发生时间和用户症状。
 2. 保存状态、最近事件和有限日志片段。
-3. 确认是 Mihomo、节点、稳航还是看板问题。
+3. 确认是 Mihomo、节点、稳航、专线规则还是看板问题。
 4. 优先恢复服务，避免同时改变多个变量。
 5. 验证恢复。
 6. 建立回归测试和复盘行动项。
 
-## 备份策略
+## 备份
 
-- 每次生产发布前创建版本化备份。
-- 部署自检通过后自动保留最近 10 份完整备份（每份约 0.4 MB），刚被替换的上一版总在其中；`diagnostics/` 下的失败证据同样只留最近 10 份。部署失败时不清理任何备份。
-- 临时实验备份在发布完成后归档或清理。
-- 每个备份包含版本、commit、时间和校验和。
-- 订阅与凭据备份必须保持用户权限，不能进入 Git。
-
-## 发布失败处置
-
-部署脚本在关键检查失败后自动恢复切换前完整目录和 LaunchAgent plist，并重新运行冒烟
-检查。先保留备份根目录 `diagnostics/` 中的失败版本与原因，再运行
-`./scripts/status.sh`。需要人工选择稳定备份时，先运行 `./scripts/rollback-local.sh`
-预览，再以 `--apply` 执行。不要从不同备份手工拼接文件。
+- 每次安装或升级前，安装器自动备份整个程序目录，保留最近 3 份。
+- 每次向 Clash 写入前自动备份相关文件，保留最近 10 份。
+- 备份可能包含运行状态和 Clash 配置，只保存在本机，沿用本机文件权限，不得提交到 Git。

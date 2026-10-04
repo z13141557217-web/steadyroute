@@ -14,7 +14,7 @@ import route_policy
 class RoutePolicyConfigTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.config = route_policy.load_policy_config(PROJECT_DIR / "config" / "route-policies.json")
+        cls.config = route_policy.load_policy_config(PROJECT_DIR / "tests" / "fixtures" / "route-policies.fixed.json")
         cls.policies = {item["region"]: item for item in cls.config["policies"]}
 
     def test_single_config_drives_shadow_policies_and_safe_mihomo_groups(self):
@@ -57,17 +57,6 @@ class RoutePolicyConfigTests(unittest.TestCase):
             for name in names:
                 with self.subTest(region=region, name=name):
                     self.assertTrue(route_policy.name_matches(self.policies[region], name))
-
-    def test_committed_mihomo_enhancement_is_generated_from_the_single_config(self):
-        rendered = route_policy.render_enhancement_yaml(self.config)
-        committed = (PROJECT_DIR / "config" / "clash-verge" / "groups.yaml").read_text(encoding="utf-8")
-        self.assertEqual(committed, rendered)
-        self.assertEqual(rendered.count("include-all-proxies: true"), 2)
-        self.assertEqual(rendered.count("empty-fallback: REJECT"), 2)
-        self.assertEqual(rendered.count("hidden: true"), 2)
-        self.assertIn("name: SteadyRoute 发现·台湾家宽", rendered)
-        self.assertIn("name: SteadyRoute 发现·香港家宽", rendered)
-        self.assertIn("name: Verve AI 稳定线路", rendered)
 
     def test_staged_mihomo_config_is_self_contained_and_fail_closed(self):
         rendered = route_policy.render_staged_mihomo_config(self.config)

@@ -110,16 +110,16 @@ phys_footprint，与活动监视器"内存"列同口径；取不到时为 `null`
 
 `src/steadyroute/fixtures/status_contract_v2.json` 固定覆盖全部状态码、全部生命周期、
 候选确认 1/3 至 3/3、交接、故障、无候选、手动保持、控制器恢复、`null`/`0` 和
-状态过期。候选服务运行后访问 `http://127.0.0.1:17654/acceptance` 可查看全部 fixture
-及转换路径；该页面只读、同进程、本机回环，不替换 `/` 的生产看板。
+状态过期。直接从仓库运行服务时，访问 `http://127.0.0.1:17654/acceptance` 可查看全部
+fixture 及转换路径；该页面只读、同进程、本机回环。验收页和 fixture 不随安装器安装，
+已安装的服务对这些地址返回 404。
 每个样例同时标记为“真实运行快照可达”“同周期瞬时事件”或“契约边界模拟”，避免把
-瞬时状态误解为生产一定会停留的最终快照。
+瞬时状态误解为运行中一定会停留的最终快照。
 
-## 回滚
+## 兼容与回退
 
-本阶段不部署生产。若后续管理窗口验收失败，使用 `rollback-local.sh --apply` 恢复
-v0.2.0 的完整目录与发布前状态。不得只替换 Python 文件，也不得让旧版本覆盖未知
-schema。性能回退时优先恢复旧实现并保留本机诊断副本。
+持久状态只追加字段；不得只替换 Python 文件，也不得让旧版本覆盖未知 schema。需要退回时
+用完整的旧版本重新安装（见 [DEPLOYMENT.md](DEPLOYMENT.md)），并保留本机诊断副本。
 
 v0.4.5（看板重新设计）只追加字段，schema 仍为 2：
 
@@ -146,3 +146,58 @@ type, udp, residential, group, role, delay_ms, delay_at}`。`role` 为 `current`
 
 新增静态页 `/nodes`、`/guide`、`/changelog` 和共享样式 `/assets/pages.css`，与看板同在
 `127.0.0.1:17654`，只读取 `/api/status` 和 `/api/nodes`，不加载任何外部资源。
+
+## 自动锁定（v0.5.0 起，v0.5.1 为唯一方式）
+
+响应 schema 仍为 2，只追加字段：
+
+- legacy `service.profile`：`auto_lock`。安装器以它和 `service.version` 判断新版本启动成功。
+- legacy `service.auto_lock_idle`：已锁定但未接管切换的分组，`{分组名: {status, current,
+  country, country_label, …}}`。`status` 为 `no_residential`（该国家没有家宽节点）、
+  `unknown_country`（当前节点国家未识别）或 `paused`（分组当前选择的是另一个分组；
+  `current_is_auto_group` 标出 url-test 等 Clash 自动分组）。
+- legacy 组追加 `auto_lock`：`status`（`locked` / `relocked`）、`current`、`country`、
+  `country_label`、`locked_at`、`previous`、`previous_label`、`candidates`（该国家家宽候选数）、
+  `same_country_nodes`、`current_is_residential`。
+- 组 `metrics` 追加 `adopt_switches_24h`（从同国家普通节点无损换到家宽的次数）。
+
+持久状态中的锁定记录按（分组，国家）区分，改锁后旧记录清除。
+
+## 设置接口（v0.5.1）
+
+设置页 `/settings` 使用以下接口，与看板同在 `127.0.0.1:17654`。
+
+只读：
+
+- `GET /api/settings`：当前设置与 Clash 状态。包含 `profile`、`exclude_groups`、`ai_line`
+  （`enabled`、`country`、`group_name`）、`managed_lines`、`manual`（手动添加的 AI 域名）、
+  `applied`（最近一次写入 Clash 的时间、分组、被丢弃的可选规则、订阅 UID）、
+  `applied_rule_count`、`rules_source`（ip.net.coffee 快照日期、最近同步 / 检查时间、错误、
+  最近一次变化）、`geo`、`unsupported`（不能作为 AI 专线的地区）、`migration`（旧版迁移建议，
+  没有时为 `null`）、`ai_rules_counts`，以及从控制器读取的 `countries`、`groups`、`ipv6`、
+  `tun` 和 `clash`（能否定位当前订阅的扩展文件、是否找到内核）。控制器不可用时给出
+  `controller_error`，其余字段照常返回。
+- `GET /api/ai-check`：AI 分流体检。按 Clash 当前规则顺序，只读判断 34 条 net.coffee 条目
+  各自命中的规则、分组链路、出口节点和国家，返回 `rows`、`total`、`ok`、`line_group`、
+  `line_country`。
+
+修改（POST）：
+
+- `POST /api/settings/preview`：计算改动但不写任何文件。需要改 Clash 时返回每条线路的节点
+  增减、将移除的旧分组、规则数量和前几条规则样例；关闭时返回将移除的分组、规则数和将恢复
+  的原有分组数。
+- `POST /api/settings/apply`：保存设置；需要时写入或撤销 Clash 中的专线，失败则全部回滚。
+- `POST /api/settings/sync`：立即同步 net.coffee 规则（同样的安全检查），规则有变化时重新写入 Clash；返回 `{ok, changed, error, last_change}`。
+
+请求体是 JSON 对象，只接受 `exclude_groups`、`ai_line`（`enabled`、`country`）、`manual`
+和 `migration`（`accept` / `dismiss`）；其他键被忽略。POST 只在同时满足以下条件时
+接受，否则返回 `403`：
+
+- Host 为 `127.0.0.1:17654` 或 `localhost:17654`；
+- `Origin` 为同源的 `http://127.0.0.1:17654` 或 `http://localhost:17654`；
+- `Content-Type: application/json`；
+- 请求头 `X-SteadyRoute: 1`。
+
+请求体超过 64 KB 返回 `413`；输入无效返回 `400`；写入 Clash 失败返回 `409` 并附原因。
+自定义请求头和 JSON 类型会触发浏览器 CORS 预检，而服务从不应答预检，因此其他网页无法
+修改设置。每次成功修改记录一条 `settings_changed` 事件。

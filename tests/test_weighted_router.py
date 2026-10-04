@@ -100,6 +100,24 @@ class RoutingDecisionTests(unittest.TestCase):
         self.assertEqual(self.selected, [(group, "better")])
         self.assertEqual(self.closed, [], "lossless recovery must preserve existing connections")
 
+    def test_ai_line_switches_only_on_failure(self):
+        group = "AI line"
+        state = {
+            "nodes": {"current": healthy(500), "better": healthy(100)},
+            "groups": {group: {"last_seen": "current", "last_switch_at": 0, "better_candidate": "better",
+                               "better_streak": router.PERFORMANCE_CONFIRMATIONS - 1}},
+        }
+        policy = {"group_name": group, "failover_only": True, "include_pattern": ".", "exclude_pattern": "(?!)"}
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}):
+            router.evaluate_group(group, ["current", "better"], {group: {"now": "current"}}, [], state, False)
+            self.assertEqual(self.selected, [], "a faster node is not a reason to change the AI exit IP")
+            failed = healthy(500)
+            failed["last_success"] = False
+            failed["failure_streak"] = router.FAILURES_BEFORE_SWITCH
+            state["nodes"]["current"] = failed
+            router.evaluate_group(group, ["current", "better"], {group: {"now": "current"}}, [], state, False)
+        self.assertEqual(self.selected, [(group, "better")])
+
     def test_real_failure_still_closes_only_stale_connections(self):
         group = "test-group"
         current = healthy(500)

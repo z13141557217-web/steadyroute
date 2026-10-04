@@ -188,8 +188,15 @@ class DashboardPageTests(unittest.TestCase):
 
     def test_page_loads_nothing_from_the_network(self):
         # The page must work when the proxy is down: no external fonts, scripts or styles.
-        self.assertIsNone(re.search(r'(src|href)="https?://', self.source))
-        self.assertNotIn("@import", self.source)
+        # (Plain links that open another site in a new tab load nothing.)
+        for name in ("dashboard.html", "settings.html", "nodes.html", "guide.html", "changelog.html"):
+            source = (MODULE_DIR / name).read_text(encoding="utf-8")
+            with self.subTest(page=name):
+                self.assertIsNone(re.search(r'src="https?://|<link[^>]+href="https?://', source))
+                self.assertNotIn("@import", source)
+                for link in re.findall(r'<a [^>]*href="https?://[^>]*>', source):
+                    self.assertIn('rel="noopener noreferrer"', link)
+                    self.assertIn('target="_blank"', link)
 
     def test_every_tip_has_an_explanation(self):
         keys = set(re.findall(r'data-tip="([a-z]+)"', self.source))

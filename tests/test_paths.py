@@ -16,8 +16,8 @@ class PathTests(unittest.TestCase):
         env["HOME"] = "/Users/someone"
         with mock.patch.dict(os.environ, env, clear=True):
             router = cycle_harness.load_router("paths_default_router")
-        self.assertEqual(router.BASE_DIR, "/Users/someone/Library/Application Support/Clash-Verge-Stability-Router")
-        self.assertEqual(router.LOG_DIR, "/Users/someone/Library/Logs/Clash-Verge-Stability-Router")
+        self.assertEqual(router.BASE_DIR, "/Users/someone/Library/Application Support/SteadyRoute")
+        self.assertEqual(router.LOG_DIR, "/Users/someone/Library/Logs/SteadyRoute")
         self.assertEqual(router.STATE_PATH, os.path.join(router.BASE_DIR, "state.json"))
 
     def test_environment_overrides(self):

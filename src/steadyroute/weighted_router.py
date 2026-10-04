@@ -29,6 +29,8 @@ try:
     import node_catalog
     import regions
     import auto_lock
+    import ai_line
+    import settings_service
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import state_contract
@@ -40,6 +42,8 @@ except ModuleNotFoundError:
     import node_catalog
     import regions
     import auto_lock
+    import ai_line
+    import settings_service
 
 
 CONTROLLER_SOCKET_PATHS = (
@@ -48,9 +52,9 @@ CONTROLLER_SOCKET_PATHS = (
     "/tmp/verge/verge-mihomo.sock",
 )
 # Default to the current user's Library; STEADYROUTE_BASE_DIR / STEADYROUTE_LOG_DIR override
-# (the LaunchAgent runs as the user, so ~ resolves to the same folder deploy.py writes).
+# (the LaunchAgent runs as the user; the installer sets both variables explicitly).
 BASE_DIR = os.environ.get("STEADYROUTE_BASE_DIR") or os.path.expanduser(
-    "~/Library/Application Support/Clash-Verge-Stability-Router")
+    "~/Library/Application Support/SteadyRoute")
 STATE_PATH = os.path.join(BASE_DIR, "state.json")
 LOCK_PATH = os.path.join(BASE_DIR, "router.lock")
 DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard.html")
@@ -60,6 +64,7 @@ ACCEPTANCE_FIXTURE_PATH = os.path.join(APP_DIR, "fixtures", "status_contract_v2.
 CANDIDATE_DASHBOARD_PATH = os.path.join(APP_DIR, "candidate_dashboard.html")
 # Read-only sub-pages served next to the dashboard (same folder as this file when deployed).
 STATIC_PAGES = {
+    "/settings": ("settings.html", "text/html; charset=utf-8"),
     "/nodes": ("nodes.html", "text/html; charset=utf-8"),
     "/guide": ("guide.html", "text/html; charset=utf-8"),
     "/changelog": ("changelog.html", "text/html; charset=utf-8"),
@@ -99,7 +104,7 @@ TIMELINE_WINDOW_SECONDS = 30 * 60     # legacy API: dashboard chart offers 5 / 1
 V1_TIMELINE_WINDOW_SECONDS = 300      # v1 recent_probes keeps its original 5-minute contract
 TIMELINE_LIMIT = 480                  # 360 fast-lane points + 90 standby points + switches
 CONNECTION_SITE_LIMIT = 30
-LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR") or os.path.expanduser("~/Library/Logs/Clash-Verge-Stability-Router")
+LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR") or os.path.expanduser("~/Library/Logs/SteadyRoute")
 MEMORY_SAMPLE_SECONDS = 600
 MEMORY_SAMPLE_LIMIT = 144
 EVENT_KEY_LIMIT = 1000
@@ -148,13 +153,19 @@ WAKE_EVENT = threading.Event()
 POLICY_CONFIG_PATHS = tuple(path for path in (
     os.environ.get("STEADYROUTE_POLICY_CONFIG"),
     os.path.join(APP_DIR, "config", "route-policies.json"),
-    os.path.join(os.path.dirname(os.path.dirname(APP_DIR)), "config", "route-policies.json"),
+    # Running straight from a clone: the default settings every install starts from.
+    os.path.join(os.path.dirname(os.path.dirname(APP_DIR)), "config", "route-policies.default.json"),
 ) if path)
 
 
+POLICY_CONFIG_PATH = None
+
+
 def load_runtime_policy_config():
+    global POLICY_CONFIG_PATH
     for path in POLICY_CONFIG_PATHS:
         if os.path.exists(path):
+            POLICY_CONFIG_PATH = path
             return route_policy.load_policy_config(path)
     raise route_policy.PolicyConfigError("route-policies.json is unavailable")
 
@@ -186,8 +197,16 @@ def refresh_auto_lock(state, proxy_data, now):
     """auto_lock profile: rebuild the lines from the user's own groups for this cycle."""
     if PROFILE != "auto_lock":
         return
-    settings = POLICY_CONFIG.get("auto_lock") or {}
+    settings = dict(POLICY_CONFIG.get("auto_lock") or {})
+    line = POLICY_CONFIG.get("ai_line") or {}
+    if line.get("enabled") and line.get("group_name"):
+        per_group = dict(settings.get("group_business_urls") or {})
+        per_group[line["group_name"]] = ai_line.business_urls(per_group.get(line["group_name"]))
+        settings["group_business_urls"] = per_group
     policies, statuses, events = auto_lock.build_policies(proxy_data, state, now, settings)
+    for policy in policies:
+        if line.get("enabled") and policy["group_name"] == line.get("group_name"):
+            policy["failover_only"] = True
     # A country without residential nodes is shown but never routed.
     routed = [policy for policy in policies if policy["static_candidates"]]
     apply_policies(routed)
@@ -489,6 +508,11 @@ def _read_version_file():
 def region_for_group(group_name):
     policy = POLICY_BY_GROUP.get(group_name)
     return policy["region"] if policy else "unknown"
+
+
+def ai_line_group():
+    line = POLICY_CONFIG.get("ai_line") or {}
+    return line.get("group_name") if line.get("enabled") else None
 
 
 def region_label_for_group(group_name):
@@ -1041,6 +1065,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "region": group["region"],
             "region_label": region_label_for_group(group["name"]),
             "auto_lock": AUTO_LOCK_STATUS.get(group["name"]),
+            "ai_line": ai_line_group() == group["name"],
             "current": group["current"]["name"] if group["current"] else group_state.get("last_seen"),
             "active_connections": sum(
                 1 for connection in connections if group["name"] in (connection.get("chains") or [])
@@ -1276,10 +1301,141 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if route in ("/api/status", "/api/v1/status", "/api/nodes"):
             self._reply(*cached_api_response(route), api=True)
             return
+        if route in ("/api/settings", "/api/ai-check"):
+            status, payload = settings_get(route)
+            self._reply(status, "application/json; charset=utf-8",
+                        json.dumps(payload, ensure_ascii=False).encode("utf-8"), api=True)
+            return
         self._reply(404, "text/plain; charset=utf-8", b"not found")
+
+    def do_POST(self):
+        port = self.server.server_address[1]
+        if not host_allowed(self.headers.get("Host"), port):
+            self._reply(421, "text/plain; charset=utf-8", b"misdirected request", api=True)
+            return
+        route = urlsplit(self.path).path
+        if route not in ("/api/settings/preview", "/api/settings/apply", "/api/settings/sync"):
+            self._reply(404, "text/plain; charset=utf-8", b"not found", api=True)
+            return
+        if not settings_request_allowed(self.headers, port):
+            self._reply(403, "application/json; charset=utf-8", b'{"error":"forbidden"}', api=True)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= SETTINGS_BODY_LIMIT:
+            self._reply(413, "application/json; charset=utf-8", b'{"error":"too large"}', api=True)
+            return
+        status, payload = settings_post(route, self.rfile.read(length))
+        self._reply(status, "application/json; charset=utf-8",
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8"), api=True)
 
     def log_message(self, _format, *_args):
         return
+
+
+SETTINGS = None
+SETTINGS_BODY_LIMIT = 64 * 1024
+
+
+def controller_call(method, path, payload=None):
+    """(status, body text) for settings_service / clash_profile."""
+    try:
+        result = api_request(method, path, payload, timeout=30)
+    except RuntimeError as error:
+        text = str(error)
+        if text.startswith("controller HTTP "):
+            code, _, body = text[len("controller HTTP "):].partition(":")
+            return int(code), body.strip()
+        raise
+    return (200 if result is not None else 204), json.dumps(result, ensure_ascii=False) if result is not None else ""
+
+
+def settings_service_instance():
+    global SETTINGS
+    if SETTINGS is None and POLICY_CONFIG_PATH:
+        SETTINGS = settings_service.SettingsService(POLICY_CONFIG_PATH, BASE_DIR, controller_call, log=log)
+    return SETTINGS
+
+
+def reload_policy_settings():
+    """Pick up settings saved by the settings page; runtime policies stay as they are."""
+    fresh = route_policy.load_policy_config(POLICY_CONFIG_PATH)
+    policies = POLICY_CONFIG.get("policies", [])
+    POLICY_CONFIG.clear()
+    POLICY_CONFIG.update(fresh)
+    POLICY_CONFIG["policies"] = policies
+
+
+def settings_request_allowed(headers, port):
+    """Changes only from our own page: same-origin fetch with a JSON body and our header.
+
+    A foreign page cannot send this: the custom header and JSON content type force a CORS
+    preflight, which this server never answers; the Origin and Host checks cover the rest."""
+    origin = headers.get("Origin")
+    allowed = {"http://127.0.0.1:%d" % port, "http://localhost:%d" % port}
+    return (
+        host_allowed(headers.get("Host"), port)
+        and origin in allowed
+        and (headers.get("Content-Type") or "").split(";")[0].strip() == "application/json"
+        and headers.get("X-SteadyRoute") == "1"
+    )
+
+
+def settings_get(route):
+    service = settings_service_instance()
+    if service is None:
+        return 503, {"error": "设置不可用"}
+    try:
+        if route == "/api/settings":
+            return 200, service.snapshot()
+        if route == "/api/ai-check":
+            return 200, service.check()
+    except Exception as error:
+        return 500, {"error": str(error)}
+    return 404, {"error": "not_found"}
+
+
+def settings_post(route, body):
+    service = settings_service_instance()
+    if service is None:
+        return 503, {"error": "设置不可用"}
+    try:
+        changes = json.loads(body.decode("utf-8") or "{}")
+        if not isinstance(changes, dict):
+            raise ValueError("body must be an object")
+        changes = {key: value for key, value in changes.items() if key in settings_service.EDITABLE}
+        if route == "/api/settings/preview":
+            return 200, service.preview(changes)
+        if route == "/api/settings/sync":
+            result = service.sync_now()
+            logging_setup.write_event("rules_synced", ok=result["ok"], changed=result["changed"])
+            return 200, result
+        if route == "/api/settings/apply":
+            result = service.apply(changes)
+            reload_policy_settings()
+            logging_setup.write_event("settings_changed", result=result)
+            WAKE_EVENT.set()
+            return 200, result
+    except (ValueError, route_policy.PolicyConfigError) as error:
+        return 400, {"error": str(error)}
+    except Exception as error:
+        return 409, {"error": str(error)}
+    return 404, {"error": "not_found"}
+
+
+def maintenance_loop():
+    """Hourly self-heal, weekly net.coffee sync and geodata update, off the probing thread."""
+    time.sleep(90)
+    while True:
+        service = settings_service_instance()
+        if service is not None:
+            try:
+                service.maintenance()
+            except Exception as error:
+                log_warning("maintenance failed: %s" % error)
+        time.sleep(3600)
 
 
 def start_dashboard():
@@ -1933,6 +2089,15 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
 
     active = active_connections(group_name, connections)
 
+    # The AI line keeps its exit IP as long as the node works: no switch just for speed.
+    if (POLICY_BY_GROUP.get(group_name) or {}).get("failover_only"):
+        group_state["better_candidate"] = None
+        group_state["better_streak"] = 0
+        group_state["last_seen"] = current
+        log_routine((group_name, "keep"), "fixed:%s" % current,
+                    "%s: keep %s; the AI line switches only when the node fails" % (group_name, current))
+        return
+
     if now < float(group_state.get("manual_hold_until", 0)):
         group_state["last_seen"] = current
         log_routine((group_name, "keep"), "manual:%s" % current,
@@ -2563,6 +2728,8 @@ def main():
             dashboard_server = start_dashboard()
         except Exception as error:
             log_error("dashboard failed to start: %s" % error, exc_info=True)
+        if PROFILE == "auto_lock":
+            threading.Thread(target=maintenance_loop, name="steadyroute-maintenance", daemon=True).start()
 
     deadline = time.monotonic()
     while True:

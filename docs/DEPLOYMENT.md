@@ -1,114 +1,162 @@
-# 本地部署与回滚
+# 安装、升级与迁移
 
-## 安全边界
-
-- 命令默认是 dry-run，不写生产、不停止或重启服务。
-- 真实写入必须显式增加 `--apply`。
-- 第一次生产写入必须在交互终端再次输入脚本显示的完整确认短语，不能在 CI 中绕过。
-- 生产部署只接受干净工作树、通过 `./scripts/check.sh`、版本与 commit 匹配且当前 commit 带 `v<VERSION>` 标签的发布包。
-- 不直接编辑生产目录；失败版本只作为诊断证据保留。
-
-## 构建与预演
-
-```bash
-./scripts/check.sh
-./scripts/build-release.sh
-./scripts/deploy-local.sh
-```
-
-预演会验证工作树、全量测试、发布包外层 SHA-256、逐文件清单、`VERSION`、
-`GIT_COMMIT`、`RELEASE.json`、Python 语法、LaunchAgent plist 和 Clash Verge
-增强配置的必需结构。输出 `DRY-RUN validated` 后即结束，不创建备份，也不调用
-`launchctl`。
-
-该命令只部署稳航应用目录，不会修改 Clash Verge `profiles.yaml` 当前订阅的
-`option.groups` 绑定。v0.4.0 动态发现还必须在应用部署后单独执行 group enhancement
-流程；完整顺序、命令和人工重载门禁见 [RELEASE.md](RELEASE.md)。未在 `/proxies`
-看到全部 discovery groups 时，部署不能被视为已具备影子观察条件。
-
-## 首次生产部署
-
-合并并创建 `v<VERSION>` 标签后，重新从该 commit 构建发布包，再运行：
-
-```bash
-./scripts/deploy-local.sh --apply
-```
-
-脚本会再次要求输入类似下方的完整短语：
+从 v0.5.1 起，稳航只有一个产品、一条安装路径：仓库根目录的 `install.command`。
+首次安装、升级、换电脑和从旧版迁移都用它；从 git clone 运行和从发布包
+`SteadyRoute-v<版本>.zip` 运行完全相同，两者目录结构一致：
 
 ```text
-首次部署 /Users/nurture/Library/Application Support/Clash-Verge-Stability-Router
+VERSION
+install.command
+uninstall.command
+使用说明.txt                       （仅发布包）
+config/route-policies.default.json
+scripts/installer.py
+src/steadyroute/…
 ```
 
-确认后按以下顺序执行：停止 LaunchAgent 并确认服务与监听端口都已退出、创建完整备份、校验备份、在同一文件系统
-准备目标目录、以目录重命名原子切换、原子替换 plist、启动 LaunchAgent并做冒烟检查。
+`install.command` 只做一件事：确认有 Apple 命令行工具后运行
+`/usr/bin/python3 scripts/installer.py install`。安装器只用 Python 标准库。
 
-## 自动健康检查
+## 安装后的位置
 
-部署和回滚只有同时满足以下条件才成功：
+| 用途 | 路径 |
+|---|---|
+| 程序与运行数据 | `~/Library/Application Support/SteadyRoute/` |
+| 设置 | `~/Library/Application Support/SteadyRoute/config/route-policies.json` |
+| 运行状态 | `~/Library/Application Support/SteadyRoute/state.json` |
+| 写入 Clash 的记录 | `~/Library/Application Support/SteadyRoute/clash-applied.json` |
+| AI 规则同步状态 | `~/Library/Application Support/SteadyRoute/ai-rules.json` |
+| Clash 文件备份 | `~/Library/Application Support/SteadyRoute/clash-backups/`（最近 10 次） |
+| 版本备份 | `~/Library/Application Support/SteadyRoute-backups/`（最近 3 个版本） |
+| 已停用的旧开机自启 | `~/Library/Application Support/SteadyRoute-backups/legacy/` |
+| 日志 | `~/Library/Logs/SteadyRoute/` |
+| LaunchAgent | `~/Library/LaunchAgents/com.steadyroute.plist`（label `com.steadyroute`） |
+| 看板 | `http://127.0.0.1:17654/`，设置页 `/settings` |
 
-1. `launchctl print` 显示 `state = running`。
-2. 本地状态接口返回合法 JSON，且服务状态为 `running`。
-3. 香港和台湾两个必需代理组都存在。
-4. 每个组的当前节点非空且属于其候选列表。
-5. `service.started_at` 晚于部署前进程且不早于本次启动动作。
-6. `updated_at` 晚于部署前状态、不早于新进程启动时间，并且默认不早于 90 秒前。
+LaunchAgent 通过环境变量 `STEADYROUTE_BASE_DIR`、`STEADYROUTE_LOG_DIR` 显式指定上面两个
+目录；直接运行 `weighted_router.py` 时默认值相同。`STEADYROUTE_POLICY_CONFIG` 可以指定
+其他设置文件，只用于开发和测试。
 
-默认健康等待时间为 45 秒，覆盖至少一个 20 秒检测周期。`bootout` 返回失败、
-LaunchAgent 仍存在或状态端口仍接受连接时，部署会在任何目标写入前终止。任一关键检查失败，脚本会停止失败版本、恢复切换前完整目录和 plist、重启并再次
-执行同一套冒烟检查。失败目录和原因保存在备份根目录的 `diagnostics/` 下。
+## 安装与升级
 
-## 非生产演练路径
-
-`--apply` 的生产模式只允许内置的三个精确默认路径。临时目录或开发环境 apply 必须
-同时提供 `--allow-non-production --non-production-root <专用根目录>`；目标、备份和
-plist 必须严格位于该根目录下且彼此不重叠。`/`、用户主目录、源码仓库、部分生产
-路径组合以及宽泛或互相包含的路径都会被硬拒绝。默认 dry-run 不需要该开关。
-
-## 备份内容
-
-默认备份根目录：
-
-```text
-/Users/nurture/Library/Application Support/Clash-Verge-Stability-Router Backups
-```
-
-每个备份包含完整应用目录、LaunchAgent plist 和 `backup.json`。元数据记录版本、
-commit、UTC 时间、每个文件的 SHA-256 以及清单总 SHA-256。回滚前会重新验证全部
-散列，损坏的备份不会启用。
-
-## 一键回滚
-
-先预览将使用的最新完整备份：
+在仓库目录或解压后的发布包目录运行：
 
 ```bash
-./scripts/rollback-local.sh
+./install.command
 ```
 
-确认目标后执行：
+也可以在 Finder 中右键 `install.command` → 打开（首次需要这样）。不自动打开看板时：
 
 ```bash
-./scripts/rollback-local.sh --apply
+python3 scripts/installer.py install --no-open
 ```
 
-也可以用 `--backup /绝对路径/到/备份目录` 指定版本。回滚自身仍会运行冒烟检查；
-若回滚版本检查失败，会恢复回滚前版本，并保留失败证据。
+安装器按以下顺序执行，任何一步失败都会停止：
 
-## 临时目录演练
+1. **预检**：必须是 macOS、Python ≥ 3.9、程序文件和默认设置完整。找不到 Clash Verge
+   或它没在运行只给出提示，不阻止安装。
+2. **停止旧服务**：停掉 `com.steadyroute`，以及任何运行 `weighted_router.py` 的其他
+   LaunchAgent（例如 v0.5.1 之前位于 `~/Library/Application Support/Clash-Verge-Stability-Router`
+   的旧服务，或 v0.5.0 的 `com.steadyroute.share`）。等待 17654 端口释放；端口被其他程序
+   占用时重新启动旧服务并报错退出。
+3. **备份**：已有安装时把整个程序目录复制到 `SteadyRoute-backups/<版本>-<时间>/`，只保留
+   最近 3 份。
+4. **写入程序**：逐个文件原子替换程序文件和 `VERSION`。
+5. **设置**：已有新格式设置时原样保留；旧版的固定台湾 / 香港设置会转换成新格式，并附带
+   一条 `migration` 建议（见下文）；都没有时使用默认设置。
+6. **带过旧数据**：新目录还没有 `state.json` 或日志时，从旧安装复制过来。
+7. **启动**：写入 plist 并 `launchctl bootstrap`，最多等待 40 秒，直到 `/api/status`
+   报告刚安装的版本且 `profile` 为 `auto_lock`。
+8. **失败回滚**：启动或健康检查失败时，恢复上一版本并重新启动；没有上一版本时删除新
+   plist，并重新启动旧版服务。
+9. **收尾**：只有新服务健康后，才把旧 LaunchAgent plist 移到
+   `SteadyRoute-backups/legacy/`。旧程序目录保留在原处，不删除。
 
-集成测试只使用 `TemporaryDirectory`、假的 `launchctl` 和本地文件状态响应，不访问
-真实 Clash Verge、生产目录或真实 LaunchAgent：
+安装从不修改 Clash。重复运行同一版本等于重新安装；状态、历史和设置都保留。
+
+## 从旧版迁移
+
+v0.5.1 之前的固定台湾 / 香港方案（手写策略、静态节点名单、隐藏发现组）已经退役。安装器
+检测到旧安装后自动迁移：
+
+- 运行状态、节点历史和日志复制到新位置。
+- 旧设置转换为统一的 `auto_lock` 设置；原来的业务检测地址写入
+  `auto_lock.group_business_urls`，原来的线路记为 `migration` 建议。
+- 安装完成后看板直接打开设置页，顶部显示“旧版线路待迁移”。确认前不向 Clash 写入任何
+  内容。
+
+在设置页接受迁移后：
+
+- “AI 台湾家宽线路”成为 AI 家宽专线（台湾，名称不变）。
+- “香港家宽自动备援”成为托管的家宽线路（香港，名称不变）。
+- 两者都改为按国家与家宽自动筛选，不再依赖静态节点名单。
+- 旧的发现组“SteadyRoute 发现·台湾家宽”“SteadyRoute 发现·香港家宽”被移除。
+
+写入前会列出每条线路的节点增减和规则变化。原有分组定义保存在 `clash-applied.json` 中，
+关闭专线或卸载时原样恢复。也可以选择“不迁移”，设置页不再提示。
+
+换电脑：把仓库克隆或把发布包复制到新 Mac 后运行 `./install.command`。运行状态和设置
+属于本机数据，不随仓库迁移；新机器从默认设置开始。
+
+## 查看状态
 
 ```bash
-python3 -m unittest tests.test_deploy -v
-python3 -m unittest tests.test_clash_group_deploy -v
+python3 scripts/installer.py status
 ```
 
-测试覆盖默认无写入、完整备份、成功部署、bootout 失败、旧服务或端口仍存活、旧状态
-无法证明新周期、危险路径拒绝、激活后故障注入自动恢复、独立回滚以及脏工作树拒绝。
-`STEADYROUTE_TEST_FAIL_AFTER_ACTIVATE` 仅允许非生产目标用于测试，
-生产路径会拒绝故障注入。
+输出已安装的版本、是否在运行，以及每个分组锁定的国家和家宽候选数量。更多内容见看板和
+[运维手册](OPERATIONS.md)。
 
-group enhancement 测试另行覆盖 current 绑定解析、profiles 目录限制、符号链接与越界
-拒绝、默认 dry-run、SHA/元数据备份、原子替换、失败自动恢复和独立 rollback；同样只用
-`TemporaryDirectory` 与假 Mihomo core。
+## 回滚
+
+安装失败会自动回滚，不需要人工操作。需要主动退回某个版本时，用那个版本的发布包或标签
+重新安装（仅限 v0.5.1 及以后的版本）：
+
+```bash
+git switch --detach v0.5.1
+./install.command
+```
+
+`SteadyRoute-backups/` 中的版本备份用于诊断和自动回滚；不要从不同备份手工拼接文件。
+
+AI 家宽专线的回滚在设置页完成：关闭专线即恢复写入前的 Clash 分组和规则。
+
+## 卸载
+
+```bash
+./uninstall.command
+```
+
+等价于 `python3 scripts/installer.py uninstall`。卸载顺序：先停止服务（避免它把专线写回），
+再从 Clash 撤销稳航写入的分组和规则并恢复原有内容，最后删除 LaunchAgent、程序目录和
+版本备份。日志默认保留；连日志一起删除：
+
+```bash
+python3 scripts/installer.py uninstall --purge
+```
+
+稳航曾向 Clash 写入专线而 Clash Verge 没有运行时，卸载会拒绝执行并提示先打开 Clash Verge；
+撤销失败时服务保持停止、程序文件保留，修复后可再次卸载。
+
+## 测试
+
+`tests/test_installer.py` 通过可注入的钩子（`launchctl`、状态接口、端口、时钟）在临时目录
+中运行完整流程，不触碰真实的 `~/Library`、LaunchAgent 或 Clash：全新安装、升级保留数据、
+备份数量上限、启动失败回滚、端口占用、旧版迁移与失败恢复、卸载撤销 Clash 改动，以及从
+发布包安装。
+
+## 回到升级前的版本
+
+```bash
+./rollback.command
+```
+
+等同 `python3 scripts/installer.py rollback`：先撤销稳航写入 Clash 的专线和规则，再停止新服务，把
+`SteadyRoute-backups/legacy/` 中的旧开机自启放回并启动。新版本的文件保留，之后再运行 `install.command`
+即可重新升级。
+
+## 安装时的只读检查
+
+`install.command` 在停止任何服务之前，先读取本机 Clash Verge：内核版本是否不低于 mihomo v1.19.27；
+从旧版升级时，用本机 Clash 内核校验“升级这些线路”将写入的分组成员与 AI 规则，并逐项打印。检查只读，
+不改动 Clash；检查失败只提示，不阻止安装（安装本身不改动 Clash）。

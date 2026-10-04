@@ -99,6 +99,7 @@ tr.is-view .nm-copy b { font-weight: 500; color: var(--ink-2); }
       <a href="/nodes" aria-current="page">全部节点</a>
       <a href="/guide">使用说明</a>
       <a href="/changelog">更新日志</a>
+      <a href="/settings">设置</a>
     </nav>
     <span class="status-pill" id="status-pill" data-sev="warn"><span class="beacon"></span><span id="status-title">连接中</span></span>
   </div>
@@ -116,13 +117,13 @@ tr.is-view .nm-copy b { font-weight: 500; color: var(--ink-2); }
 
   <div class="note" role="note">
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="8"></circle><path d="M10 9v5" stroke-linecap="round"></path><circle cx="10" cy="6.2" r=".9" fill="currentColor" stroke="none"></circle></svg>
-    <p><b>稳航只在同地区的家宽节点之间切换</b>：台湾线路只用台湾家宽，香港线路只用香港家宽。标着“仅查看”的节点永远不会被稳航选中。延迟是 Clash 自己最近一次测速的结果，不是稳航测的，可能是很久以前的数字。</p>
+    <p><b>稳航只在同地区的家宽节点之间切换</b>：每条线路锁定当前节点所在的国家，只选用该国家的家宽节点。标着“仅查看”的节点永远不会被稳航选中。延迟是 Clash 最近一次自身测速的结果，并非稳航测得，可能已较久未更新。</p>
   </div>
 
   <section class="card sum" aria-label="概况">
     <div><span>订阅节点</span><b id="s-total">—</b><small id="s-total-note">&nbsp;</small></div>
     <div><span>家宽节点</span><b id="s-res">—</b><small>名称里带“家宽”等字样</small></div>
-    <div><span>稳航选路范围</span><b id="s-mon">—</b><small>台湾、香港家宽，会被自动选用</small></div>
+    <div><span>稳航选路范围</span><b id="s-mon">—</b><small>各线路所锁国家的家宽节点</small></div>
     <div><span>地区</span><b id="s-regions">—</b><small id="s-regions-note">&nbsp;</small></div>
   </section>
 

@@ -12,7 +12,7 @@ import cycle_harness  # noqa: E402
 
 router = cycle_harness.load_router("http_security_router")
 
-PAGES = ("/", "/nodes", "/guide", "/changelog", "/assets/pages.css", "/acceptance", "/candidate-acceptance")
+PAGES = ("/", "/nodes", "/settings", "/guide", "/changelog", "/assets/pages.css", "/acceptance", "/candidate-acceptance")
 APIS = ("/api/status", "/api/v1/status", "/api/nodes")
 
 

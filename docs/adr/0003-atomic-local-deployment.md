@@ -1,5 +1,7 @@
 # ADR-0003：本地发布使用完整目录原子切换
 
+> 已被 v0.5.1 取代（见 [ADR-0008](0008-unified-install-and-ai-line.md)）。
+
 状态：Accepted  
 日期：2026-09-19
 
