@@ -10,8 +10,38 @@
 `unittest` 运行 `tests/` 下全部测试；`scripts/leak-scan.py` 扫描敏感信息。CI 在 macOS
 （Python 3.9，与 `/usr/bin/python3` 一致）和 Ubuntu（Python 3.9、3.13）上运行同一脚本。
 
-所有测试只使用临时目录、假控制器和注入的钩子，不访问真实 Clash Verge、`~/Library`、
-LaunchAgent 或网络。
+除真实内核测试外，所有测试只使用临时目录、假控制器和注入的钩子，不访问真实 Clash Verge、
+`~/Library`、LaunchAgent 或网络。
+
+## 真实内核测试（`tests/test_real_core.py`）
+
+其余测试的对面是本项目自己写的控制器，只能证明代码符合我们对 Clash 的理解。这一组在一个真实的
+Mihomo 内核上运行，回答只有内核自己能回答的问题：
+
+- 内核肯打开哪些文件：运行配置不在内核 home 下时，按路径重载被拒绝（v0.5.1 在真实环境遇到的
+  错误），以内容加载被接受。
+- 配置检查（`-t`）的输出：原因在 `level=error` 行；缺某个数据库时点名的是哪条规则。
+- 筛选：设置页用 Python `re` 预告的成员，与内核用自己的正则引擎选出的成员逐个地区比对；没有匹配
+  时分组只有 `REJECT`。
+- `/proxies` 与 `/rules` 的写法：内置出口（含 `PASS-RULE`）不被当作节点；规则类型与内容的格式。
+- 完整流程：写入专线（规则排在最前、用户规则不动）、AI 分流体检、被旧配置覆盖后运行核对重新
+  写入且保留选中的节点、关闭后内核与文件完全还原。
+- 路由程序自己的 HTTP 客户端经 Unix socket 读写内核。
+
+布局仿照 Clash Verge 的服务模式：内核 home 与运行配置分在两个目录，控制接口是 Unix socket。
+不需要网络：geodata 是测试生成的极小 `GeoSite.dat`（`tests/geosite_fixture.py`），下载地址指向
+本机关闭的端口。
+
+内核由 `scripts/build-core.sh` 从固定的版本与提交构建（需要 git 和 Go），不进发布包：
+
+```bash
+./scripts/build-core.sh ~/.cache/steadyroute-core/mihomo
+STEADYROUTE_MIHOMO=~/.cache/steadyroute-core/mihomo ./scripts/check.sh
+```
+
+没有设置 `STEADYROUTE_MIHOMO` 时这一组跳过。CI 在三种运行环境上都构建并运行，且设置
+`STEADYROUTE_REQUIRE_CORE=1`：内核缺失或不可执行时测试失败，而不是跳过。升级所测的内核版本只需
+修改 `build-core.sh` 里的版本与提交。
 
 ## 测试金字塔
 
