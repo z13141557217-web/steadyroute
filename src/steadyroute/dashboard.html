@@ -752,7 +752,7 @@ const BENIGN = {
   handover_pending: '正在无损回优',
   handover_grace: '正在无损回优',
   recovery_observing: '正在观察新节点',
-  cooldown: '刚完成回优',
+  cooldown: '刚完成切换',
   manual_hold: '手动选择保护中',
   adopt_pending: '正在切至家宽',
 };
@@ -1315,8 +1315,14 @@ function makeChart(plot) {
     const sw = switches.map(p => {
       const x = X(p[0]), k = SWITCH_KINDS[p[4]] || SWITCH_KINDS.optimize;
       const label = `${k.label} → ${shorten(p[3], 11)}`, tw = textWidth(label, 10.5) + 14;
-      return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T - 2}" y2="${T + ih}" style="stroke:${k.color}" stroke-width="${k.dash ? 1.5 : 1.8}"${k.dash ? ' stroke-dasharray="4 3"' : ''}></line>
-        <g transform="translate(${(x - tw).toFixed(1)},${T - 18})"><rect width="${tw.toFixed(1)}" height="17" rx="8.5" style="fill:var(--surface);stroke:${k.color}" stroke-width="1"></rect>
+      const line = `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${T - 2}" y2="${T + ih}" style="stroke:${k.color}" stroke-width="${k.dash ? 1.5 : 1.8}"${k.dash ? ' stroke-dasharray="4 3"' : ''}></line>`;
+      /* The label hangs to the left of its line. Near the left edge that would run out of the
+         plot and be cut to a sliver, so it turns to the right; once the line itself has slid
+         out, the label goes with it instead of being clipped piece by piece. */
+      if (x < L + 2) return line;
+      const lx = x - tw < L + 2 ? x : x - tw;
+      return `${line}
+        <g transform="translate(${lx.toFixed(1)},${T - 18})"><rect width="${tw.toFixed(1)}" height="17" rx="8.5" style="fill:var(--surface);stroke:${k.color}" stroke-width="1"></rect>
         <text class="flag-text" x="${(tw / 2).toFixed(1)}" y="12" text-anchor="middle" style="fill:${k.color}">${esc(label)}</text></g>`;
     }).join('');
     const last = probes[probes.length - 1];

@@ -52,6 +52,26 @@ class DecisionContractTests(unittest.TestCase):
             self.assertEqual(len(descriptions), len(set(descriptions)))
             self.assertEqual(len(next_actions), len(set(next_actions)))
 
+    def test_failover_only_line_is_never_described_as_optimising(self):
+        """The AI line does not switch for speed: no "最佳选择", no "回优", no performance cooldown."""
+        base = {"controller_connected": True, "candidate_count": 3, "failover_only": True}
+        decision = contract.resolve_group_decision(base, 1789762600)
+        self.assertEqual((decision["code"], decision["reason_code"], decision["severity"]),
+                         ("stable", "failover_only_keep", "ok"))
+        self.assertEqual(decision["title"], "当前节点正常，专线保持出口不变")
+        for field in ("title", "detail", "next_action"):
+            self.assertNotIn("回优", decision[field])
+            self.assertNotIn("最佳", decision[field])
+        self.assertEqual(decision["next_action_code"], "keep_observing")
+        # an ordinary line keeps its wording
+        ordinary = contract.resolve_group_decision(dict(base, failover_only=False), 1789762600)
+        self.assertEqual((ordinary["title"], ordinary["reason_code"]), ("当前线路稳定且为最佳选择", "current_best"))
+        # right after a failover the line is being watched, then it is simply stable again
+        watching = contract.resolve_group_decision(dict(base, recovery_observing=True), 1789762600)
+        self.assertEqual(watching["code"], "recovery_observing")
+        failed = contract.resolve_group_decision(dict(base, current_failed=True, target_id="node-b"), 1789762600)
+        self.assertEqual(failed["code"], "failover_now")
+
     def test_confirmed_failure_overrides_manual_preference(self):
         facts = {
             "controller_connected": True,

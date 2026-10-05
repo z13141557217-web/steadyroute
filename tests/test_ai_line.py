@@ -321,6 +321,35 @@ class ManagerTests(Base):
         self.assertIsNone(clash_profile.runtime_group_names("proxy-groups:\n- type: select\n  name: A\n"))
         self.assertIsNone(clash_profile.runtime_group_names("proxy-groups: [{name: A}]\n"))
 
+    def test_core_complaint_is_the_error_line_not_the_last_line(self):
+        """Real `verge-mihomo -t` output (v1.19.32): the reason comes before the closing summary line."""
+        output = ('time="2026-10-05T09:52:08Z" level=info msg="Geodata Loader mode: memconservative"\n'
+                  'time="2026-10-05T09:52:08Z" level=error msg="rules[3] [IP-ASN,399358,AI 家宽专线,no-resolve] error: '
+                  'can\'t download ASN.mmdb: Get \\"http://127.0.0.1:9/asn.mmdb\\": dial tcp 127.0.0.1:9: connect: connection refused"\n'
+                  'configuration file /tmp/steadyroute-check-x/staged.yaml test failed\n')
+        reason = clash_profile.core_error(output)
+        self.assertTrue(reason.startswith("rules[3] [IP-ASN,399358,AI 家宽专线,no-resolve] error: can't download ASN.mmdb"))
+        self.assertIn('Get "http://127.0.0.1:9/asn.mmdb"', reason)
+        self.assertEqual(clash_profile.core_error("something unexpected\nlast line\n"), "last line")
+        self.assertEqual(clash_profile.core_error(""), "")
+
+    def test_only_the_rule_the_core_names_is_dropped(self):
+        """With the summary line taken for the reason, an optional rule the core could load was dropped first."""
+        def validate(text):
+            if "IP-ASN,399358" in text:
+                raise clash_profile.ProfileError("Clash 内核校验没有通过：rules[21] [IP-ASN,399358,AI 台湾家宽线路,no-resolve] "
+                                                 "error: can't download ASN.mmdb")
+        self.writer.validate = validate
+        _plan, applied = self.manager(MIGRATED).apply()
+        self.assertEqual(applied["dropped"], [["IP-ASN", "399358"]])
+        self.assertIn("category-ai-!cn", self.read("clash-verge.yaml"))
+
+    def test_core_builtins_are_not_nodes(self):
+        for kind in ("PassRule", "Pass", "Reject", "RejectDrop", "Direct", "Compatible", "Selector", "URLTest", "Dns"):
+            self.assertFalse(ai_line.is_node({"type": kind}), kind)
+        self.assertTrue(ai_line.is_node({"type": "Hysteria2"}))
+        self.assertTrue(ai_line.is_node({"type": "Socks5"}))
+
     def test_disable_puts_clash_back(self):
         before = {name: self.read(name) for name in ("profiles/gkX1aa.yaml", "profiles/rkX1aa.yaml")}
         manager = self.manager(MIGRATED)

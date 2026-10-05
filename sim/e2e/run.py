@@ -313,6 +313,14 @@ cross = [e for e in selects if (e["group"] in ("AI 台湾家宽线路",) and e["
          or (e["group"] == "香港家宽自动备援" and e["node"] not in world.HK)]
 step("cross-region selections", count=len(cross), selects=len(selects))
 
+# ---- 5-. after the failover the AI line is described as what it is: no "回优", no performance cooldown
+ai_group = [g for g in http("GET", "/api/status")[1]["groups"] if g.get("ai_line")][0]
+step("ai line wording after failover", code=ai_group["decision_code"], title=ai_group["decision"],
+     detail=ai_group["decision_detail"], next_action=ai_group["next_action"],
+     no_optimise_words=not any(word in ai_group[key] for word in ("回优", "最佳", "冷却")
+                               for key in ("decision", "decision_detail", "next_action")))
+assert ai_group["decision_code"] != "cooldown", "the AI line has no performance cooldown"
+
 # ---- 5a. Clash Verge reloads the config it keeps in memory (the one from before our change):
 #          the files it rebuilds from still hold our block, the core no longer runs it
 written_runtime = files()["clash-verge.yaml"]
@@ -343,6 +351,12 @@ step("lines rewritten after clash verge reloaded its old config", noticed_second
 mark("稳航发现后重新写入：AI 专线恢复")
 assert repaired is not None, "the lines were not written again"
 time.sleep(25)
+
+REC["api"]["diagnostics"] = http("GET", "/api/diagnostics")[1]
+step("diagnostics", bytes=REC["api"]["diagnostics"]["bytes"], lines=REC["api"]["diagnostics"]["text"].count("\n"),
+     has_failover="故障切换 · AI 台湾家宽线路" in REC["api"]["diagnostics"]["text"],
+     has_rewrite="专线重新写入" in REC["api"]["diagnostics"]["text"],
+     leaks_home=str(HOME) in REC["api"]["diagnostics"]["text"])
 
 # ---- 5b. AI line off (the old group comes back, user rules stay valid) and on again
 mark("关闭 AI 专线：恢复原来的分组定义")

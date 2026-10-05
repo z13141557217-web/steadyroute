@@ -22,7 +22,7 @@ import fake_mihomo  # noqa: E402
 
 TYPE_NAMES = {
     "DOMAIN": "Domain", "DOMAIN-SUFFIX": "DomainSuffix", "DOMAIN-KEYWORD": "DomainKeyword",
-    "IP-CIDR": "IPCIDR", "IP-CIDR6": "IPCIDR6", "IP-ASN": "IPASN", "GEOSITE": "GeoSite", "GEOIP": "GeoIP",
+    "IP-CIDR": "IPCIDR", "IP-CIDR6": "IPCIDR", "IP-ASN": "IPASN", "GEOSITE": "GeoSite", "GEOIP": "GeoIP",
     "RULE-SET": "RuleSet", "PROCESS-NAME": "ProcessName", "MATCH": "Match", "AND": "AND", "OR": "OR",
 }
 GROUP_TYPES = {"select": "Selector", "url-test": "URLTest", "fallback": "Fallback", "load-balance": "LoadBalance"}
@@ -113,8 +113,10 @@ class Clash(fake_mihomo.World):
                 item["type"] = self.types[name]
                 if name in self.hidden:
                     item["hidden"] = True
-        payload["proxies"]["REJECT"] = {"name": "REJECT", "type": "Reject"}
-        payload["proxies"]["COMPATIBLE"] = {"name": "COMPATIBLE", "type": "Compatible"}
+        # the built-in outbounds a real core (v1.19.32) lists next to the nodes
+        for name, kind in (("REJECT", "Reject"), ("REJECT-DROP", "RejectDrop"), ("COMPATIBLE", "Compatible"),
+                           ("PASS", "Pass"), ("PASS-RULE", "PassRule")):
+            payload["proxies"][name] = {"name": name, "type": kind}
         return payload
 
 

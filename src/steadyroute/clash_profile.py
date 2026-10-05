@@ -386,6 +386,22 @@ def rule_item(line):
 
 
 # ---------------------------------------------------------------- validation and apply
+_CORE_MESSAGE = re.compile(r'level=(?:error|fatal)\s+msg="((?:[^"\\]|\\.)*)"')
+
+
+def core_error(output):
+    """What the core complained about, from the output of `-t`.
+
+    The reason is a level=error line (e.g. `rules[3] [GEOSITE,x,G] error: list x not found`);
+    the last line only says `configuration file … test failed`.
+    """
+    reasons = _CORE_MESSAGE.findall(output or "")
+    if reasons:
+        return reasons[-1].replace('\\"', '"').replace("\\\\", "\\")
+    lines = (output or "").strip().splitlines()
+    return lines[-1] if lines else ""
+
+
 def core_validator(core, home):
     def validate(text):
         with tempfile.TemporaryDirectory(prefix="steadyroute-check-") as directory:
@@ -395,8 +411,7 @@ def core_validator(core, home):
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
         output = result.stdout.decode("utf-8", "replace")
         if result.returncode != 0:
-            last = output.strip().splitlines()[-1] if output.strip() else "exit %d" % result.returncode
-            raise ProfileError("Clash 内核校验没有通过：%s" % last[:300])
+            raise ProfileError("Clash 内核校验没有通过：%s" % (core_error(output) or "exit %d" % result.returncode)[:400])
         return output
     return validate
 

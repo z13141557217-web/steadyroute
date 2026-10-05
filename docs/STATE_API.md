@@ -182,6 +182,11 @@ type, udp, residential, group, role, delay_ms, delay_at}`。`role` 为 `current`
   `repairs`（一小时内的次数）、`error`、`next_attempt_at`、`stopped`（已停止自动写入）、`interval`。
   `GET /api/status` 的 `groups[]` 增加 `line_state`：稳航写入的分组为 `ok` / `missing` / `unknown`，
   其他分组为 `null`。
+- `GET /api/diagnostics`：诊断信息，供设置页“复制诊断信息”使用。返回 `{text, generated_at, bytes, days}`；
+  `text` 是纯文本报告：版本与系统、专线与运行核对、各线路状态、近 7 天按天统计、切换记录（最多 120 条，
+  含切换前的探测值，并标出唤醒或启动后 180 秒内发生的故障切换）、服务与设置事件、节点健康、
+  `router-error.log` 末尾 30 行。不含订阅地址、服务器地址、密码和连接去向；本机路径、IP 地址和 URL
+  查询串已遮盖。最大约 60 KB。只读，不向 Clash 写入。
 - `GET /api/ai-check`：AI 分流体检。按 Clash 当前规则顺序，只读判断 34 条 net.coffee 条目
   各自命中的规则、分组链路、出口节点和国家，返回 `rows`、`total`、`ok`、`line_group`、
   `line_country`。

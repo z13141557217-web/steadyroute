@@ -30,6 +30,7 @@ try:
     import regions
     import auto_lock
     import ai_line
+    import diagnostics
     import settings_service
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -43,6 +44,7 @@ except ModuleNotFoundError:
     import regions
     import auto_lock
     import ai_line
+    import diagnostics
     import settings_service
 
 
@@ -562,6 +564,7 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         target = group_state.get("handover_new_node")
     last_switch = int(group_state.get("last_switch_at", 0))
     cooldown = max(0, PERFORMANCE_COOLDOWN_SECONDS - (int(now) - last_switch)) if last_switch else 0
+    failover_only = bool((POLICY_BY_GROUP.get(group_name) or {}).get("failover_only"))
     manual_hold = max(0, int(group_state.get("manual_hold_until", 0)) - int(now))
     safe_backup_available = any(
         name != current and eligible_for_optimization(state.get("nodes", {}).get(name, {}))
@@ -592,7 +595,9 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         "old_connections": old_connections,
         "grace_remaining_seconds": max(0, handover_until - int(now)),
         "recovery_observing": bool(int(now) < recovery_until),
-        "cooldown_remaining_seconds": cooldown,
+        # The AI line never switches for speed, so it has no performance cooldown to sit out.
+        "cooldown_remaining_seconds": 0 if failover_only else cooldown,
+        "failover_only": failover_only,
         "manual_hold_remaining_seconds": manual_hold,
         "performance_optimization_paused": manual_hold > 0,
         "safety_failover_active": bool(state.get("controller_connected", bool(proxy_data)) and candidates),
@@ -1302,7 +1307,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if route in ("/api/status", "/api/v1/status", "/api/nodes"):
             self._reply(*cached_api_response(route), api=True)
             return
-        if route in ("/api/settings", "/api/ai-check"):
+        if route in ("/api/settings", "/api/ai-check", "/api/diagnostics"):
             status, payload = settings_get(route)
             self._reply(status, "application/json; charset=utf-8",
                         json.dumps(payload, ensure_ascii=False).encode("utf-8"), api=True)
@@ -1393,9 +1398,27 @@ def settings_get(route):
             return 200, service.snapshot()
         if route == "/api/ai-check":
             return 200, service.check()
+        if route == "/api/diagnostics":
+            return 200, diagnostics_report(service)
     except Exception as error:
         return 500, {"error": str(error)}
     return 404, {"error": "not_found"}
+
+
+def diagnostics_report(service):
+    """The text behind 复制诊断信息: read-only, built from the cached snapshot, the settings and the logs."""
+    cached = read_dashboard_cache("legacy")
+    status = json.loads(cached.decode("utf-8")) if cached else None
+    try:
+        settings = service.snapshot()
+    except Exception as error:
+        settings = {"controller_error": str(error)}
+    try:
+        core = str(service._get("/version").get("version") or "")
+    except Exception:
+        core = ""
+    text = diagnostics.build(status, settings, core, LOG_DIR)
+    return {"text": text, "generated_at": int(time.time()), "bytes": len(text.encode("utf-8")), "days": diagnostics.DAYS}
 
 
 def settings_post(route, body):

@@ -363,6 +363,8 @@ def resolve_group_decision(facts, updated_at):
         code, reason = "candidate_confirming", "confirmation_incomplete"
     else:
         code, reason = "stable", "current_best"
+    if code == "stable" and facts.get("failover_only"):
+        reason = "failover_only_keep"
     copy_item = GROUP_DECISION_COPY[code]
     detail = copy_item["description"]
     if code == "candidate_confirming":
@@ -375,6 +377,12 @@ def resolve_group_decision(facts, updated_at):
         else:
             title = "手动选择保护（剩余 %02d:%02d），暂无成熟备援" % divmod(remaining, 60)
             detail = "故障保护仍启用；当前没有成熟安全备援，故障时将 fail-closed 并继续检测。"
+    next_action = copy_item["next_action"]
+    if reason == "failover_only_keep":
+        # The AI line is never compared for speed: "最佳选择" and "回优" would describe something that does not happen.
+        title = "当前节点正常，专线保持出口不变"
+        detail = "AI 专线只在节点故障时切换，不为速度更换出口。"
+        next_action = "继续检测当前节点，故障时切到同国家的家宽节点。"
     return {
         "code": code,
         "severity": copy_item["severity"],
@@ -384,7 +392,7 @@ def resolve_group_decision(facts, updated_at):
         "updated_at": int(updated_at),
         "updated_at_iso": utc_iso(updated_at),
         "next_action_code": copy_item["next_action_code"],
-        "next_action": copy_item["next_action"],
+        "next_action": next_action,
     }
 
 
