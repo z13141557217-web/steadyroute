@@ -25,4 +25,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: ./scripts/check.sh
+      # A real Mihomo core for tests/test_real_core.py: built once per runner type from the
+      # pinned commit in scripts/build-core.sh, then restored from the cache.
+      - id: core
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/steadyroute-core
+          key: mihomo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-core.sh') }}
+      - if: steps.core.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+      - if: steps.core.outputs.cache-hit != 'true'
+        run: ./scripts/build-core.sh "$HOME/.cache/steadyroute-core/mihomo"
+      - name: checks, with the real core
+        run: |
+          export STEADYROUTE_MIHOMO="$HOME/.cache/steadyroute-core/mihomo"
+          export STEADYROUTE_REQUIRE_CORE=1
+          ./scripts/check.sh

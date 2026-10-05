@@ -32,7 +32,8 @@
 
 - v0.5.2 已在真实 Clash Verge（服务模式）上通过：安装与迁移、专线写入、34 / 34 体检、出口 IP、
   DNS、WebRTC。关闭专线与卸载的撤销尚未在真实环境做过。
-- 测试对面仍是自己写的模拟 Clash；在 CI 里运行真实 mihomo 内核尚未做（见 #6）。
+- CI 在真实 Mihomo v1.19.32 内核上运行写入、核对与还原的集成测试（`tests/test_real_core.py`）。
+  Clash Verge 这个外壳自身的行为（何时重新生成配置）仍然测不到。
 - Clash Verge 何时用内存里的配置覆盖内核、覆盖时是否同时改写 `clash-verge.yaml`，没有在真实环境
   观察过；v0.5.3 的运行核对按“内核为准”处理，文件与内核不一致时会显示原因而不是强行写入。
 - `scripts/publish-release.sh` 改为调用 `scripts/build_package.py`。
