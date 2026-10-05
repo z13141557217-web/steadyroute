@@ -23,6 +23,8 @@ def dump(value):
 
 
 BAR_CSS = """<style>
+/* room to scroll the last controls of the page clear of the fixed preview bar */
+body { padding-bottom: 150px !important; }
 .pv { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 40;
   width: min(980px, calc(100% - 24px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 9px 12px;
   background: var(--surface); border: 1px solid var(--hair-2); border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.25);
@@ -117,6 +119,7 @@ import regions as RG  # noqa: E402
 import world as W  # noqa: E402
 api = {k: REC["api"][k] for k in ("settings_before", "settings_after", "check_before", "check_after", "check_off")}
 api["status"] = last_status
+api["diagnostics"] = REC["api"]["diagnostics"]   # the real report of the end-to-end run
 api["members"] = {code: AL.members(code, W.NODES) for code in ("TW", "JP", "US", "HK", "SG")}
 api["labels"] = {code: RG.label(code) for code in api["members"]}
 api["unsupported"] = AL.AI_UNSUPPORTED
@@ -136,7 +139,7 @@ sbar = """<div class="pv" role="region" aria-label="预览控制">
   <button type="button" id="pv-reset">恢复到迁移前</button>
   <button type="button" id="pv-lose">模拟：Clash Verge 加载旧配置</button>
   <a href="index.html">← 看板实录</a>
-  <span class="script">“模拟：Clash Verge 加载旧配置”演示专线从 Clash 中消失后，稳航发现并重新写入（预览中 12 秒，实际不超过 40 秒）。其余操作都可试：升级或保持旧线路、选择出口国家、添加 / 移除网站、开关分组的自动切换、高级信息里的立即同步（预览不联网，会演示失败后的重试）。改动只在本预览内生效。</span>
+  <span class="script">高级信息里的“复制诊断信息”给出端到端运行的真实报告。“模拟：Clash Verge 加载旧配置”演示专线从 Clash 中消失后，稳航发现并重新写入（预览中 12 秒，实际不超过 40 秒）。其余操作都可试：升级或保持旧线路、选择出口国家、添加 / 移除网站、开关分组的自动切换、高级信息里的立即同步（预览不联网，会演示失败后的重试）。改动只在本预览内生效。</span>
 </div>"""
 backend = """<script>(function(){
   var API=JSON.parse(document.getElementById('pv-api').textContent);
@@ -228,6 +231,7 @@ backend = """<script>(function(){
     if(path==='/api/status')return reply(200,API.status);
     if(path==='/api/settings')return reply(200,settingsSnap());
     if(path==='/api/ai-check')return reply(200,checkSnap());
+    if(path==='/api/diagnostics')return reply(200,API.diagnostics);
     var body={};try{body=JSON.parse(opts.body||'{}')}catch(e){}
     if(method==='POST'&&path==='/api/settings/sync'){
       var t=Date.now()/1000,f=((S.sync&&S.sync.failures)||0)+1,d=new Date(t*1000);

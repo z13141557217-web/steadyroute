@@ -40,6 +40,12 @@ RESIDENTIAL_RE = re.compile(
     r"家宽|家寬|住宅|residential|home\s*broadband|(?<![A-Za-z])ISP(?![A-Za-z])|hinet|seednet|HKT|HKBN", re.I)
 # Subscription "nodes" that are really notices: expiry date, remaining traffic, website...
 INFO_RE = re.compile(r"到期|剩余|剩餘|流量|套餐|官网|官網|公告|客服|重置|倍率说明|expire|traffic|official", re.I)
+# /proxies entries that are not subscription nodes: groups and the core's built-in outbounds
+# (type with "-" removed, lower case). PASS-RULE (type PassRule) exists since Mihomo 1.19.
+NON_NODE_TYPES = frozenset({
+    "selector", "urltest", "fallback", "loadbalance", "relay", "compatible", "pass", "passrule",
+    "reject", "rejectdrop", "direct", "dns",
+})
 LABELS = dict((code, label) for code, label, _pattern in REGIONS)
 LABELS[OTHER_REGION[0]] = OTHER_REGION[1]
 

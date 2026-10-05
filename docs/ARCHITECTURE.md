@@ -39,6 +39,7 @@ SteadyRoute 后端（单进程，LaunchAgent com.steadyroute）
 | `logging_setup.py` | 有界日志和异常入口 |
 | `runtime_metrics.py` | 内存与周期指标 |
 | `settings_service.py` | 设置页后端：读取与修改设置、写入 / 撤销 Clash、运行核对、每周同步、每小时自愈、体检 |
+| `diagnostics.py` | 诊断信息：把状态快照、设置与 `events.jsonl` 汇成一份文本报告，输出前遮盖路径与地址；只读 |
 | `ai_line.py` | AI 专线与托管家宽线路：分组定义、写入计划、应用与撤销 |
 | `ai_rules.py` | AI 规则：net.coffee 快照与同步安全检查、社区规则、进程规则、手动域名 |
 | `ai_check.py` | AI 分流体检：只读遍历 Clash 当前规则并跟踪出口 |

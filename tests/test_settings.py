@@ -603,6 +603,22 @@ class SettingsHttpTests(ServiceBase):
         self.assertIn("countries", json.loads(response.read()))
         self.assertEqual(response.getheader("Content-Security-Policy"), self.router.API_CSP)
 
+    def test_diagnostics_endpoint_returns_the_report(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        connection.request("GET", "/api/diagnostics", headers={"Host": "127.0.0.1:%d" % self.port})
+        response = connection.getresponse()
+        self.assertEqual(response.status, 200)
+        report = json.loads(response.read())
+        self.assertEqual(report["bytes"], len(report["text"].encode("utf-8")))
+        self.assertTrue(report["text"].startswith("稳航诊断信息 · 生成于 "))
+        self.assertIn("Clash 内核 v1.19.31", report["text"])
+        for title in ("[专线]", "[线路]", "[切换记录]", "[节点]"):
+            self.assertIn(title, report["text"])
+        # read-only: nothing was written to Clash for it
+        self.assertFalse([call for call in self.clash.calls if call[0] != "GET"])
+        connection.request("GET", "/api/diagnostics", headers={"Host": "evil.example:%d" % self.port})
+        self.assertEqual(connection.getresponse().status, 421)
+
 
 if __name__ == "__main__":
     unittest.main()

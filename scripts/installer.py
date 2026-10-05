@@ -49,7 +49,7 @@ APP_FILES = (
     "weighted_router.py", "state_contract.py", "route_policy.py", "candidate_registry.py",
     "health_model.py", "runtime_metrics.py", "logging_setup.py", "node_catalog.py",
     "regions.py", "auto_lock.py", "ai_rules.py", "ai_line.py", "ai_check.py",
-    "clash_profile.py", "settings_service.py",
+    "clash_profile.py", "settings_service.py", "diagnostics.py",
     "dashboard.html", "settings.html", "nodes.html", "guide.html", "changelog.html", "pages.css",
 )
 DEFAULT_CONFIG = "config/route-policies.default.json"

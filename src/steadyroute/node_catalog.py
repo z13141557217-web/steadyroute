@@ -25,10 +25,7 @@ INFO_RE = regions.INFO_RE
 
 CATALOG_LIMIT = 1000
 
-NON_NODE_TYPES = {
-    "selector", "urltest", "fallback", "loadbalance", "relay", "compatible", "pass",
-    "reject", "rejectdrop", "direct", "dns",
-}
+NON_NODE_TYPES = regions.NON_NODE_TYPES
 
 
 def region_of(name):

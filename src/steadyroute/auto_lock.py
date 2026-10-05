@@ -29,10 +29,7 @@ except ModuleNotFoundError:  # pragma: no cover - imported as a package in some 
 
 DEFAULT_BUSINESS_TEST_URLS = ("https://www.gstatic.com/generate_204",)
 SKIP_GROUPS = {"GLOBAL"}
-NON_NODE_TYPES = {
-    "selector", "urltest", "fallback", "loadbalance", "relay", "compatible", "pass",
-    "reject", "rejectdrop", "direct", "dns",
-}
+NON_NODE_TYPES = regions.NON_NODE_TYPES
 
 
 def is_node(proxy):

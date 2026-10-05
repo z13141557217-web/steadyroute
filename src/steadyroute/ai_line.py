@@ -73,9 +73,7 @@ def group_definition(name, code, ai):
 
 def is_node(proxy):
     kind = str((proxy or {}).get("type") or "").replace("-", "").lower()
-    return bool(kind) and "all" not in (proxy or {}) and kind not in {
-        "selector", "urltest", "fallback", "loadbalance", "relay", "compatible", "pass",
-        "reject", "rejectdrop", "direct", "dns"}
+    return bool(kind) and "all" not in (proxy or {}) and kind not in regions.NON_NODE_TYPES
 
 
 def country_choices(proxy_data):

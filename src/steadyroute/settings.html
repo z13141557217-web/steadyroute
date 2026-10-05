@@ -165,6 +165,8 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
 .dlg-head p { color: var(--ink-3); font-size: 12.5px; margin-top: 4px; }
 .dlg-body { padding: 12px 22px 8px; display: grid; gap: 14px; overflow-y: auto; max-height: calc(100vh - 220px); }
 .dlg-foot { padding: 14px 22px 20px; display: flex; justify-content: flex-end; gap: 8px; }
+.diag-text { width: 100%; height: min(52vh, 420px); resize: vertical; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--hair-2);
+  background: var(--sunken); color: var(--ink-2); font: 12px/1.6 var(--mono); white-space: pre; }
 .diff { border: 1px solid var(--hair); border-radius: 12px; padding: 10px 14px; display: grid; gap: 6px; font-size: 13px; }
 .diff h4 { margin: 0; font-size: 13.5px; font-weight: 650; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .diff ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
@@ -293,6 +295,7 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
         <dt>Clash 网络</dt><dd id="net">—</dd>
         <dt>写入位置</dt><dd id="where">—</dd>
         <dt>运行核对</dt><dd id="watch">—</dd>
+        <dt>诊断信息</dt><dd><div>版本、线路状态、近 7 天的切换与休眠记录、节点健康数据，用于排查问题。<span class="muted">不含订阅地址、服务器地址、密码和访问过的网站；本机路径与 IP 地址已遮盖。</span></div><button class="btn small" type="button" id="copy-diag">复制诊断信息</button></dd>
       </dl>
     </div>
   </details>
@@ -305,6 +308,11 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
     <button class="btn" type="button" id="dlg-cancel">取消</button>
     <button class="btn primary" type="button" id="dlg-ok">确认写入</button>
   </div>
+</dialog>
+<dialog id="diag-dlg" aria-labelledby="diag-title">
+  <div class="dlg-head"><h3 id="diag-title">诊断信息</h3><p>浏览器没有允许自动复制。内容已全选，按 ⌘C 复制。</p></div>
+  <div class="dlg-body"><textarea id="diag-text" class="diag-text" readonly spellcheck="false" aria-label="诊断信息"></textarea></div>
+  <div class="dlg-foot"><button class="btn primary" type="button" id="diag-close">关闭</button></div>
 </dialog>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -714,6 +722,46 @@ $('#sync-now').addEventListener('click', async () => {
     button.textContent = '立即同步';
   }
 });
+
+/* ---- 诊断信息: fetched on the click and put on the clipboard; shown for a manual copy if the browser refuses ---- */
+async function diagnosticsText() {
+  const r = await fetch('/api/diagnostics', { cache: 'no-store' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.text) throw new Error(d.error || `HTTP ${r.status}`);
+  return d.text;
+}
+$('#copy-diag').addEventListener('click', async () => {
+  const button = $('#copy-diag');
+  button.disabled = true;
+  button.textContent = '生成中…';
+  const pending = diagnosticsText();
+  pending.catch(() => {});
+  let text = '';
+  try {
+    try {
+      /* handed over as a promise inside the click, so browsers that insist on a user gesture still allow it */
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': pending.then(t => new Blob([t], { type: 'text/plain' })) })]);
+      text = await pending;
+    } catch (first) {
+      text = await pending;
+      await navigator.clipboard.writeText(text);
+    }
+    toast(`诊断信息已复制（${text.split('\n').length} 行），可直接粘贴发送。`);
+  } catch (error) {
+    if (text) {
+      $('#diag-text').value = text;
+      $('#diag-dlg').showModal();
+      $('#diag-text').focus();
+      $('#diag-text').select();
+    } else {
+      toast(`生成诊断信息失败：${error.message}`, true);
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = '复制诊断信息';
+  }
+});
+$('#diag-close').addEventListener('click', () => $('#diag-dlg').close());
 
 /* ---- AI routing check (read-only) ---- */
 async function runCheck() {
