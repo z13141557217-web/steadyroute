@@ -253,7 +253,7 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
         lock = group.get("auto_lock") or {}
         metrics = group.get("metrics") or {}
         out.append("%s%s · 锁定%s · %s 个家宽候选 · 当前 %s · 热备 %s" % (
-            group.get("name"), "（AI 专线，只在故障时切换）" if group.get("ai_line") else "",
+            group.get("name"), "（AI 专线）" if group.get("ai_line") else "",
             lock.get("country_label") or group.get("region_label") or "?", lock.get("candidates", len(group.get("candidates") or [])),
             group.get("current"), group.get("hot_standby") or "无"))
         out.append("  状态 %s：%s · 近 24 小时 故障切换 %s · 回优 %s · 节点移除 %s · 切至家宽 %s · 活跃连接 %s" % (

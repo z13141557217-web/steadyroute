@@ -115,7 +115,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertIn("跳过的规则：IP-ASN,399358", lines)
         self.assertIn("运行核对：与写入内容一致 · 最近一次自动重新写入", lines)
         groups = self.section(text, "线路")
-        self.assertIn("AI 台湾家宽线路（AI 专线，只在故障时切换） · 锁定台湾 · 11 个家宽候选 · 当前 台湾 家宽 02 · 热备 台湾 家宽 03", groups)
+        self.assertIn("AI 台湾家宽线路（AI 专线） · 锁定台湾 · 11 个家宽候选 · 当前 台湾 家宽 02 · 热备 台湾 家宽 03", groups)
         self.assertIn("近 24 小时 故障切换 3 · 回优 0", groups)
         self.assertIn("🚀 节点选择 · 未接管（excluded）", groups)
 
