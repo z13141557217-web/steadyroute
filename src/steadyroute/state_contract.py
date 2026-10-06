@@ -53,8 +53,8 @@ class InvalidTransitionError(StateContractError):
     """Raised when a caller attempts to skip the declared state machine."""
 
 
-# AI line: the slow-node count is shown once it has held for a minute, not on every blip.
-SLOW_EXIT_VISIBLE_CYCLES = 3
+# AI line: the slow-node count is shown from two minutes' worth of slow cycles, not on every blip.
+SLOW_EXIT_VISIBLE_CYCLES = 6
 
 GROUP_DECISION_COPY = {
     "stable": {
@@ -390,13 +390,14 @@ def resolve_group_decision(facts, updated_at):
         detail = "AI 专线只在节点故障时切换，不为速度更换出口。"
         next_action = "继续检测当前节点，故障时切到同国家的家宽节点。"
         if facts.get("slow_exit"):
-            detail = "AI 专线在节点故障时切换；持续 %d 分钟以上明显慢于备用节点时也会更换，24 小时内最多 %d 次。" % (
-                int(facts.get("slow_exit_minutes", 10)), int(facts.get("slow_exit_daily_max", 3)))
+            detail = "AI 专线在节点故障时切换；当前节点在 %d 分钟内累计 %d 分钟明显慢于备用节点时也会更换，24 小时内最多 %d 次。" % (
+                int(facts.get("slow_exit_window_minutes", 15)), int(facts.get("slow_exit_minutes", 10)),
+                int(facts.get("slow_exit_daily_max", 3)))
             next_action = "继续检测当前节点与备用节点。"
     elif reason == "slow_exit_confirming":
         title = "当前节点偏慢，正在确认（%d/%d）" % (slow_current, max(1, int(facts.get("slow_exit_required", 30))))
-        detail = "当前节点的延迟与抖动明显高于备用节点。持续 %d 分钟以上即切到同国家的家宽节点，现有连接不中断。" % int(
-            facts.get("slow_exit_minutes", 10))
+        detail = "当前节点的延迟与抖动明显高于备用节点。%d 分钟内累计 %d 分钟即切到同国家的家宽节点，现有连接不中断。" % (
+            int(facts.get("slow_exit_window_minutes", 15)), int(facts.get("slow_exit_minutes", 10)))
         next_action = "继续比较；差距消失则保持当前出口。"
     elif reason == "slow_exit_capped":
         title = "当前节点偏慢，24 小时内已更换 %d 次，暂不再换" % int(facts.get("slow_exit_daily_max", 3))

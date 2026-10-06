@@ -381,7 +381,7 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(legacy[AI_GROUP]["auto_lock"]["country_label"], "日本")
         self.assertNotIn("♻️ 自动选择", snapshots["legacy"]["service"]["auto_lock_idle"], "url-test groups are not listed")
 
-    def test_ai_line_leaves_a_slow_node_after_ten_minutes_of_cycles(self):
+    def test_ai_line_leaves_a_slow_node_after_ten_minutes_of_slow_cycles(self):
         slow = US_RES[2]
         for setting, expected in (({}, [(AI_GROUP, US_RES[0])]), ({"slow_exit": False}, [])):
             with self.subTest(setting=setting):
