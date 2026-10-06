@@ -142,8 +142,8 @@ def _switch_line(record, wake_times):
             parts.append("距唤醒或启动 %d 秒" % min(near))
     elif kind == "optimize":
         if record.get("reason") == "sustained_slow":
-            parts.append("持续变慢 %s 轮 · 延迟 %s → %s ms · 抖动 %s → %s ms" % (
-                record.get("held_cycles"), record.get("latency_from"), record.get("latency_to"),
+            parts.append("持续偏慢（近 %s 轮中 %s 轮）· 延迟 %s → %s ms · 抖动 %s → %s ms" % (
+                record.get("window_cycles"), record.get("slow_cycles"), record.get("latency_from"), record.get("latency_to"),
                 record.get("jitter_from"), record.get("jitter_to")))
         parts += ["评分 %s → %s" % (record.get("score_from"), record.get("score_to")),
                   "保留连接 %s 个" % record.get("preserved_connections")]
@@ -221,7 +221,7 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
             "已写入 %s 条规则，写入于 %s" % (settings.get("applied_rule_count"), _clock(applied.get("at")))
             if line.get("group_name") in (applied.get("groups") or []) else "尚未写入 Clash"))
         out.append("换线方式：%s" % (
-            "节点故障时切换；持续 10 分钟以上明显慢于备用节点时更换，24 小时内最多 3 次"
+            "节点故障时切换；15 分钟内累计 10 分钟明显慢于备用节点时更换，24 小时内最多 3 次"
             if line.get("slow_exit", True) else "只在节点故障时切换（已关闭“节点变慢时更换”）"))
     else:
         out.append("AI 出口：未启用")

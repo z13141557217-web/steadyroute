@@ -467,13 +467,13 @@ function render() {
   $('#slow-row').hidden = !l.enabled;
   $('#slow-exit').checked = slowOn;
   $('#slow-note').textContent = slowOn
-    ? '当前节点持续 10 分钟以上明显慢于备用节点时，换到同国家的家宽节点；现有连接不中断，24 小时内最多 3 次。'
+    ? '当前节点在 15 分钟内累计 10 分钟明显慢于备用节点时，换到同国家的家宽节点；现有连接不中断，24 小时内最多 3 次。'
     : '已关闭：只在节点故障时切换，节点变慢时保持出口不变。';
   const managed = s.managed_lines || [];
   $('#ai-facts').innerHTML = [
     `<div>Clash 中的分组：<b>${esc(l.group_name || 'AI 家宽专线')}</b>${live() ? ` · ${liveRules()} 条 AI 规则排在所有规则之前 · ${esc(ago(s.applied.at))}写入` : ''}</div>`,
     '<div>只包含所选国家的家宽节点，订阅更新后自动跟随；节点全部不可用时拒绝连接，不会改走直连或其他国家。</div>',
-    `<div>按 ip.net.coffee 的要求：规则排在最前；UDP 与 NTP 时间同步同样经专线出口；${slowOn ? '节点故障或持续变慢时才切换' : '只在节点故障时切换'}，出口 IP 尽量不变。</div>`,
+    `<div>按 ip.net.coffee 的要求：规则排在最前；UDP 与 NTP 时间同步同样经专线出口；${slowOn ? '节点故障或持续偏慢时才切换' : '只在节点故障时切换'}，出口 IP 尽量不变。</div>`,
     managed.length ? `<div>其他家宽专线：${managed.map(x => `<b>${esc(x.group_name)}</b>（${esc(countryLabel(x.country))}家宽）`).join('、')}</div>` : '',
     (s.applied && (s.applied.dropped || []).length) ? `<div class="warnline">当前 Clash 内核缺少数据库，已跳过：${s.applied.dropped.map(x => esc(x.join(','))).join('、')}</div>` : '',
   ].join('');
@@ -695,7 +695,7 @@ $('#choices').addEventListener('click', e => {
 });
 $('#slow-exit').addEventListener('change', e => {
   const on = e.target.checked;
-  submit({ ai_line: { slow_exit: on } }, on ? '已开启：节点持续变慢时更换，24 小时内最多 3 次。' : '已关闭：只在节点故障时切换。');
+  submit({ ai_line: { slow_exit: on } }, on ? '已开启：节点持续偏慢时更换，24 小时内最多 3 次。' : '已关闭：只在节点故障时切换。');
 });
 $('#ai-result').addEventListener('click', e => { if (e.target.id === 'recheck') { check = null; render(); runCheck(); } });
 $('#manual-form').addEventListener('submit', e => {

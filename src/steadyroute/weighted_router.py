@@ -135,8 +135,8 @@ MIN_RELATIVE_GAIN = 0.30
 PERFORMANCE_COOLDOWN_SECONDS = 30 * 60
 MANUAL_HOLD_SECONDS = 60 * 60
 # AI line only: leave a node that works but has stayed clearly slower than a standby.
-SLOW_EXIT_CYCLES = 30                 # full cycles the gap must hold: about 10 minutes
-SLOW_EXIT_MISS_PENALTY = 2            # a cycle without the gap takes this many off the count
+SLOW_EXIT_WINDOW = 45                 # full cycles looked at: about 15 minutes
+SLOW_EXIT_CYCLES = 30                 # of those, cycles the gap must be there: about 10 minutes
 SLOW_EXIT_DAILY_MAX = 3               # per line, per 24 hours
 LATENCY_ALPHA = 0.25
 AVAILABILITY_ALPHA = 0.20
@@ -608,11 +608,12 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         "cooldown_remaining_seconds": 0 if failover_only else cooldown,
         "failover_only": failover_only,
         "slow_exit": slow_exit_on,
-        "slow_exit_current": int(group_state.get("slow_streak", 0)) if slow_exit_on else 0,
+        "slow_exit_current": sum(group_state.get("slow_window") or []) if slow_exit_on else 0,
         "slow_exit_required": SLOW_EXIT_CYCLES,
         "slow_exit_blocked": slow_exit_state(group_state, now) if slow_exit_on else None,
         "slow_exit_daily_max": SLOW_EXIT_DAILY_MAX,
         "slow_exit_minutes": SLOW_EXIT_CYCLES * PROBE_INTERVAL_SECONDS // 60,
+        "slow_exit_window_minutes": SLOW_EXIT_WINDOW * PROBE_INTERVAL_SECONDS // 60,
         "manual_hold_remaining_seconds": manual_hold,
         "performance_optimization_paused": manual_hold > 0,
         "safety_failover_active": bool(state.get("controller_connected", bool(proxy_data)) and candidates),
@@ -1966,7 +1967,7 @@ def apply_switch(group_name, group_state, kind, old, new, now):
         "recovery_observe_until": int(now + observe),
         "better_candidate": None,
         "better_streak": 0,
-        "slow_streak": 0,
+        "slow_window": [],
         "dynamic_no_candidate": False,
     })
     if recovery is not None:
@@ -2158,7 +2159,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         # The AI line keeps its exit IP as long as the node works: no switch just for speed.
         group_state["better_candidate"] = None
         group_state["better_streak"] = 0
-        group_state["slow_streak"] = 0
+        group_state["slow_window"] = []
         group_state["last_seen"] = current
         log_routine((group_name, "keep"), "fixed:%s" % current,
                     "%s: keep %s; the AI line switches only when the node fails" % (group_name, current))
@@ -2256,19 +2257,21 @@ def slow_exit_state(group_state, now):
 
 
 def slow_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
-    """AI line: the current node works. Leave it only when it has stayed clearly slower than
-    a mature same-country residential standby for about ten minutes.
+    """AI line: the current node works. Leave it only when it has been clearly slower than a
+    mature same-country residential standby for 10 of the last 15 minutes.
 
-    Same gap as an ordinary performance switch (MIN_ABSOLUTE_GAIN_MS and MIN_RELATIVE_GAIN on
-    the weighted score), but held for SLOW_EXIT_CYCLES instead of three cycles, never during a
-    manual preference or within PERFORMANCE_COOLDOWN_SECONDS of any switch, and at most
-    SLOW_EXIT_DAILY_MAX times in 24 hours. Old connections stay on the old node."""
+    Each full cycle is marked slow when the weighted-score gap reaches what an ordinary
+    performance switch asks for (MIN_ABSOLUTE_GAIN_MS and MIN_RELATIVE_GAIN). The line moves
+    once SLOW_EXIT_CYCLES of the last SLOW_EXIT_WINDOW cycles are marked (three cycles in a row
+    are enough elsewhere). Never during a manual preference or within
+    PERFORMANCE_COOLDOWN_SECONDS of any switch, and at most SLOW_EXIT_DAILY_MAX times in
+    24 hours. Old connections stay on the old node."""
     group_state["better_candidate"] = None
     group_state["better_streak"] = 0
     group_state["last_seen"] = current
     blocked = slow_exit_state(group_state, now)
     if blocked in ("manual", "cooldown"):
-        group_state["slow_streak"] = 0
+        group_state["slow_window"] = []
         log_routine((group_name, "keep"), "%s:%s" % (blocked, current),
                     "%s: keep %s; slow-node exit paused (%s)" % (group_name, current, blocked))
         return
@@ -2277,7 +2280,7 @@ def slow_exit(group_name, candidates, current, state, group_state, active, now, 
     leader = min((name for name in eligible if name != current),
                  key=lambda name: float(nodes[name]["score"]), default=None)
     if current not in eligible or leader is None:
-        group_state["slow_streak"] = 0
+        group_state["slow_window"] = []
         log_routine((group_name, "keep"), "collecting:%s" % current,
                     "%s: keep %s; no mature standby to compare against" % (group_name, current))
         return
@@ -2285,34 +2288,28 @@ def slow_exit(group_name, candidates, current, state, group_state, active, now, 
     leader_score = float(nodes[leader]["score"])
     gain = current_score - leader_score
     slower = gain >= MIN_ABSOLUTE_GAIN_MS and gain / max(current_score, 1.0) >= MIN_RELATIVE_GAIN
-    streak = int(group_state.get("slow_streak", 0))
-    if not slower:
-        group_state["slow_streak"] = max(0, streak - SLOW_EXIT_MISS_PENALTY)
-        log_routine((group_name, "keep"), "steady:%s" % current,
-                    "%s: keep %s; weighted score %.0f (best standby %.0f)" % (
-                        group_name, current, current_score, leader_score))
+    window = (list(group_state.get("slow_window") or []) + [1 if slower else 0])[-SLOW_EXIT_WINDOW:]
+    group_state["slow_window"] = window
+    marked = sum(window)
+    if not slower or marked < SLOW_EXIT_CYCLES:
+        log_routine((group_name, "keep"), "steady:%s:%d" % (current, marked // 5),
+                    "%s: keep %s; weighted score %.0f (best standby %s %.0f); slow in %d of the last %d cycles" % (
+                        group_name, current, current_score, leader, leader_score, marked, len(window)))
         return
-    streak = min(SLOW_EXIT_CYCLES, streak + 1)
-    group_state["slow_streak"] = streak
     if blocked == "capped":
         log_routine((group_name, "keep"), "capped:%s" % current,
                     "%s: keep %s; slower than %s but %d slow-node exits already in 24 hours" % (
                         group_name, current, leader, SLOW_EXIT_DAILY_MAX))
         return
-    if streak < SLOW_EXIT_CYCLES:
-        log_routine((group_name, "slow"), "%s:%d" % (current, streak // 5),
-                    "%s: %s slower than %s; %d/%d cycles" % (group_name, current, leader, streak, SLOW_EXIT_CYCLES))
-        return
     if not business_preflight(group_name, leader, state, dry_run):
         # Ask again after a few more slow cycles rather than every cycle.
-        group_state["slow_streak"] = SLOW_EXIT_CYCLES - 5
+        group_state["slow_window"] = [1] * (SLOW_EXIT_CYCLES - 5)
         log("%s: keep %s; %s failed business preflight" % (group_name, current, leader))
         return
-    log("%s: SLOW EXIT %s -> %s; weighted score %.0f -> %.0f held for %d cycles" % (
-        group_name, current, leader, current_score, leader_score, streak))
+    log("%s: SLOW EXIT %s -> %s; weighted score %.0f -> %.0f, slow in %d of the last %d cycles" % (
+        group_name, current, leader, current_score, leader_score, marked, len(window)))
     select_node(group_name, leader, dry_run)
     apply_switch(group_name, group_state, "optimize", current, leader, now)
-    group_state["slow_streak"] = 0
     current_stats, leader_stats = nodes[current], nodes[leader]
     logging_setup.write_event(
         "optimize", group=group_name, **{"from": current}, to=leader, reason="sustained_slow",
@@ -2321,7 +2318,7 @@ def slow_exit(group_name, candidates, current, state, group_state, active, now, 
         latency_to=round(float(leader_stats.get("latency_ewma") or 0)),
         jitter_from=round(float(current_stats.get("jitter_ewma") or 0)),
         jitter_to=round(float(leader_stats.get("jitter_ewma") or 0)),
-        held_cycles=streak, preserved_connections=len(active))
+        slow_cycles=marked, window_cycles=len(window), preserved_connections=len(active))
 
 
 def detect_cycle_resume(state, cycle_started_at):

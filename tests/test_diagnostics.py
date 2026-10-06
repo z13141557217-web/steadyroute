@@ -179,11 +179,11 @@ class DiagnosticsTests(unittest.TestCase):
         with open(str(self.logs / "events.jsonl"), "a", encoding="utf-8") as handle:
             handle.write(event("optimize", 600, group="AI 台湾家宽线路", **{"from": "台湾 家宽 02"}, to="台湾 家宽 04",
                                reason="sustained_slow", score_from=410.2, score_to=156.0, latency_from=228,
-                               latency_to=123, jitter_from=121, jitter_to=22, held_cycles=30,
+                               latency_to=123, jitter_from=121, jitter_to=22, slow_cycles=30, window_cycles=41,
                                preserved_connections=5) + "\n")
         text = self.report()
-        self.assertIn("换线方式：节点故障时切换；持续 10 分钟以上明显慢于备用节点时更换，24 小时内最多 3 次", text)
-        self.assertIn("持续变慢 30 轮 · 延迟 228 → 123 ms · 抖动 121 → 22 ms · 评分 410.2 → 156.0 · 保留连接 5 个", text)
+        self.assertIn("换线方式：节点故障时切换；15 分钟内累计 10 分钟明显慢于备用节点时更换，24 小时内最多 3 次", text)
+        self.assertIn("持续偏慢（近 41 轮中 30 轮）· 延迟 228 → 123 ms · 抖动 121 → 22 ms · 评分 410.2 → 156.0 · 保留连接 5 个", text)
         off = dict(SETTINGS, ai_line=dict(SETTINGS["ai_line"], slow_exit=False))
         self.assertIn("换线方式：只在节点故障时切换（已关闭“节点变慢时更换”）", self.report(settings=off))
         # written, but the service has not made its first run-time check yet

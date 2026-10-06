@@ -54,15 +54,16 @@ class DecisionContractTests(unittest.TestCase):
 
     def test_ai_line_slow_exit_wording(self):
         base = {"controller_connected": True, "candidate_count": 3, "failover_only": True, "slow_exit": True,
-                "slow_exit_required": 30, "slow_exit_minutes": 10, "slow_exit_daily_max": 3}
-        idle = contract.resolve_group_decision(dict(base, slow_exit_current=2), 1789762600)
+                "slow_exit_required": 30, "slow_exit_minutes": 10, "slow_exit_window_minutes": 15,
+                "slow_exit_daily_max": 3}
+        idle = contract.resolve_group_decision(dict(base, slow_exit_current=5), 1789762600)
         self.assertEqual((idle["code"], idle["reason_code"], idle["title"]),
                          ("stable", "failover_only_keep", "当前节点正常，专线保持出口不变"))
-        self.assertIn("持续 10 分钟以上明显慢于备用节点时也会更换，24 小时内最多 3 次", idle["detail"])
+        self.assertIn("当前节点在 15 分钟内累计 10 分钟明显慢于备用节点时也会更换，24 小时内最多 3 次", idle["detail"])
         slow = contract.resolve_group_decision(dict(base, slow_exit_current=12), 1789762600)
         self.assertEqual((slow["code"], slow["reason_code"], slow["title"]),
                          ("stable", "slow_exit_confirming", "当前节点偏慢，正在确认（12/30）"))
-        self.assertIn("现有连接不中断", slow["detail"])
+        self.assertIn("15 分钟内累计 10 分钟即切到同国家的家宽节点，现有连接不中断", slow["detail"])
         capped = contract.resolve_group_decision(
             dict(base, slow_exit_current=30, slow_exit_blocked="capped"), 1789762600)
         self.assertEqual((capped["reason_code"], capped["title"]),
