@@ -1,7 +1,7 @@
 # 端到端演练与可交互预览（仅 Linux，开发用）
 
 在隔离的假 Mac 目录里用真实的安装器、旧版（标签 v0.5.0）与当前版本程序完整走一遍：旧版运行 → `install.command`
-迁移 → 设置页升级线路 → AI 分流体检 → 节点故障 → 关闭 / 重新开启专线 → 卸载。Clash Verge 的文件、内核校验
+迁移 → 设置页升级线路 → AI 分流体检 → 节点持续变慢（约 11 分钟，真实等待）→ 节点故障 → 关闭 / 重新开启专线 → 卸载。Clash Verge 的文件、内核校验
 和 Mihomo 控制器是模拟的（`world.py`、`fake_core.py`、`fake_clash.py`）。
 
 需要 PyYAML 和 Playwright（仅此目录使用，不进发布包）。**不要在 Mac 上运行**：它会在
@@ -12,7 +12,7 @@ python3 sim/e2e/run.py /tmp/sr-e2e "$(command -v python3.9 || command -v python3
 python3 sim/e2e/build_interactive.py
 ```
 
-- `run.py WORKDIR PYTHON`：约 4 分钟；结果在 `WORKDIR/results.json`，看板与接口实录在 `WORKDIR/recording.json`。
+- `run.py WORKDIR PYTHON`：约 16 分钟；结果在 `WORKDIR/results.json`，看板与接口实录在 `WORKDIR/recording.json`。
   运行时占用 17654 端口。
 - `build_interactive.py`：读取 `work/recording.json`（把 WORKDIR 设为 `sim/e2e/work`，或自行拷贝），生成
   `interactive/index.html`（真实看板回放实录）与 `interactive/settings.html`（真实设置页 + 浏览器内模拟后端）。

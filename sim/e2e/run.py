@@ -179,6 +179,9 @@ REC = {"status": [], "markers": [], "api": {}}
 REC_STOP = threading.Event()
 
 
+REC_EVERY = [2]
+
+
 def recorder():
     while not REC_STOP.is_set():
         try:
@@ -187,7 +190,7 @@ def recorder():
                 REC["status"].append({"at": time.time(), "data": data})
         except Exception:
             pass
-        REC_STOP.wait(2)
+        REC_STOP.wait(REC_EVERY[0])
 
 
 def mark(label):
@@ -295,6 +298,58 @@ status = wait_status(VERSION)
 RESULT["status_after_apply"] = status
 step("dashboard", groups=[(g["name"], g.get("ai_line"), (g.get("auto_lock") or {}).get("country_label"), g["current"],
                            g.get("hot_standby"), g.get("decision")) for g in status["groups"]])
+
+# ---- 4b. "节点变慢时更换" is a SteadyRoute setting: switching it never writes to Clash
+reloads_before, files_before = CLASH.reloads, files()
+toggles = []
+for value in (False, True):
+    code, plan = post("/api/settings/preview", {"ai_line": {"slow_exit": value}})
+    code, done = post("/api/settings/apply", {"ai_line": {"slow_exit": value}})
+    toggles.append((value, code, plan, done, http("GET", "/api/settings")[1]["ai_line"]))
+step("slow exit switch", toggles=toggles, reloads=CLASH.reloads - reloads_before, files_same=files() == files_before)
+assert CLASH.reloads == reloads_before and files() == files_before
+
+# ---- 4c. the AI line's node keeps answering but turns slow and jittery. It never fails, so a
+#          failover never comes: the slow-node exit moves the line after about ten minutes.
+AI = "AI 台湾家宽线路"
+slow = CLASH.groups[AI]["now"]
+normal = (CLASH.latency[slow], CLASH.jitter[slow])
+chats = [CLASH.open_stream(AI, "claude.ai", "Claude"), CLASH.open_stream(AI, "api.anthropic.com", "claude")]
+mark("当前节点变慢：%s 仍然连通，延迟和抖动升高" % slow)
+CLASH.latency[slow], CLASH.jitter[slow] = 300, 150
+REC_EVERY[0] = 4
+t0 = time.time()
+seen, selects_before = {}, len([e for e in CLASH.log if e["kind"] == "select"])
+closes_before = len([e for e in CLASH.log if e["kind"] == "close"])
+while time.time() - t0 < 20 * 60 and CLASH.groups[AI]["now"] == slow:
+    group = [g for g in http("GET", "/api/status")[1]["groups"] if g.get("ai_line")][0]
+    if "正在确认" in group["decision"] and "confirming" not in seen:
+        seen["confirming"] = {"at": round(time.time() - t0), "title": group["decision"], "detail": group["decision_detail"],
+                              "code": group["decision_code"], "failovers_24h": group.get("failovers_24h")}
+        mark("看板显示：%s" % group["decision"])
+    if group["decision_code"] in ("failover_now",):
+        seen["failed"] = True
+    time.sleep(2)
+moved = CLASH.groups[AI]["now"]
+waited = round(time.time() - t0, 1)
+mark("因持续变慢更换：%s → %s（旧连接保留）" % (slow, moved))
+time.sleep(8)
+group = [g for g in http("GET", "/api/status")[1]["groups"] if g.get("ai_line")][0]
+events = [json.loads(line) for line in (HOME / "Library/Logs/SteadyRoute/events.jsonl").read_text(encoding="utf-8").splitlines()
+          if '"optimize"' in line]
+step("slow exit", slow=slow, now=moved, seconds=waited, same_country=moved in world.TW, never_failed="failed" not in seen,
+     confirming=seen.get("confirming"), after_title=group["decision"], after_detail=group["decision_detail"],
+     closed_connections=len([e for e in CLASH.log if e["kind"] == "close"]) - closes_before,
+     old_connections_still_on_old_node=[CLASH.connections.get(cid, {}).get("node") == slow for cid in chats],
+     selects=len([e for e in CLASH.log if e["kind"] == "select"]) - selects_before,
+     event=events[-1] if events else None)
+assert moved != slow and moved in world.TW, "the slow node was not left for a Taiwan residential node"
+assert all(CLASH.connections.get(cid, {}).get("node") == slow for cid in chats), "an existing connection was cut"
+CLASH.latency[slow], CLASH.jitter[slow] = normal
+for cid in chats:
+    CLASH.connections.pop(cid, None)
+REC_EVERY[0] = 2
+time.sleep(20)
 
 # ---- 5. a Taiwan node fails: the replacement must be Taiwan residential
 current = CLASH.groups["AI 台湾家宽线路"]["now"]

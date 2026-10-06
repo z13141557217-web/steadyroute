@@ -381,6 +381,29 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(legacy[AI_GROUP]["auto_lock"]["country_label"], "日本")
         self.assertNotIn("♻️ 自动选择", snapshots["legacy"]["service"]["auto_lock_idle"], "url-test groups are not listed")
 
+    def test_ai_line_leaves_a_slow_node_after_ten_minutes_of_cycles(self):
+        slow = US_RES[2]
+        for setting, expected in (({}, [(AI_GROUP, US_RES[0])]), ({"slow_exit": False}, [])):
+            with self.subTest(setting=setting):
+                self.setUp()
+                self.serve(friend_proxies(now_ai=slow))
+                self.net.latency[slow] = 520
+                self.net.connections = [{"id": "chat", "chains": [slow, AI_GROUP]}]
+                line = dict({"enabled": True, "group_name": AI_GROUP, "country": "US"}, **setting)
+                with mock.patch.dict(router.POLICY_CONFIG, {"ai_line": line}):
+                    for _ in range(router.SLOW_EXIT_CYCLES - 1):
+                        self.cycle()
+                    self.assertEqual(self.net.puts, [], "ordinary lines would have moved after three cycles")
+                    for _ in range(8):
+                        self.cycle()
+                    snapshots = router.build_status_snapshots(self.state, self.net.proxy_data, [], now=int(time.time()))
+                self.assertEqual(self.net.puts, expected)
+                self.assertEqual(self.net.deletes, [], "existing connections stay on the old node")
+                self.assertEqual(self.net.proxy_data[GROUP]["now"], US_RES[0], "the other line is not involved")
+                group = {item["name"]: item for item in snapshots["v1"]["groups"]}[AI_GROUP]
+                self.assertEqual(group["metrics"]["performance_switches_24h"], len(expected))
+                self.assertNotIn("回优", group["decision"]["title"] + group["decision"]["detail"])
+
     def test_fixed_profile_is_untouched(self):
         fixed = cycle_harness.load_router("auto_lock_fixed_router")
         self.assertEqual(fixed.PROFILE, "fixed")

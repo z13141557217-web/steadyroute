@@ -155,6 +155,20 @@ class SettingsServiceTests(ServiceBase):
                     self.service.apply(changes)
                 self.assertEqual((self.config_path.read_text(encoding="utf-8"), self.files()), before)
 
+    def test_slow_exit_switch_is_saved_without_touching_clash(self):
+        self.clash.extra_groups = ["AI 家宽专线"]
+        self.service.apply({"ai_line": {"enabled": True, "country": "JP"}})
+        self.assertNotIn("slow_exit", self.service.snapshot()["ai_line"], "on unless switched off")
+        files, calls = self.files(), len(self.clash.calls)
+        for value in (False, True):
+            changes = {"ai_line": {"slow_exit": value}}
+            self.assertEqual(self.service.preview(changes), {"clash_change": False})
+            self.assertEqual(self.service.apply(changes), {"clash_change": False})
+            line = self.service.snapshot()["ai_line"]
+            self.assertEqual((line["slow_exit"], line["enabled"], line["country"]), (value, True, "JP"))
+        self.assertEqual(self.files(), files)
+        self.assertEqual([call for call in self.clash.calls[calls:] if call[0] != "GET"], [])
+
     def test_weekly_sync_updates_rules_and_reapplies(self):
         self.clash.extra_groups = ["AI 家宽专线"]
         self.service.apply({"ai_line": {"enabled": True, "country": "JP"}})

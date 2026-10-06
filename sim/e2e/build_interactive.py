@@ -159,7 +159,7 @@ backend = """<script>(function(){
     var c=config(),migrating=false;
     if(body.migration==='accept'){if(S.phase!=='before')throw '没有待迁移的旧版线路';migrating=true;
       c.ai={enabled:true,country:'TW',group:'AI 台湾家宽线路'};c.managed=[{group:'香港家宽自动备援',country:'HK'}]}
-    if(body.ai_line){c.ai.enabled=!!body.ai_line.enabled;if(body.ai_line.country)c.ai.country=body.ai_line.country}
+    if(body.ai_line){if('enabled' in body.ai_line)c.ai.enabled=!!body.ai_line.enabled;if(body.ai_line.country)c.ai.country=body.ai_line.country}
     if(body.manual)c.manual=body.manual.slice();
     if(c.ai.enabled&&API.unsupported[c.ai.country])throw API.unsupported[c.ai.country]+'不在 ChatGPT / Claude 的服务地区内，不能用作 AI 专线';
     return {c:c,migrating:migrating}}
@@ -197,7 +197,7 @@ backend = """<script>(function(){
   function settingsSnap(){
     var s=clone(S.phase==='after'?API.settings_after:API.settings_before);
     s.migration=S.phase==='before'?API.settings_before.migration:null;
-    s.ai_line={enabled:S.ai.enabled,country:S.ai.country,group_name:S.ai.group};
+    s.ai_line={enabled:S.ai.enabled,country:S.ai.country,group_name:S.ai.group};if(S.slow===false)s.ai_line.slow_exit=false;
     s.managed_lines=S.managed.map(function(m){return {group_name:m.group,country:m.country}});
     s.manual=S.manual.slice();s.exclude_groups=S.exclude.slice();
     s.applied={at:S.applied.at,groups:S.applied.groups.slice(),dropped:[],profile_uid:API.settings_after.applied.profile_uid};
@@ -242,6 +242,7 @@ backend = """<script>(function(){
       var n,p;try{n=next(body);p=plan(n)}catch(err){return reply(409,{error:String(err)})}
       if(path==='/api/settings/preview')return reply(200,p);
       if(body.takeover)S.on[body.takeover.group]=!!body.takeover.on;
+      if(body.ai_line&&('slow_exit' in body.ai_line))S.slow=!!body.ai_line.slow_exit;
       if(body.migration==='dismiss'&&S.phase==='before')S.phase='dismissed';
       var result=p.clash_change?commit(n,p):{clash_change:false};save();return reply(200,result)}
     return reply(404,{error:'not_found'})};
