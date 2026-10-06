@@ -134,6 +134,10 @@ MIN_ABSOLUTE_GAIN_MS = 180
 MIN_RELATIVE_GAIN = 0.30
 PERFORMANCE_COOLDOWN_SECONDS = 30 * 60
 MANUAL_HOLD_SECONDS = 60 * 60
+# AI line only: leave a node that works but has stayed clearly slower than a standby.
+SLOW_EXIT_WINDOW = 45                 # full cycles looked at: about 15 minutes
+SLOW_EXIT_CYCLES = 30                 # of those, cycles the gap must be there: about 10 minutes
+SLOW_EXIT_DAILY_MAX = 3               # per line, per 24 hours
 LATENCY_ALPHA = 0.25
 AVAILABILITY_ALPHA = 0.20
 JITTER_ALPHA = 0.25
@@ -208,7 +212,10 @@ def refresh_auto_lock(state, proxy_data, now):
     policies, statuses, events = auto_lock.build_policies(proxy_data, state, now, settings)
     for policy in policies:
         if line.get("enabled") and policy["group_name"] == line.get("group_name"):
+            # No ordinary performance switch on the AI line. slow_exit (on unless the user
+            # turned it off) still lets it leave a node that stays clearly slower.
             policy["failover_only"] = True
+            policy["slow_exit"] = bool(line.get("slow_exit", True))
     # A country without residential nodes is shown but never routed.
     routed = [policy for policy in policies if policy["static_candidates"]]
     apply_policies(routed)
@@ -564,7 +571,9 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         target = group_state.get("handover_new_node")
     last_switch = int(group_state.get("last_switch_at", 0))
     cooldown = max(0, PERFORMANCE_COOLDOWN_SECONDS - (int(now) - last_switch)) if last_switch else 0
-    failover_only = bool((POLICY_BY_GROUP.get(group_name) or {}).get("failover_only"))
+    policy = POLICY_BY_GROUP.get(group_name) or {}
+    failover_only = bool(policy.get("failover_only"))
+    slow_exit_on = bool(failover_only and policy.get("slow_exit"))
     manual_hold = max(0, int(group_state.get("manual_hold_until", 0)) - int(now))
     safe_backup_available = any(
         name != current and eligible_for_optimization(state.get("nodes", {}).get(name, {}))
@@ -598,6 +607,13 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         # The AI line never switches for speed, so it has no performance cooldown to sit out.
         "cooldown_remaining_seconds": 0 if failover_only else cooldown,
         "failover_only": failover_only,
+        "slow_exit": slow_exit_on,
+        "slow_exit_current": sum(group_state.get("slow_window") or []) if slow_exit_on else 0,
+        "slow_exit_required": SLOW_EXIT_CYCLES,
+        "slow_exit_blocked": slow_exit_state(group_state, now) if slow_exit_on else None,
+        "slow_exit_daily_max": SLOW_EXIT_DAILY_MAX,
+        "slow_exit_minutes": SLOW_EXIT_CYCLES * PROBE_INTERVAL_SECONDS // 60,
+        "slow_exit_window_minutes": SLOW_EXIT_WINDOW * PROBE_INTERVAL_SECONDS // 60,
         "manual_hold_remaining_seconds": manual_hold,
         "performance_optimization_paused": manual_hold > 0,
         "safety_failover_active": bool(state.get("controller_connected", bool(proxy_data)) and candidates),
@@ -1951,6 +1967,7 @@ def apply_switch(group_name, group_state, kind, old, new, now):
         "recovery_observe_until": int(now + observe),
         "better_candidate": None,
         "better_streak": 0,
+        "slow_window": [],
         "dynamic_no_candidate": False,
     })
     if recovery is not None:
@@ -2134,10 +2151,15 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
 
     active = active_connections(group_name, connections)
 
-    # The AI line keeps its exit IP as long as the node works: no switch just for speed.
-    if (POLICY_BY_GROUP.get(group_name) or {}).get("failover_only"):
+    policy = POLICY_BY_GROUP.get(group_name) or {}
+    if policy.get("failover_only"):
+        if policy.get("slow_exit"):
+            slow_exit(group_name, candidates, current, state, group_state, active, now, dry_run)
+            return
+        # The AI line keeps its exit IP as long as the node works: no switch just for speed.
         group_state["better_candidate"] = None
         group_state["better_streak"] = 0
+        group_state["slow_window"] = []
         group_state["last_seen"] = current
         log_routine((group_name, "keep"), "fixed:%s" % current,
                     "%s: keep %s; the AI line switches only when the node fails" % (group_name, current))
@@ -2221,6 +2243,82 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         log("%s: lossless recovery preserved %d existing connections on %s" % (
             group_name, len(active), current
         ))
+
+
+def slow_exit_state(group_state, now):
+    """Why the AI line may not leave a slow node right now, or None when it may."""
+    if now < float(group_state.get("manual_hold_until", 0)):
+        return "manual"
+    if now - float(group_state.get("last_switch_at", 0)) < PERFORMANCE_COOLDOWN_SECONDS:
+        return "cooldown"
+    if health_model.count_recent(group_state.get("performance_switch_times"), now, 24 * 3600) >= SLOW_EXIT_DAILY_MAX:
+        return "capped"
+    return None
+
+
+def slow_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
+    """AI line: the current node works. Leave it only when it has been clearly slower than a
+    mature same-country residential standby for 10 of the last 15 minutes.
+
+    Each full cycle is marked slow when the weighted-score gap reaches what an ordinary
+    performance switch asks for (MIN_ABSOLUTE_GAIN_MS and MIN_RELATIVE_GAIN). The line moves
+    once SLOW_EXIT_CYCLES of the last SLOW_EXIT_WINDOW cycles are marked (three cycles in a row
+    are enough elsewhere). Never during a manual preference or within
+    PERFORMANCE_COOLDOWN_SECONDS of any switch, and at most SLOW_EXIT_DAILY_MAX times in
+    24 hours. Old connections stay on the old node."""
+    group_state["better_candidate"] = None
+    group_state["better_streak"] = 0
+    group_state["last_seen"] = current
+    blocked = slow_exit_state(group_state, now)
+    if blocked in ("manual", "cooldown"):
+        group_state["slow_window"] = []
+        log_routine((group_name, "keep"), "%s:%s" % (blocked, current),
+                    "%s: keep %s; slow-node exit paused (%s)" % (group_name, current, blocked))
+        return
+    nodes = state["nodes"]
+    eligible = [name for name in candidates if eligible_for_optimization(nodes.get(name, {}))]
+    leader = min((name for name in eligible if name != current),
+                 key=lambda name: float(nodes[name]["score"]), default=None)
+    if current not in eligible or leader is None:
+        group_state["slow_window"] = []
+        log_routine((group_name, "keep"), "collecting:%s" % current,
+                    "%s: keep %s; no mature standby to compare against" % (group_name, current))
+        return
+    current_score = float(nodes[current]["score"])
+    leader_score = float(nodes[leader]["score"])
+    gain = current_score - leader_score
+    slower = gain >= MIN_ABSOLUTE_GAIN_MS and gain / max(current_score, 1.0) >= MIN_RELATIVE_GAIN
+    window = (list(group_state.get("slow_window") or []) + [1 if slower else 0])[-SLOW_EXIT_WINDOW:]
+    group_state["slow_window"] = window
+    marked = sum(window)
+    if not slower or marked < SLOW_EXIT_CYCLES:
+        log_routine((group_name, "keep"), "steady:%s:%d" % (current, marked // 5),
+                    "%s: keep %s; weighted score %.0f (best standby %s %.0f); slow in %d of the last %d cycles" % (
+                        group_name, current, current_score, leader, leader_score, marked, len(window)))
+        return
+    if blocked == "capped":
+        log_routine((group_name, "keep"), "capped:%s" % current,
+                    "%s: keep %s; slower than %s but %d slow-node exits already in 24 hours" % (
+                        group_name, current, leader, SLOW_EXIT_DAILY_MAX))
+        return
+    if not business_preflight(group_name, leader, state, dry_run):
+        # Ask again after a few more slow cycles rather than every cycle.
+        group_state["slow_window"] = [1] * (SLOW_EXIT_CYCLES - 5)
+        log("%s: keep %s; %s failed business preflight" % (group_name, current, leader))
+        return
+    log("%s: SLOW EXIT %s -> %s; weighted score %.0f -> %.0f, slow in %d of the last %d cycles" % (
+        group_name, current, leader, current_score, leader_score, marked, len(window)))
+    select_node(group_name, leader, dry_run)
+    apply_switch(group_name, group_state, "optimize", current, leader, now)
+    current_stats, leader_stats = nodes[current], nodes[leader]
+    logging_setup.write_event(
+        "optimize", group=group_name, **{"from": current}, to=leader, reason="sustained_slow",
+        score_from=round(current_score, 1), score_to=round(leader_score, 1),
+        latency_from=round(float(current_stats.get("latency_ewma") or 0)),
+        latency_to=round(float(leader_stats.get("latency_ewma") or 0)),
+        jitter_from=round(float(current_stats.get("jitter_ewma") or 0)),
+        jitter_to=round(float(leader_stats.get("jitter_ewma") or 0)),
+        slow_cycles=marked, window_cycles=len(window), preserved_connections=len(active))
 
 
 def detect_cycle_resume(state, cycle_started_at):

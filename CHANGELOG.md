@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-06
+
+### Changed
+
+- **切换逻辑变化**：AI 专线在当前节点持续偏慢时更换（`slow_exit`）。v0.5.1 起专线为 `failover_only`，节点慢但
+  探测仍成功时不会离开。现在每轮完整检测比较当前节点与评分最好的成熟备用节点：评分差
+  ≥ `MIN_ABSOLUTE_GAIN_MS`（180 ms）且 ≥ `MIN_RELATIVE_GAIN`（30%）的一轮记为偏慢。最近 `SLOW_EXIT_WINDOW`（45，
+  约 15 分钟）轮里有 `SLOW_EXIT_CYCLES`（30，约 10 分钟）轮偏慢、当前一轮也偏慢、且目标通过业务预检时切换，
+  方式与回优相同（保留旧连接，记为 `optimize`，事件带 `reason: sustained_slow`、切换前后的延迟与抖动、
+  `slow_cycles` / `window_cycles`）。手动选择保护期内和任何一次切换后 `PERFORMANCE_COOLDOWN_SECONDS` 内记录清空；
+  每条专线 24 小时内最多 `SLOW_EXIT_DAILY_MAX`（3）次。故障切换路径未改。
+  先试过“连续计数、不满足则扣减”：对今晚这类抖动型慢节点（约三分之二的轮次满足门槛）中位要 30 分钟、
+  九成要 80 分钟才离开，因此改为窗口占比。
+- 设置 `ai_line.slow_exit`（默认开启）；设置页开关“节点变慢时更换”，关闭后行为与 v0.5.4 相同。修改它不触发
+  Clash 写入。
+- 状态接口：专线 `stable` 的 `reason_code` 新增 `slow_exit_confirming`、`slow_exit_capped`；专线的
+  `handover_grace` 文案不再出现“回优”。
+
+### Fixed
+
+- 诊断信息：专线已写入但服务刚启动、尚未做第一次运行核对时，显示“尚未核对”而不是“未写入专线”。
+
 ## [0.5.4] - 2026-10-05
 
 ### Added

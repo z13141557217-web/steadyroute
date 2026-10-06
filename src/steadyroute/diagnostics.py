@@ -141,6 +141,10 @@ def _switch_line(record, wake_times):
         if near:
             parts.append("距唤醒或启动 %d 秒" % min(near))
     elif kind == "optimize":
+        if record.get("reason") == "sustained_slow":
+            parts.append("持续偏慢（近 %s 轮中 %s 轮）· 延迟 %s → %s ms · 抖动 %s → %s ms" % (
+                record.get("window_cycles"), record.get("slow_cycles"), record.get("latency_from"), record.get("latency_to"),
+                record.get("jitter_from"), record.get("jitter_to")))
         parts += ["评分 %s → %s" % (record.get("score_from"), record.get("score_to")),
                   "保留连接 %s 个" % record.get("preserved_connections")]
     elif kind == "auto_lock_adopt":
@@ -216,6 +220,9 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
             labels.get(line.get("country"), line.get("country")), line.get("group_name"),
             "已写入 %s 条规则，写入于 %s" % (settings.get("applied_rule_count"), _clock(applied.get("at")))
             if line.get("group_name") in (applied.get("groups") or []) else "尚未写入 Clash"))
+        out.append("换线方式：%s" % (
+            "节点故障时切换；15 分钟内累计 10 分钟明显慢于备用节点时更换，24 小时内最多 3 次"
+            if line.get("slow_exit", True) else "只在节点故障时切换（已关闭“节点变慢时更换”）"))
     else:
         out.append("AI 出口：未启用")
     managed = settings.get("managed_lines") or []
@@ -225,8 +232,10 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
     if applied.get("dropped"):
         out.append("内核缺少数据库而跳过的规则：%s" % "、".join(",".join(item) for item in applied["dropped"]))
     watch = settings.get("line_status") or {}
+    written = bool(applied.get("groups"))
     out.append("运行核对：%s%s%s" % (
-        {"ok": "与写入内容一致", "missing": "未生效", "unknown": "连不上 Clash", "off": "未写入专线"}.get(watch.get("state"), "未知"),
+        {"ok": "与写入内容一致", "missing": "未生效", "unknown": "连不上 Clash",
+         "off": "尚未核对（服务启动后约 20 秒开始）" if written else "未写入专线"}.get(watch.get("state"), "未知"),
         "（%s）" % watch["problem"] if watch.get("problem") else "",
         " · 最近一次自动重新写入 %s" % _clock(watch["repaired_at"]) if watch.get("repaired_at") else ""))
     if watch.get("error"):
@@ -244,7 +253,7 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
         lock = group.get("auto_lock") or {}
         metrics = group.get("metrics") or {}
         out.append("%s%s · 锁定%s · %s 个家宽候选 · 当前 %s · 热备 %s" % (
-            group.get("name"), "（AI 专线，只在故障时切换）" if group.get("ai_line") else "",
+            group.get("name"), "（AI 专线）" if group.get("ai_line") else "",
             lock.get("country_label") or group.get("region_label") or "?", lock.get("candidates", len(group.get("candidates") or [])),
             group.get("current"), group.get("hot_standby") or "无"))
         out.append("  状态 %s：%s · 近 24 小时 故障切换 %s · 回优 %s · 节点移除 %s · 切至家宽 %s · 活跃连接 %s" % (

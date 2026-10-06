@@ -195,7 +195,9 @@ class SettingsService(object):
         if "ai_line" in changes:
             line = dict(config.get("ai_line") or {})
             line.update({key: value for key, value in changes["ai_line"].items()
-                         if key in ("enabled", "country", "group_name")})
+                         if key in ("enabled", "country", "group_name", "slow_exit")})
+            if "slow_exit" in line:
+                line["slow_exit"] = bool(line["slow_exit"])
             line.setdefault("group_name", ai_line.DEFAULT_AI_GROUP)
             config["ai_line"] = line
         if "manual" in changes:
@@ -381,7 +383,9 @@ class SettingsService(object):
         return "repaired"
 
     def _needs_clash(self, old, new):
-        keys = lambda config: (config.get("ai_line"), config.get("managed_lines"), (config.get("ai_rules") or {}).get("manual"))
+        # slow_exit only changes how SteadyRoute switches; nothing in Clash depends on it.
+        line = lambda config: {key: value for key, value in (config.get("ai_line") or {}).items() if key != "slow_exit"}
+        keys = lambda config: (line(config), config.get("managed_lines"), (config.get("ai_rules") or {}).get("manual"))
         return keys(old) != keys(new)
 
     def _wants_lines(self, config):

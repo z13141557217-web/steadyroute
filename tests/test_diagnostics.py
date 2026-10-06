@@ -24,7 +24,7 @@ def event(kind, ago, **fields):
 
 
 STATUS = {
-    "service": {"version": "0.5.4", "started_at": NOW - 3 * HOUR, "controller_connected": True,
+    "service": {"version": "0.5.5", "started_at": NOW - 3 * HOUR, "controller_connected": True,
                 "last_start": {"kind": "restart", "at": NOW - 3 * HOUR, "gap_seconds": 4},
                 "memory_current_mb": 32.9, "memory_peak_mb": 33.1, "cycle_count": 540, "state_title": "运行中",
                 "auto_lock_idle": {"🚀 节点选择": {"status": "excluded"}}},
@@ -106,7 +106,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_header_and_lines(self):
         text = self.report()
         head = text.split("\n\n", 1)[0]
-        self.assertIn("版本 0.5.4 · 已运行 3.0 小时", head)
+        self.assertIn("版本 0.5.5 · 已运行 3.0 小时", head)
         self.assertIn("macOS 15.6", head)
         self.assertIn("Clash 内核 v1.19.32 · TUN 开启 · IPv6 关闭 · 控制接口已连接", head)
         lines = self.section(text, "专线")
@@ -115,7 +115,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertIn("跳过的规则：IP-ASN,399358", lines)
         self.assertIn("运行核对：与写入内容一致 · 最近一次自动重新写入", lines)
         groups = self.section(text, "线路")
-        self.assertIn("AI 台湾家宽线路（AI 专线，只在故障时切换） · 锁定台湾 · 11 个家宽候选 · 当前 台湾 家宽 02 · 热备 台湾 家宽 03", groups)
+        self.assertIn("AI 台湾家宽线路（AI 专线） · 锁定台湾 · 11 个家宽候选 · 当前 台湾 家宽 02 · 热备 台湾 家宽 03", groups)
         self.assertIn("近 24 小时 故障切换 3 · 回优 0", groups)
         self.assertIn("🚀 节点选择 · 未接管（excluded）", groups)
 
@@ -174,6 +174,23 @@ class DiagnosticsTests(unittest.TestCase):
         text = self.report(settings=missing)
         self.assertIn("运行核对：未生效（Clash 中缺少 41 条 AI 规则（共写入 41 条））", text)
         self.assertIn("重新写入未成功：Clash 没有接受新配置", text)
+
+    def test_slow_exit_is_reported(self):
+        with open(str(self.logs / "events.jsonl"), "a", encoding="utf-8") as handle:
+            handle.write(event("optimize", 600, group="AI 台湾家宽线路", **{"from": "台湾 家宽 02"}, to="台湾 家宽 04",
+                               reason="sustained_slow", score_from=410.2, score_to=156.0, latency_from=228,
+                               latency_to=123, jitter_from=121, jitter_to=22, slow_cycles=30, window_cycles=41,
+                               preserved_connections=5) + "\n")
+        text = self.report()
+        self.assertIn("换线方式：节点故障时切换；15 分钟内累计 10 分钟明显慢于备用节点时更换，24 小时内最多 3 次", text)
+        self.assertIn("持续偏慢（近 41 轮中 30 轮）· 延迟 228 → 123 ms · 抖动 121 → 22 ms · 评分 410.2 → 156.0 · 保留连接 5 个", text)
+        off = dict(SETTINGS, ai_line=dict(SETTINGS["ai_line"], slow_exit=False))
+        self.assertIn("换线方式：只在节点故障时切换（已关闭“节点变慢时更换”）", self.report(settings=off))
+        # written, but the service has not made its first run-time check yet
+        starting = dict(SETTINGS, line_status={"state": "off", "problem": None, "error": None})
+        self.assertIn("运行核对：尚未核对（服务启动后约 20 秒开始）", self.report(settings=starting))
+        never = dict(starting, applied={})
+        self.assertIn("运行核对：未写入专线", self.report(settings=never))
 
     def test_size_is_bounded(self):
         many = [event("failover", index * 60, group="G", **{"from": "节点 %d" % index}, to="节点 %d" % (index + 1),

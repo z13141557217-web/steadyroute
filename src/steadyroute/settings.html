@@ -103,6 +103,7 @@ details.more > :not(summary) { margin-top: 12px; }
 .grow small { font-size: 12.5px; color: var(--ink-3); }
 .grow small.warn { color: var(--warn); }
 .grow.off b { color: var(--ink-3); }
+.grow.opt { margin: 4px -22px 0; border-top: 1px solid var(--hair); border-bottom: 0; }
 .empty { font-size: 13px; color: var(--ink-3); padding: 14px 22px; }
 .switch { position: relative; width: 42px; height: 24px; flex: 0 0 auto; }
 .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
@@ -254,6 +255,10 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
     <p class="desc">ChatGPT、Claude 等 AI 服务固定从所选国家的家宽节点出口，不会跳到其他国家。</p>
     <div class="choices" id="choices" role="radiogroup" aria-label="AI 出口国家"></div>
     <div class="result" id="ai-result" aria-live="polite"></div>
+    <div class="grow opt" id="slow-row" hidden>
+      <div><b>节点变慢时更换</b><small id="slow-note"></small></div>
+      <label class="switch"><input type="checkbox" id="slow-exit" aria-label="节点变慢时更换"><i></i></label>
+    </div>
     <details class="more" id="check">
       <summary>详情</summary>
       <div class="facts" id="ai-facts"></div>
@@ -458,11 +463,17 @@ function render() {
     result = '<span class="dot warn"></span><span>设置已保存，尚未写入 Clash；确认 Clash Verge 正在运行后重新选择国家。</span>';
   }
   $('#ai-result').innerHTML = result;
+  const slowOn = l.slow_exit !== false;
+  $('#slow-row').hidden = !l.enabled;
+  $('#slow-exit').checked = slowOn;
+  $('#slow-note').textContent = slowOn
+    ? '当前节点在 15 分钟内累计 10 分钟明显慢于备用节点时，换到同国家的家宽节点；现有连接不中断，24 小时内最多 3 次。'
+    : '已关闭：只在节点故障时切换，节点变慢时保持出口不变。';
   const managed = s.managed_lines || [];
   $('#ai-facts').innerHTML = [
     `<div>Clash 中的分组：<b>${esc(l.group_name || 'AI 家宽专线')}</b>${live() ? ` · ${liveRules()} 条 AI 规则排在所有规则之前 · ${esc(ago(s.applied.at))}写入` : ''}</div>`,
     '<div>只包含所选国家的家宽节点，订阅更新后自动跟随；节点全部不可用时拒绝连接，不会改走直连或其他国家。</div>',
-    '<div>按 ip.net.coffee 的要求：规则排在最前；UDP 与 NTP 时间同步同样经专线出口；只在节点故障时切换，出口 IP 尽量不变。</div>',
+    `<div>按 ip.net.coffee 的要求：规则排在最前；UDP 与 NTP 时间同步同样经专线出口；${slowOn ? '节点故障或持续偏慢时才切换' : '只在节点故障时切换'}，出口 IP 尽量不变。</div>`,
     managed.length ? `<div>其他家宽专线：${managed.map(x => `<b>${esc(x.group_name)}</b>（${esc(countryLabel(x.country))}家宽）`).join('、')}</div>` : '',
     (s.applied && (s.applied.dropped || []).length) ? `<div class="warnline">当前 Clash 内核缺少数据库，已跳过：${s.applied.dropped.map(x => esc(x.join(','))).join('、')}</div>` : '',
   ].join('');
@@ -681,6 +692,10 @@ $('#choices').addEventListener('click', e => {
   render();
   if (code === 'off') submit({ ai_line: { enabled: false } }, '已关闭 AI 专线，AI 服务按 Clash 原有规则分流。');
   else submit({ ai_line: { enabled: true, country: code } }, r => `已生效：AI 服务从${countryLabel(code)}家宽出口（${r.rule_count} 条规则）。`);
+});
+$('#slow-exit').addEventListener('change', e => {
+  const on = e.target.checked;
+  submit({ ai_line: { slow_exit: on } }, on ? '已开启：节点持续偏慢时更换，24 小时内最多 3 次。' : '已关闭：只在节点故障时切换。');
 });
 $('#ai-result').addEventListener('click', e => { if (e.target.id === 'recheck') { check = null; render(); runCheck(); } });
 $('#manual-form').addEventListener('submit', e => {
