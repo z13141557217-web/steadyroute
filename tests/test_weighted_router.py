@@ -229,6 +229,38 @@ class RoutingDecisionTests(unittest.TestCase):
             self.assertEqual(self.selected, [], "a standby that cannot reach the AI services is not a target")
             self.assertEqual(sum(state["groups"][group]["slow_window"]), router.SLOW_EXIT_CYCLES - 5)
 
+    def test_failover_uses_the_best_answering_node_when_none_meets_the_thresholds(self):
+        """10-20 diagnostics: every Taiwan candidate was under 90% over 24 hours."""
+        group = "test-group"
+        current = healthy(100)
+        current.update({"last_success": False, "failure_streak": 2, "effective_failure_streak": 2})
+        weak = healthy(150)
+        weak["long_buckets"] = [{"hour": 1, "success": 88, "total": 100, "latency_sum": 8800}]
+        weaker = healthy(120)
+        weaker["long_buckets"] = [{"hour": 1, "success": 70, "total": 100, "latency_sum": 7000}]
+        weaker["score"] = 900.0
+        silent = healthy(50)
+        silent.update({"last_success": False, "success_streak": 0})
+        paused = healthy(40)
+        paused["pause_need"] = 5
+        state = {"nodes": {"current": current, "weak": weak, "weaker": weaker, "silent": silent, "paused": paused},
+                 "groups": {group: {"last_seen": "current"}}}
+        self.assertFalse(any(router.eligible_for_optimization(state["nodes"][n]) for n in ("weak", "weaker")))
+        with mock.patch.object(router, "business_preflight", return_value=True), \
+                mock.patch.object(router.logging_setup, "write_event") as event:
+            router.evaluate_group(group, ["current", "weak", "weaker", "silent", "paused"],
+                                  {group: {"now": "current"}}, [], state, False)
+        self.assertEqual(self.selected, [(group, "weak")], "best score among nodes answering now")
+        self.assertTrue(event.call_args[1]["below_target"])
+        # with a node that meets the thresholds, that one wins even if its score is worse
+        self.selected.clear()
+        good = healthy(300)
+        state["nodes"].update({"current": dict(current), "good": good})
+        state["groups"][group] = {"last_seen": "current"}
+        with mock.patch.object(router, "business_preflight", return_value=True):
+            router.evaluate_group(group, ["current", "weak", "good"], {group: {"now": "current"}}, [], state, False)
+        self.assertEqual(self.selected, [(group, "good")])
+
     def test_real_failure_still_closes_only_stale_connections(self):
         group = "test-group"
         current = healthy(500)

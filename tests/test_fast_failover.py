@@ -369,12 +369,18 @@ class HotStandbyTests(unittest.TestCase):
         weak["long_buckets"] = [{"hour": int(self.now // 3600), "success": 80, "total": 100, "latency_sum": 8000}]
         weak["samples"] = 200
         weak["last_probe_at"] = int(self.now) - 10
-        targets = set(router.choose_probe_targets(self.state, self.proxy_data, now=self.now))
-        self.assertTrue(set(TW_NODES) - {weak_name} <= targets)
-        if weak_name != self.state["groups"][TW_GROUP].get("hot_standby"):
-            self.assertNotIn(weak_name, targets, "under 90% over 24 h: every 30 s")
+        weak["score"] = 5000.0
+        with mock.patch.object(router, "TOP_PROBE_COUNT", 1):
+            targets = set(router.choose_probe_targets(self.state, self.proxy_data, now=self.now))
+            self.assertTrue(set(TW_NODES) - {weak_name} <= targets)
+            self.assertNotEqual(weak_name, self.state["groups"][TW_GROUP].get("hot_standby"))
+            self.assertNotIn(weak_name, targets, "under 90% over 24 h and not among the best: every 30 s")
             weak["last_probe_at"] = int(self.now) - 30
             self.assertIn(weak_name, router.choose_probe_targets(self.state, self.proxy_data, now=self.now))
+        weak["last_probe_at"] = int(self.now) - 10
+        weak["score"] = 50.0
+        self.assertIn(weak_name, router.choose_probe_targets(self.state, self.proxy_data, now=self.now),
+                      "among the best five of its line: every 5 s even under 90%")
 
     def test_failover_storm_requires_full_preflight_and_logs_once(self):
         group = "storm-group"

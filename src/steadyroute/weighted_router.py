@@ -96,6 +96,7 @@ PROBE_WORKERS = 32
 # v0.6: every candidate every 5 s; the current node of each line every second (fast lane).
 PROBE_INTERVAL_SECONDS = 5
 LOW_TIER_PROBE_SECONDS = 30           # nodes under MIN_AVAILABILITY over 24 h that are not paused
+TOP_PROBE_COUNT = 5                   # ...unless among the best five of their line: always every 5 s
 CYCLE_BUDGET_SECONDS = 10
 STALE_AFTER_SECONDS = 50              # no completed cycle for this long: the page says data may be old
 # Sleep detection compares the wall and monotonic clocks (macOS stops the latter while asleep).
@@ -595,10 +596,7 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
     failover_only = bool(policy.get("failover_only"))
     slow_exit_on = bool(failover_only and policy.get("slow_exit"))
     manual_hold = max(0, int(group_state.get("manual_hold_until", 0)) - int(now))
-    safe_backup_available = any(
-        name != current and eligible_for_optimization(state.get("nodes", {}).get(name, {}))
-        for name in candidates
-    )
+    safe_backup_available = best_failover(candidates, state.get("nodes", {}), current) is not None
     old_node = group_state.get("handover_old_node")
     old_connections = connection_count_for_node(group_name, old_node, connections) if old_node else 0
     handover_until = int(group_state.get("handover_grace_until", 0))
@@ -1892,9 +1890,11 @@ def choose_probe_targets(state, proxy_data, now=None):
         group_state["hot_standby"] = hot
         if hot:
             targets.add(hot)
+        ranked = sorted(candidates, key=lambda name: float(state["nodes"].get(name, {}).get("score", 1000000.0)))
         for name in candidates:
             node_state = state["nodes"].get(name, {})
-            low = (int(node_state.get("samples", 0)) >= WINDOW_MIN_SAMPLES
+            low = (name not in ranked[:TOP_PROBE_COUNT]
+                   and int(node_state.get("samples", 0)) >= WINDOW_MIN_SAMPLES
                    and long_availability(node_state) < MIN_AVAILABILITY
                    and not is_paused(node_state, now))
             if not low or now - int(node_state.get("last_probe_at", 0)) >= LOW_TIER_PROBE_SECONDS - 1:
@@ -2023,15 +2023,28 @@ def eligible_for_optimization(node_state):
     )
 
 
+def answering(node_state):
+    """Alive right now: measured, the last two probes answered, not paused."""
+    return (
+        bool(node_state.get("last_success"))
+        and int(node_state.get("success_streak", 0)) >= 2
+        and int(node_state.get("samples", 0)) >= MIN_SUCCESS_STREAK
+        and not is_paused(node_state)
+    )
+
+
 def best_failover(candidates, nodes, current):
-    available = [
-        name for name in candidates
-        if name != current
-        and eligible_for_optimization(nodes.get(name, {}))
-    ]
+    """Where a line goes when its node is confirmed down: the best node that meets the target
+    thresholds (30 minutes >= 95%, 24 hours >= 90%); when none does, the best node that is
+    answering now. Staying on a dead node is never better than a weaker live one (10-20
+    diagnostics: every Taiwan candidate was under 90% over 24 hours, so v0.5 had no backup)."""
+    others = [name for name in candidates if name != current]
+    available = [name for name in others if eligible_for_optimization(nodes.get(name, {}))] or \
+        [name for name in others if answering(nodes.get(name, {}))]
     if not available:
         return None
     return min(available, key=lambda name: float(nodes[name].get("score", 1000000.0)))
+
 
 
 # How each kind of switch leaves the group. One table, so the three switch paths cannot
@@ -2161,11 +2174,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             )
         group_state["manual_hold_until"] = 0
         log("%s: current selection is unavailable: %r" % (group_name, current))
-        mature = [name for name in candidates if eligible_for_optimization(state["nodes"].get(name, {}))]
-        target = min(
-            mature,
-            key=lambda name: float(state["nodes"].get(name, {}).get("score", 1000000.0)),
-        ) if mature else None
+        target = best_failover(candidates, state["nodes"], current)
         if target and business_preflight(group_name, target, state, dry_run):
             select_node(group_name, target, dry_run)
             apply_switch(group_name, group_state, "removed", current, target, now)
@@ -2226,13 +2235,16 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             log("%s: skip %s; business preflight failed" % (group_name, candidate))
         if target:
             reason = "confirmed_failure"
-            log("%s: FAILOVER %s -> %s (%d consecutive failures)" % (group_name, current, target, current_failures))
+            below = not eligible_for_optimization(state["nodes"].get(target, {}))
+            log("%s: FAILOVER %s -> %s (%d consecutive failures)%s" % (
+                group_name, current, target, current_failures,
+                "; no backup meets 95%% / 90%%, using the best answering node" if below else ""))
             select_node(group_name, target, dry_run)
             closed = 0 if dry_run else close_old_connections(group_name, current, connections)
             log("%s: closed %d stale connections" % (group_name, closed))
             logging_setup.write_event(
                 "failover", group=group_name, **{"from": current}, to=target,
-                reason=reason, failures=current_failures, closed_connections=closed, storm=storm,
+                reason=reason, failures=current_failures, closed_connections=closed, storm=storm, below_target=below,
                 lane=(group_state.get("last_confirm") or {}).get("lane", "cycle"),
                 detect_seconds=max(0, int(now) - int(current_stats.get("first_failure_at", now))),
                 recent_probes=recent_points(group_name))

@@ -17,7 +17,8 @@
     关闭旧节点连接。从节点停止回应到切走约 2 秒（v0.5.4 中位约 7 秒）。
   - 完整检测 `PROBE_INTERVAL_SECONDS` 由 20 秒改为 5 秒，每轮探测全部候选；24 小时可用率低于
     `MIN_AVAILABILITY` 且未暂停的节点每 `LOW_TIER_PROBE_SECONDS`（30 秒）一次。取消热备外每轮 1 个的轮换抽查与
-    快速通道的预热加测。非当前节点的基础探测失败在同一轮重试一次，重试成功计为瞬时失败。
+    快速通道的预热加测。每条线路评分最好的 `TOP_PROBE_COUNT`（5）个节点始终每 5 秒探测。非当前节点的基础探测
+    失败在同一轮重试一次，重试成功计为瞬时失败。
   - 完整检测拆为 `plan_cycle`（持 `STATE_LOCK`）、`probe_cycle`（不持锁）、`record_cycle`（持锁，重新读取状态与
     `/proxies`），快速通道在探测期间也能完成切换；当前节点在探测期间被改变的线路丢弃本轮业务判定。
   - 取消固定 30 分钟隔离（`QUARANTINE_*`）。失败且未被同轮复测否定时暂停（`pause_need`），连续成功
@@ -26,7 +27,10 @@
     `half_open` 的文案改为“节点暂停使用” / “节点恢复验证中”，标题带恢复进度。
   - 节点保留 `WINDOW_SECONDS`（30 分钟）检测结果（`window`、`win_n`、`win_success`、`win_p50`、`win_p90`）。
     满 `WINDOW_MIN_SAMPLES`（60）后评分改为 `win_p90 + FAILURE_PENALTY_MS ×（失败百分点）`；切换目标要求
-    30 分钟成功率 ≥ `WINDOW_MIN_SUCCESS`（95%，满 12 个样本后生效）且 24 小时可用率 ≥ 90%。
+    30 分钟成功率 ≥ `WINDOW_MIN_SUCCESS`（95%，满 12 个样本后生效）且 24 小时可用率 ≥ 90%。没有达标节点时，
+    `best_failover` 改选正在回应（连续成功 ≥ 2、未暂停）的最好节点，故障切换事件带 `below_target: true`；
+    节点从订阅消失时同样处理。回优、AI 专线偏慢更换与切至家宽仍只用达标节点。v0.5 在 24 小时可用率普遍
+    低于 90% 的订阅上没有任何备用节点，节点断开后停在原地。
   - 以轮计数的门槛改为按时间：回优确认 `PERFORMANCE_CONFIRM_SECONDS`（60 秒，12 轮）；AI 专线偏慢窗口
     15 分钟内 10 分钟（180 轮中 120 轮）。休眠判断的间隔回退规则固定按 20 秒（`RESUME_GAP_INTERVAL_SECONDS`），
     页面过期阈值固定 50 秒（`STALE_AFTER_SECONDS`）。

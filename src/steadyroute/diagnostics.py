@@ -137,6 +137,8 @@ def _switch_line(record, wake_times):
                   "断开连接 %s 个" % record.get("closed_connections"), "切换前探测 %s" % _probes(record.get("recent_probes"))]
         if record.get("storm"):
             parts.append("多节点同时失败")
+        if record.get("below_target"):
+            parts.append("没有达标的备用节点，换到当前能连通的最好节点")
         near = [at - wake for wake in wake_times if 0 <= at - wake <= NEAR_WAKE_SECONDS]
         if near:
             parts.append("距唤醒或启动 %d 秒" % min(near))
