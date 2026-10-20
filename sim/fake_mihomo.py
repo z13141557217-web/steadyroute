@@ -179,6 +179,9 @@ def make_handler(world):
 
 class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
+    # Mihomo listens with the system maximum backlog. With the default of 5 a burst of parallel
+    # probes (v0.6 probes every candidate at once) is refused on Linux and reads as failures.
+    request_queue_size = 128
 
 
 def serve(world, socket_path):
