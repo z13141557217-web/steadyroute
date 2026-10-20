@@ -640,7 +640,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
       <div class="kpi">
         <span class="k">累计检测</span>
         <span class="v" id="k-cycles">—</span>
-        <span class="note" id="k-cycles-note">每 20 秒一轮</span>
+        <span class="note" id="k-cycles-note">每 5 秒一轮</span>
       </div>
     </div>
   </section>
@@ -685,7 +685,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 <div class="scrim" id="conn-scrim"></div>
 <aside class="drawer" id="conn-drawer" role="dialog" aria-modal="true" aria-labelledby="conn-title" aria-hidden="true" inert>
   <div class="dr-head">
-    <div><p class="eyebrow" id="conn-meta">实时 · 每 20 秒随完整检测更新</p><h2 id="conn-title">活跃连接</h2></div>
+    <div><p class="eyebrow" id="conn-meta">实时 · 每 5 秒随完整检测更新</p><h2 id="conn-title">活跃连接</h2></div>
     <button class="dr-close" type="button" id="conn-close" aria-label="关闭"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg></button>
   </div>
   <div class="seg dr-tabs" id="conn-tabs" role="tablist" aria-label="选择线路"></div>
@@ -793,19 +793,24 @@ const TIPS = {
   }),
   standby: (ctx) => ({
     title: '热备节点',
-    text: `当前节点${ctx && ctx.policy && ctx.policy.confirm_probes ? `连续 ${ctx.policy.confirm_probes} 次探测失败` : '确认故障'}后，会立刻切到它。它和当前节点在同一地区，图中虚线是它的实时延迟（每 20 秒测一次）。`,
+    text: (() => {
+      const p = (ctx && ctx.policy) || {};
+      const extra = p.confirm_probes ? p.confirm_probes - 1 : 4;
+      const wait = p.suspect_after_ms ? p.suspect_after_ms / 1000 : 0.5;
+      return `当前节点每秒测一次。${wait} 秒没有回应就立刻补测 ${extra} 次，同时测热备和直连；全部没有回应才判定故障并切到热备，从节点断开到切走约 2 秒。只要有一次回应就不切。它和当前节点在同一地区，图中虚线是它的实时延迟（每 5 秒测一次）。`;
+    })(),
     value: null,
     anchor: 'failover',
   }),
   chart: () => ({
     title: '实时延迟曲线',
-    text: '实线是当前节点，每 5 秒测一次；虚线是热备，每 20 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
+    text: '实线是当前节点（每秒测一次，图上每 5 秒一个点，没有回应的每一次都画出来）；虚线是热备，每 5 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
     value: null,
     anchor: 'chart',
   }),
   lifecycle: () => ({
     title: '节点状态',
-    text: '稳定：可参与选路。观察中：新节点在积累样本，或隔离期满正在试探。下降：最近有失败。已隔离：10 分钟内失败 3 次，暂停 30 分钟。不会被选中的节点永远不影响当前线路。',
+    text: '稳定：可参与选路。观察中：新节点在积累样本。下降：最近有失败。暂停使用：检测失败且复测未通过，每 5 秒继续检测，连续成功 5 次即恢复（24 小时内第二次 10 次，第三次起 20 次），没有固定等待时间。恢复验证中：已重新连通，正在累计次数。能被切过去的节点，还要最近 30 分钟成功率不低于 95%、24 小时可用率不低于 90%。',
     value: null,
     anchor: 'lifecycle',
   }),

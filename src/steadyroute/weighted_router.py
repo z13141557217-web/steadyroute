@@ -1107,7 +1107,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "window_p90": node["window_p90_ms"],
             "business_last_success": state["nodes"][node["name"]].get("business_last_success"),
             "lifecycle": node["lifecycle"],
-            "lifecycle_title": node["lifecycle_status"]["title"],
+            "lifecycle_title": node["lifecycle_status"]["title"] + (
+                "（%d/%d）" % (node["pause_progress"] or 0, node["pause_need"]) if node["pause_need"] else ""),
             "lifecycle_severity": node["lifecycle_status"]["severity"],
             "lifecycle_detail": node["lifecycle_status"]["detail"],
         }

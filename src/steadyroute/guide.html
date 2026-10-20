@@ -206,15 +206,16 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <span class="k">05</span>
         <h2>怎么检测</h2>
         <div class="facts">
-          <div><span>当前节点</span><b class="live" data-live="fast">5 秒</b><small>一次轻量探测</small></div>
-          <div><span>完整检测</span><b class="live" data-live="cycle">20 秒</b><small>一轮，测候选和热备</small></div>
+          <div><span>当前节点</span><b class="live" data-live="fast">1 秒</b><small>一次轻量探测</small></div>
+          <div><span>全部候选</span><b class="live" data-live="cycle">5 秒</b><small>一轮，每个同国家家宽都测</small></div>
           <div><span>打开 AI 网站</span><b class="live" data-live="business">60 秒</b><small>一次，当前节点和热备</small></div>
         </div>
         <ul>
-          <li><b>快速通道</b>：只测当前节点，间隔很短，用来尽早发现断线。</li>
-          <li><b>完整检测</b>：每一轮测所有候选节点能否连通、延迟多少，同时给热备单独测一次，并轮流抽查几个备用节点，保证“换过去的那个”一直是新鲜可靠的。</li>
+          <li><b>快速通道</b>：当前节点每秒测一次，用来在断线后约 2 秒内发现并切走。它在单独的线程里运行，完整检测再慢也不会耽误它。</li>
+          <li><b>全量检测</b>：每 5 秒把这条线路的全部候选节点都测一遍，每个节点都有最近 30 分钟约 360 次的检测记录。最近 24 小时可用率不到 <span class="live" data-live="minavailpct">90%</span> 的节点不会被换上，只每 30 秒测一次，以节省流量；它们一旦被暂停，就恢复每 5 秒测一次。</li>
           <li><b>业务检测</b>：通过当前节点和热备真正打开 AI 网站（AI 专线用 ChatGPT 和 Claude 的网页与 API 地址）的检测页，确认不只是“能连上”，而是“能用”。</li>
           <li><b>本机网络检查</b>：怀疑故障时会绕开代理直接测一下本机网络，本机断网时不会冤枉节点。</li>
+          <li><b>检测记录</b>：每一次检测的结果都记在本机（保留 3 天），可在设置页“高级信息”下载，用来按你的真实网络校准规则。</li>
         </ul>
       </section>
 
@@ -222,13 +223,13 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <span class="k">06</span>
         <h2>故障切换：什么时候判定坏了、怎么换</h2>
         <ol class="steps">
-          <li><b>发现失败</b>当前节点某次探测失败。</li>
-          <li><b>当场复测</b>同一轮里马上再测 2 次，间隔不到 1 秒，同时检查本机网络。</li>
-          <li><b>确认故障</b>连续 <span class="live" data-live="confirm">3</span> 次都失败，才认定当前节点真的坏了。</li>
+          <li><b>起疑</b>当前节点的探测 <span class="live" data-live="suspect">0.5 秒</span>没有回应。</li>
+          <li><b>并发复测</b>立刻再测 <span class="live" data-live="confirm">4</span> 次（每次间隔 0.15 秒，各等 0.7 秒），同时测热备和本机网络。</li>
+          <li><b>确认故障</b>当前节点一次都没有回应，热备或本机网络正常，才认定当前节点坏了。从节点断开到这里约 2 秒。</li>
           <li><b>换到热备</b>立刻切到同地区热备。热备最近没有验证过时，会先确认它能打开 AI 网站再换。</li>
-          <li><b>断开旧连接</b>只断开还挂在坏节点上的连接，应用会自动重连到新节点；其他连接不受影响。</li>
+          <li><b>断开旧连接</b>只断开还挂在坏节点上的连接，浏览器和应用会马上在新节点重连，页面不会一直转圈；其他连接不受影响。</li>
         </ol>
-        <div class="callout">以下情况<b>不会</b>判定故障：本机断网；Mac 刚从休眠醒来；这一轮所有节点同时失败（说明是本地或 Clash 的问题）；当前节点和热备都打不开同一个 AI 网站（说明是网站自己出了问题，不是节点的错）。</div>
+        <div class="callout">以下情况<b>不会</b>切换：复测中有任何一次回应（偶尔丢一个包、卡不到 1.5 秒）；热备和本机网络也都没有回应（是本机网络的问题）；Mac 刚从休眠醒来的那一轮；当前节点和热备都打不开同一个 AI 网站（是网站自己的问题）。</div>
         <p>如果 10 分钟内已经故障切换了 3 次，说明整体环境不稳，之后每次切换前都会完整验证目标节点能打开 AI 网站，避免在一堆坏节点之间来回跳。</p>
       </section>
 
@@ -238,7 +239,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <p>当前节点能用但变慢了，稳航会在同地区家宽里找更好的，满足下面全部条件才换：</p>
         <div class="facts">
           <div><span>至少快</span><b class="live" data-live="gain">180 ms 且 30%</b><small>两个条件同时满足</small></div>
-          <div><span>连续确认</span><b class="live" data-live="confirmations">3 轮</b><small>每轮都更快才算</small></div>
+          <div><span>连续确认</span><b class="live" data-live="confirmations">60 秒</b><small>每轮都更快才算</small></div>
           <div><span>两次回优间隔</span><b class="live" data-live="cooldown">30 分钟</b><small>避免频繁换出口</small></div>
           <div><span>候选门槛</span><b class="live" data-live="minavail">可用率 ≥ 90%</b><small>且样本足够</small></div>
         </div>
@@ -271,12 +272,13 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <span class="k">08</span>
         <h2>坏节点怎么处理</h2>
         <div class="facts">
-          <div><span>触发隔离</span><b class="live" data-live="qtrigger">10 分钟内失败 3 次</b><small>&nbsp;</small></div>
-          <div><span>隔离时长</span><b class="live" data-live="qtime">30 分钟</b><small>期间不会被选中</small></div>
-          <div><span>恢复条件</span><b class="live" data-live="qrecover">连续成功 3 次</b><small>期满后试探</small></div>
+          <div><span>暂停</span><b>检测失败且复测未通过</b><small>不再作为切换目标</small></div>
+          <div><span>恢复</span><b class="live" data-live="qrecover">连续成功 5 次</b><small>24 小时内第二次 10 次，第三次起 20 次</small></div>
+          <div><span>切换目标门槛</span><b class="live" data-live="window">30 分钟成功率 ≥ 95%</b><small>且 24 小时可用率 ≥ 90%</small></div>
         </div>
-        <p>隔离到期后节点进入“半开放验证”，用少量探测试探它是否真的恢复了，连续成功才重新成为候选。近 24 小时可用率低于 <span class="live" data-live="minavailpct">90%</span> 的节点也不会被主动换上。</p>
-        <p>偶发的单次失败如果被同一轮的其他探测否定（比如复测成功了），只会影响可用率，不计入隔离，避免把最快的节点因为一次丢包就关进去。</p>
+        <p>暂停没有固定时长。暂停中的节点照样每 5 秒检测，连续成功够次数就立刻恢复：第一次约 25 秒，同一天反复出问题的节点要更久（10 次约 50 秒，20 次约 100 秒）。中途再失败一次，次数从头算。</p>
+        <p>偶发的单次失败如果被同一轮的复测否定，只会影响成功率，不会暂停节点。当前正在用的节点即使被暂停，只要还有回应也不会被切走；只有确认故障才会切换。</p>
+        <p>排序看最近 30 分钟：慢请求延迟（最慢那 10% 请求的延迟）加上失败率的折算（每 1% 失败折算 <span class="live" data-live="penalty">200 ms</span>），越低越好。所以偶尔慢一下的节点不会排在稳定的节点前面。</p>
       </section>
 
       <section class="card gsec" id="lifecycle">
@@ -286,8 +288,8 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <tr><td><span class="chip info">节点正在预热</span></td><td>新发现的节点正在积累样本：至少 10 次探测、最近连续成功 3 次，并且至少成功打开过一次 AI 网站。攒够之前不会被选中。</td></tr>
           <tr><td><span class="chip ok">节点健康</span></td><td>各项检测正常，可以作为当前节点或热备。</td></tr>
           <tr><td><span class="chip warn">节点质量下降</span></td><td>还能用，但最近有失败或变慢，不会被主动换上。</td></tr>
-          <tr><td><span class="chip bad">节点已隔离</span></td><td>短时间内失败太多，暂停使用，见<a href="#quarantine">坏节点怎么处理</a>。</td></tr>
-          <tr><td><span class="chip warn">节点正在半开放验证</span></td><td>隔离期满，正在用少量探测确认它是否恢复。</td></tr>
+          <tr><td><span class="chip bad">节点暂停使用</span></td><td>检测失败且复测未通过，见<a href="#quarantine">坏节点怎么处理</a>。括号里是恢复进度，例如（0/5）。</td></tr>
+          <tr><td><span class="chip warn">节点恢复验证中</span></td><td>暂停后已重新连通，正在累计连续成功次数，例如（3/5）。</td></tr>
           <tr><td><span class="chip info">节点已退役</span></td><td>节点已从订阅里消失，记录保留 24 小时后清理。</td></tr>
         </table>
       </section>
@@ -310,8 +312,8 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <span class="k">11</span>
         <h2>延迟曲线怎么看</h2>
         <div class="legend">
-          <div><i class="lg-cur"></i>实线：当前节点，每 5 秒一个点</div>
-          <div><i class="lg-sb"></i>虚线：热备节点，每 20 秒一个点</div>
+          <div><i class="lg-cur"></i>实线：当前节点，每秒测一次，每 5 秒画一个点，没有回应的每一次都画出</div>
+          <div><i class="lg-sb"></i>虚线：热备节点，每 5 秒一个点</div>
           <div><i class="lg-fail"></i>红块：当前节点这次探测失败</div>
           <div><i class="lg-miss"></i>空心圈：热备这次探测失败</div>
           <div><i class="lg-fo"></i>红色实线：故障切换</div>
@@ -349,7 +351,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <ul>
           <li><code>router.log</code>：日常运行记录，保留 14 天。</li>
           <li><code>events.jsonl</code>：每次故障切换、回优、休眠恢复等决策，保留 90 天。</li>
-          <li><code>node-events.jsonl</code>：节点状态变化（下降、隔离、恢复），保留 30 天。</li>
+          <li><code>node-events.jsonl</code>：节点状态变化（下降、暂停、恢复），保留 30 天。</li>
           <li><code>router-error.log</code>：警告和错误，保留 30 天。</li>
         </ul>
         <p>在稳航目录运行 <code>python3 scripts/installer.py status</code> 可以看到是否在运行以及每条线路的锁定情况。</p>
@@ -362,7 +364,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <details><summary>为什么看板上的延迟和 Clash 里显示的不一样？</summary>
             <p>两边测的地址和方式不同：Clash 的测速是它自己发起的，而且可能是很久以前测的；稳航每几秒就测一次，还分轻量探测和完整检测两种。比较同一个节点的变化趋势比比较绝对数值更有意义。</p></details>
           <details><summary>明明有更快的节点，为什么不换？</summary>
-            <p>回优有门槛：要快 180 ms 以上且快 30%，连续 3 轮确认，距离上次回优至少 30 分钟，候选的可用率还要够高。如果你刚在 Clash 里手动选过节点，1 小时内也不会回优。这些门槛是为了让出口保持稳定，而不是追求每一毫秒。</p></details>
+            <p>回优有门槛：要快 180 ms 以上且快 30%，连续确认 1 分钟，距离上次回优至少 30 分钟，候选的可用率还要够高。如果你刚在 Clash 里手动选过节点，1 小时内也不会回优。这些门槛是为了让出口保持稳定，而不是追求每一毫秒。</p></details>
           <details><summary>同地区的家宽全坏了会怎样？</summary>
             <p>稳航会保持当前选择，继续检测，看板显示红色告警。它不会为了“能连上”而换到其他地区或非家宽节点，见<a href="#iron-rule">铁律</a>。</p></details>
           <details><summary>看板打不开怎么办？</summary>
@@ -370,7 +372,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <details><summary>怎么升级、换电脑或卸载？</summary>
             <p>升级：下载新版（或在仓库里 <code>git pull</code>）后再运行一次 <code>install.command</code>，状态、历史和设置都会保留，新版启动失败会自动恢复旧版。换电脑：在新 Mac 上装好 Clash Verge，再运行 <code>install.command</code>。想回到升级前的版本：运行 <code>rollback.command</code>。卸载：运行 <code>uninstall.command</code>，稳航写进 Clash 的专线和规则会一并撤销。</p></details>
           <details><summary>一直在测，会不会耗流量、拖慢网速？</summary>
-            <p>不会。每次探测只是一个几百字节的小请求，业务检测也只打开 AI 网站很小的检测页。和正常上网相比可以忽略。</p></details>
+            <p>不会拖慢网速，但会用一些流量。每次探测是一个很小的请求（约 0.5–5 KB，取决于节点协议），v0.6 起当前节点每秒一次、其余候选每 5 秒一次，每天合计约 20–30 万次，约 0.1–1.3 GB。部分机场按节点倍数计算流量。24 小时可用率不到 90% 的节点只每 30 秒测一次。</p></details>
           <details><summary>“全部节点”里的节点能用来切换吗？</summary>
             <p>不能，那个页面只用来查看订阅里有什么。稳航只会在同一国家的家宽节点之间切换。</p></details>
         </div>
@@ -394,15 +396,16 @@ function fillLive(d) {
     fast: s.fast_probe_interval_seconds && `${s.fast_probe_interval_seconds} 秒`,
     cycle: s.probe_interval_seconds && `${s.probe_interval_seconds} 秒`,
     business: p.business_probe_interval_seconds && `${p.business_probe_interval_seconds} 秒`,
-    confirm: p.confirm_probes && String(p.confirm_probes),
+    confirm: p.confirm_probes && String(p.confirm_probes - 1),
     gain: p.absolute_gain_ms && p.relative_gain != null && `${p.absolute_gain_ms} ms 且 ${Math.round(p.relative_gain * 100)}%`,
-    confirmations: p.confirmations && `${p.confirmations} 轮`,
+    confirmations: p.confirmations && s.probe_interval_seconds && `${p.confirmations * s.probe_interval_seconds} 秒`,
     cooldown: p.cooldown_seconds && min(p.cooldown_seconds),
     minavail: p.min_availability != null && `可用率 ≥ ${Math.round(p.min_availability * 100)}%`,
     minavailpct: p.min_availability != null && `${Math.round(p.min_availability * 100)}%`,
-    qtrigger: p.quarantine_window_seconds && p.quarantine_failures && `${min(p.quarantine_window_seconds)}内失败 ${p.quarantine_failures} 次`,
-    qtime: p.quarantine_seconds && min(p.quarantine_seconds),
-    qrecover: p.quarantine_recovery_successes && `连续成功 ${p.quarantine_recovery_successes} 次`,
+    qrecover: p.pause_successes && `连续成功 ${p.pause_successes[0]} 次`,
+    window: p.window_seconds && p.window_min_success != null && `${min(p.window_seconds)}成功率 ≥ ${Math.round(p.window_min_success * 100)}%`,
+    penalty: p.failure_penalty_ms && `${p.failure_penalty_ms} ms`,
+    suspect: p.suspect_after_ms && `${p.suspect_after_ms / 1000} 秒`,
   };
   document.querySelectorAll('[data-live]').forEach(el => {
     const v = values[el.dataset.live];

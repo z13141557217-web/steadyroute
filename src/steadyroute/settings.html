@@ -32,6 +32,7 @@ main.narrow { gap: 14px; padding-block: 28px 48px; }
   color: var(--ink-2); font: inherit; font-size: 13.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
 }
 .btn:hover { color: var(--ink); border-color: var(--accent-line); }
+a.btn { text-decoration: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
 .btn.primary:hover { background: var(--accent-2); color: var(--surface); }
 .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; margin-top: 8px; }
@@ -301,6 +302,7 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
         <dt>写入位置</dt><dd id="where">—</dd>
         <dt>运行核对</dt><dd id="watch">—</dd>
         <dt>诊断信息</dt><dd><div>版本、线路状态、近 7 天的切换与休眠记录、节点健康数据，用于排查问题。<span class="muted">不含订阅地址、服务器地址、密码和访问过的网站；本机路径与 IP 地址已遮盖。</span></div><button class="btn small" type="button" id="copy-diag">复制诊断信息</button></dd>
+        <dt>检测记录</dt><dd><div>最近 3 天每一次节点检测的结果（当前节点每秒一次，其余节点每 5 秒一次），用于按真实数据校准换线规则。<span class="muted">一个 zip 文件，约 5–10 MB，保存到“下载”文件夹。含节点名称，不含订阅地址、服务器地址和访问过的网站。</span></div><a class="btn small" href="/api/trace" download id="download-trace">下载检测记录</a></dd>
       </dl>
     </div>
   </details>
