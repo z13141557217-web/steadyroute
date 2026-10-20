@@ -442,7 +442,11 @@ def load_state():
     return state_contract.load_persistent_state(STATE_PATH)
 
 
+STATE_GENERATION = [0]   # bumped on every save, so a cycle can tell whether the fast lane wrote meanwhile
+
+
 def save_state(state):
+    STATE_GENERATION[0] += 1
     state_contract.save_persistent_state(STATE_PATH, state)
 
 
@@ -2814,9 +2818,9 @@ def plan_cycle():
         if urls and not node_state.get("business_successes") and (group_name, name) not in scheduled:
             jobs.append((("biz", group_name, name), name, urls[0], BUSINESS_PROBE_TIMEOUT_MS))
             scheduled.add((group_name, name))
-    save_state(state)
     RUNTIME["last_state"] = state
     return dict(clock=cycle_clock, started=cycle_started_at, resume=resume_cycle, targets=targets, jobs=jobs,
+                state=state, generation=STATE_GENERATION[0],
                 business_plan=business_plan, connections=connections,
                 currents={group: current_for_group(proxy_data, group, candidates) for group, candidates in GROUPS.items()})
 
@@ -2836,7 +2840,17 @@ def probe_cycle(plan):
 def record_cycle(plan, results, retry, dry_run):
     cycle_clock, cycle_started_at, resume_cycle = plan["clock"], plan["started"], plan["resume"]
     targets, jobs, business_plan = plan["targets"], plan["jobs"], plan["business_plan"]
-    state = load_state()
+    state = plan["state"]
+    if STATE_GENERATION[0] != plan["generation"]:
+        # The fast lane saved (a failover) while the probes ran: start from what it wrote and
+        # keep this cycle's own bookkeeping.
+        planned = state
+        state = load_state()
+        for group_name, group_state in planned.get("groups", {}).items():
+            fresh = state["groups"].setdefault(group_name, {})
+            for key in ("hot_standby", "business_probe_cursor", "last_business_probe_at"):
+                if key in group_state:
+                    fresh[key] = group_state[key]
     try:
         proxy_data = (api_request("GET", "/proxies") or {}).get("proxies") or {}
     except Exception:
