@@ -50,11 +50,8 @@
    ./install.command
    ```
 
-7. 发布 GitHub Release：
-
-   ```bash
-   ./scripts/publish-release.sh
-   ```
+7. 推送标签。GitHub Actions 的 `releases` 工作流会自动发布该版本的 GitHub Release
+   （见下文），不需要在本机操作。
 
 ## 发布包
 
@@ -73,6 +70,17 @@
 - `.command` 文件在 zip 中保留可执行权限。
 
 ## GitHub Release
+
+`.github/workflows/release.yml` 在每次推送 `main` 和每个 `v*` 标签时运行
+`./scripts/publish-release.sh --missing`：凡是有标签、还没有 Release 页面的版本，都从标签重新
+构建发布包（先跑全部检查与个人信息扫描）并发布。没有缺的就几秒结束。v0.5.0–v0.5.4 当初
+打了标签却没有发布 Release，仓库首页因此一直显示 v0.4.6 为最新版本；这个工作流就是为了不再
+依赖手动这一步。补发的页面开头注明原始发布日期（取自 `CHANGELOG.md`）。
+
+发布说明 `docs/releases/v<版本>.md` 要在推送标签之前合入 `main`，否则该版本会因缺少说明而
+发布失败，补上说明后的下一次运行会再次尝试。
+
+手动发布仍然可用：
 
 `scripts/publish-release.sh [版本]` 从标签在临时 worktree 中重新构建发布包，再用 `gh` 创建
 或更新 Release，说明取自 `docs/releases/v<版本>.md`，附件为该版本的 zip。只有最新的标签

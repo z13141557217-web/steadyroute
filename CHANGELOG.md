@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- GitHub Actions 工作流 `releases`：每次推送 `main` 或 `v*` 标签时，为所有还没有 Release 页面的标签
+  从标签代码重新构建发布包并发布（`scripts/publish-release.sh --missing`）。补发的页面开头注明原始
+  发布日期。用于补齐 v0.1.0、v0.5.0–v0.5.4 缺失的 Release，此后不再依赖手动发布。
+- `docs/releases/v0.1.0.md`。
+
 ## [0.5.4] - 2026-10-05
 
 ### Added
