@@ -133,12 +133,12 @@ NODE_LIFECYCLE_COPY = {
         "next_action_code": "watch_degradation", "next_action": "提高关注度并避免未经确认的回优。",
     },
     "quarantined": {
-        "severity": "critical", "title": "节点已隔离", "description": "节点在故障窗口内达到隔离门槛。",
-        "next_action_code": "wait_quarantine", "next_action": "隔离期内不参与选路并保留低频验证。",
+        "severity": "critical", "title": "节点暂停使用", "description": "检测失败且复测未通过，暂不作为切换目标。",
+        "next_action_code": "wait_quarantine", "next_action": "每 5 秒继续检测，连续成功达到次数后恢复。",
     },
     "half_open": {
-        "severity": "warning", "title": "节点正在半开放验证", "description": "隔离时间已到，节点正在用有限探测验证恢复。",
-        "next_action_code": "verify_recovery", "next_action": "达到连续成功门槛后恢复健康状态。",
+        "severity": "warning", "title": "节点恢复验证中", "description": "暂停后已重新连通，正在累计连续成功次数。",
+        "next_action_code": "verify_recovery", "next_action": "达到连续成功次数后恢复使用。",
     },
     "retired": {
         "severity": "info", "title": "节点已退役", "description": "节点已从订阅候选集合消失并进入审计保留期。",
@@ -421,12 +421,14 @@ def resolve_group_decision(facts, updated_at):
 
 
 def resolve_node_lifecycle(facts, now):
-    quarantine_until = facts.get("quarantine_until")
+    # v0.6: "quarantined" is a pause that ends after pause_need successes in a row (no timer);
+    # "half_open" is a paused node that has started answering again.
+    pause_need = int(facts.get("pause_need", 0) or 0)
     if facts.get("retired_at") is not None:
         code = "retired"
-    elif quarantine_until is not None and int(quarantine_until) > int(now):
+    elif pause_need and int(facts.get("success_streak", 0)) == 0:
         code = "quarantined"
-    elif quarantine_until is not None and int(quarantine_until) > 0 and int(facts.get("quarantine_recovery_streak", 0)) < 3:
+    elif pause_need:
         code = "half_open"
     elif int(facts.get("samples", 0)) == 0:
         code = "discovered"

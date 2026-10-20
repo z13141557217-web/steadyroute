@@ -59,19 +59,21 @@ class DecisionEventFlowTests(unittest.TestCase):
         group = next(item for item in snapshots["v1"]["groups"] if item["name"] == self.group)
         return group, select_node.call_args_list, close_connections.call_args_list
 
+    def confirm_all_but_last(self):
+        """A minute of 5-second cycles that all find the target better, minus the last one."""
+        required = router.PERFORMANCE_CONFIRMATIONS
+        for index in range(1, required):
+            group, selected, _ = self.evaluate_and_snapshot(1789762600 + 5 * index, [])
+            self.assertEqual(group["decision"]["code"], "candidate_confirming")
+            self.assertEqual(group["confirmation"], {"current": index, "required": required})
+            self.assertEqual(selected, [])
+        return 1789762600 + 5 * required
+
     def test_three_confirmations_switch_immediately_and_emit_ordered_handover_events(self):
-        group, selected, _ = self.evaluate_and_snapshot(1789762620, [])
-        self.assertEqual(group["decision"]["code"], "candidate_confirming")
-        self.assertEqual(group["confirmation"], {"current": 1, "required": 3})
-        self.assertEqual(selected, [])
-
-        group, selected, _ = self.evaluate_and_snapshot(1789762640, [])
-        self.assertEqual(group["decision"]["code"], "candidate_confirming")
-        self.assertEqual(group["confirmation"], {"current": 2, "required": 3})
-        self.assertEqual(selected, [])
-
+        self.assertEqual(router.PERFORMANCE_CONFIRMATIONS * router.PROBE_INTERVAL_SECONDS, 60)
+        last = self.confirm_all_but_last()
         old_connections = [{"id": "old", "chains": [self.current, self.group]}]
-        group, selected, closed = self.evaluate_and_snapshot(1789762660, old_connections)
+        group, selected, closed = self.evaluate_and_snapshot(last, old_connections)
         self.assertEqual(selected[0].args, (self.group, self.target, False))
         self.assertEqual(closed, [], "performance recovery must preserve healthy old connections")
         self.assertEqual(group["decision"]["code"], "handover_grace")
@@ -87,9 +89,8 @@ class DecisionEventFlowTests(unittest.TestCase):
         )
 
     def test_no_old_connections_emits_zero_duration_grace_then_observes_recovery(self):
-        self.evaluate_and_snapshot(1789762620, [])
-        self.evaluate_and_snapshot(1789762640, [])
-        group, selected, _ = self.evaluate_and_snapshot(1789762660, [])
+        last = self.confirm_all_but_last()
+        group, selected, _ = self.evaluate_and_snapshot(last, [])
         self.assertEqual(selected[0].args, (self.group, self.target, False))
         self.assertEqual(group["decision"]["code"], "recovery_observing")
         self.assertEqual(

@@ -305,26 +305,21 @@ class RouterTests(unittest.TestCase):
         self.cycle()
 
     def ticks_until(self, predicate, limit=30):
+        """Full cycles (every candidate, 5 s apart) until predicate holds."""
         for tick in range(1, limit + 1):
-            self.net.run_fast_tick(self.state)
-            self.state = router.RUNTIME["last_state"]
+            self.cycle()
             if predicate():
                 return tick
         return None
 
-    def test_fresh_install_gets_a_mature_backup_within_a_minute_of_fast_ticks(self):
+    def test_fresh_install_gets_a_mature_backup_within_a_minute(self):
         self.fresh_install()
         mature = lambda: any(router.eligible_for_optimization(self.state["nodes"].get(n, {})) for n in US_RES[1:])
         ticks = self.ticks_until(mature)
         self.assertIsNotNone(ticks)
-        self.assertLessEqual(ticks * router.FAST_PROBE_INTERVAL_SECONDS, 60, "about a minute, not four")
+        self.assertLessEqual(ticks * router.PROBE_INTERVAL_SECONDS, 60, "about a minute")
         probed = {name for name, url in self.net.probe_calls if url == router.TEST_URL}
-        self.assertFalse(probed & set(JP_RES + US_DC + JP_DC), "only this line's own candidates are warmed")
-        # The boost stops once a backup is mature.
-        before = len(self.net.probe_calls)
-        self.net.run_fast_tick(self.state)
-        extra = [c for c in self.net.probe_calls[before:] if c[1] == router.TEST_URL]
-        self.assertEqual(extra, [])
+        self.assertFalse(probed & set(JP_RES + US_DC + JP_DC), "only this line's own candidates are measured")
         # And the backup is usable straight away.
         self.net.down_nodes.add(US_RES[0])
         self.assertEqual(self.net.run_fast_tick(router.RUNTIME["last_state"]), "failover")

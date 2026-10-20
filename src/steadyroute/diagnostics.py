@@ -302,17 +302,20 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
     others = [record for record in events if record.get("kind") not in SWITCH_LABELS]
     out += [_service_line(record) for record in reversed(others[-MAX_SERVICE_EVENTS:])] or ["没有记录"]
 
-    out += ["", "[节点]", "名称 | 地区 | 状态 | 可用率 短期/长期 | 延迟 | 抖动 | 评分 | 样本 | 连续成功/失败 | 隔离到"]
+    out += ["", "[节点]", "名称 | 地区 | 状态 | 30 分钟成功率 | 中位 / 慢请求延迟 | 24 小时可用率 | 抖动 | 评分 | 样本 | 连续成功/失败 | 恢复进度"]
     nodes = status.get("nodes") or {}
     for name in sorted(nodes, key=lambda key: (nodes[key].get("region_label") or "", -float(nodes[key].get("quality") or 0))):
         node = nodes[name]
-        out.append("%s | %s | %s | %s/%s | %s | %s | %s | %s | %s/%s | %s" % (
+        out.append("%s | %s | %s | %s | %s | %s | %s | %s | %s | %s/%s | %s" % (
             name, node.get("region_label") or "—", node.get("lifecycle_title") or node.get("lifecycle") or "—",
-            _percent(node.get("short_availability")), _percent(node.get("long_availability")),
-            "—" if node.get("latency") is None else "%d ms" % round(node["latency"]),
+            "%s（%s 次）" % (_percent(node.get("window_success")), node.get("window_samples"))
+            if node.get("window_samples") else _percent(node.get("short_availability")),
+            "%s / %s ms" % (node.get("window_p50"), node.get("window_p90")) if node.get("window_p90") is not None
+            else ("—" if node.get("latency") is None else "%d ms" % round(node["latency"])),
+            _percent(node.get("long_availability")),
             "—" if node.get("jitter") is None else "%d ms" % round(node["jitter"]),
             node.get("quality", "—"), node.get("samples", "—"), node.get("success_streak", 0), node.get("failure_streak", 0),
-            _clock(node["quarantine_until"]) if node.get("quarantined") else "—"))
+            "%s/%s" % (node.get("pause_progress") or 0, node["pause_need"]) if node.get("pause_need") else "—"))
     if not nodes:
         out.append("没有节点数据")
 

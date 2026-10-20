@@ -258,28 +258,28 @@
       "reachability": "真实运行快照可达"
     },
     {
-      "scenario": "节点进入隔离",
+      "scenario": "节点暂停使用",
       "facts": {
         "samples": 20,
-        "quarantine_until": 1789766200,
-        "quarantine_recovery_streak": 0
+        "pause_need": 5,
+        "success_streak": 0
       },
       "expected": {
         "lifecycle": "quarantined",
-        "title": "节点已隔离"
+        "title": "节点暂停使用"
       },
       "reachability": "真实运行快照可达"
     },
     {
-      "scenario": "半开放恢复",
+      "scenario": "暂停后恢复验证",
       "facts": {
         "samples": 20,
-        "quarantine_until": 1789762500,
-        "quarantine_recovery_streak": 1
+        "pause_need": 5,
+        "success_streak": 2
       },
       "expected": {
         "lifecycle": "half_open",
-        "title": "节点正在半开放验证"
+        "title": "节点恢复验证中"
       },
       "reachability": "真实运行快照可达"
     },

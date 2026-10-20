@@ -275,11 +275,23 @@ class RoutingDecisionTests(unittest.TestCase):
             ["MANUAL_PREFERENCE_STARTED", "MANUAL_PREFERENCE_INTERRUPTED"],
         )
 
-    def test_quarantined_manual_node_requires_mature_backup_or_fails_closed(self):
+    def test_paused_manual_node_that_answers_is_kept(self):
+        group = "test-group"
+        now = 1800000000
+        paused = healthy(500)
+        paused.update({"pause_need": 5, "success_streak": 2})
+        state = {"nodes": {"manual": paused, "backup": healthy(100)},
+                 "groups": {group: {"last_seen": "old", "last_router_selection": "old"}}, "events": []}
+        with mock.patch.object(router.time, "time", return_value=now):
+            router.evaluate_group(group, ["manual", "backup"], {group: {"now": "manual"}}, [], state, False)
+        self.assertEqual(self.selected, [], "v0.6: only a confirmed failure moves a line")
+        self.assertGreater(state["groups"][group]["manual_hold_until"], now)
+
+    def test_failed_manual_node_requires_mature_backup_or_fails_closed(self):
         group = "test-group"
         now = 1800000000
         quarantined = healthy(500)
-        quarantined["quarantine_until"] = now + 600
+        quarantined.update({"last_success": False, "failure_streak": 2, "effective_failure_streak": 2})
         immature = healthy(100)
         immature["samples"] = 2
         state = {
@@ -341,19 +353,79 @@ class RoutingDecisionTests(unittest.TestCase):
 
 
 class HealthModelTests(unittest.TestCase):
-    def test_quarantine_requires_time_and_three_recovery_successes(self):
+    def test_pause_ends_after_successes_not_after_a_timer(self):
         node = {}
-        started = 1_000_000
-        router.update_node_stats(node, None, started)
-        router.update_node_stats(node, None, started + 60)
-        router.update_node_stats(node, None, started + 120)
-        self.assertTrue(router.is_quarantined(node, started + 121))
+        t = 1_000_000
+        router.update_node_stats(node, 100, t)
+        router.update_node_stats(node, None, t + 5)
+        self.assertTrue(router.is_paused(node, t + 5))
+        for step in range(1, router.PAUSE_SUCCESSES[0]):
+            router.update_node_stats(node, 100, t + 5 + 5 * step)
+            self.assertTrue(router.is_paused(node), "still %d successes short" % (router.PAUSE_SUCCESSES[0] - step))
+        router.update_node_stats(node, 100, t + 5 + 5 * router.PAUSE_SUCCESSES[0])
+        self.assertFalse(router.is_paused(node), "five in a row: 25 s, no 30-minute wait")
+        # a failure in the middle starts the count again
+        router.update_node_stats(node, None, t + 100)
+        router.update_node_stats(node, 100, t + 105)
+        router.update_node_stats(node, None, t + 110)
+        for step in range(router.PAUSE_SUCCESSES[1] - 1):
+            router.update_node_stats(node, 100, t + 115 + 5 * step)
+        self.assertTrue(router.is_paused(node))
+        router.update_node_stats(node, 100, t + 200)
+        self.assertFalse(router.is_paused(node), "second pause in 24 h: 10 in a row")
 
-        router.update_node_stats(node, 100, started + 180)
-        router.update_node_stats(node, 100, started + 240)
-        router.update_node_stats(node, 100, started + 300)
-        self.assertTrue(router.is_quarantined(node, started + 301), "30-minute isolation must still apply")
-        self.assertFalse(router.is_quarantined(node, started + 120 + router.QUARANTINE_SECONDS + 1))
+    def test_repeat_pauses_in_24_hours_need_10_then_20_successes(self):
+        node = {}
+        t = 1_000_000
+        needs = []
+        for round_index in range(4):
+            start = t + round_index * 3600
+            router.update_node_stats(node, None, start)
+            needs.append(node["pause_need"])
+            for step in range(node["pause_need"]):
+                router.update_node_stats(node, 100, start + 5 * (step + 1))
+            self.assertFalse(router.is_paused(node))
+        self.assertEqual(needs, [5, 10, 20, 20])
+        router.update_node_stats(node, None, t + 30 * 3600)      # a day later: back to 5
+        self.assertEqual(node["pause_need"], 5)
+
+    def test_transient_failure_does_not_pause(self):
+        node = {}
+        router.update_node_stats(node, 100, 1_000_000)
+        router.update_node_stats(node, None, 1_000_005, quarantine=False)
+        self.assertFalse(router.is_paused(node))
+
+    def test_v05_quarantine_becomes_a_pause(self):
+        node = healthy(100)
+        node.update({"quarantine_until": 2_000_000, "quarantine_recovery_streak": 1, "recent_failures": [1]})
+        self.assertTrue(router.is_paused(node, 1_999_000))
+        self.assertEqual(node["pause_need"], router.PAUSE_SUCCESSES[0])
+        self.assertNotIn("quarantine_until", node)
+        expired = healthy(100)
+        expired["quarantine_until"] = 1_000
+        self.assertFalse(router.is_paused(expired, 2_000))
+
+    def test_window_score_and_target_threshold(self):
+        node = {}
+        t = 1_000_000
+        for step in range(360):                                   # 30 minutes of 5-second probes
+            delay = None if step % 25 == 0 else (400 if step % 10 == 0 else 100)
+            router.update_node_stats(node, delay, t + 5 * step, quarantine=False)
+        self.assertEqual(node["win_n"], 360)
+        self.assertAlmostEqual(node["win_success"], 1 - 15 / 360.0, places=3)
+        self.assertEqual(node["win_p50"], 100)
+        self.assertEqual(node["win_p90"], 100, "28 slow answers out of 345 are under the slowest 10%")
+        expected = 100 + router.FAILURE_PENALTY_MS * 100 * (1 - node["win_success"])
+        self.assertAlmostEqual(node["score"], expected, places=3)
+        self.assertTrue(router.eligible_for_optimization(node), "95.8% >= 95%")
+        for step in range(360, 372):                               # a bad minute: 12 misses
+            router.update_node_stats(node, None, t + 5 * step, quarantine=False)
+        router.update_node_stats(node, 100, t + 5 * 372)
+        node["success_streak"] = 10
+        self.assertLess(node["win_success"], router.WINDOW_MIN_SUCCESS)
+        self.assertFalse(router.eligible_for_optimization(node), "under 95% over 30 minutes")
+        old = [item for item in node["window"] if item[0] < t + 5 * 372 - router.WINDOW_SECONDS]
+        self.assertEqual(old, [], "nothing older than 30 minutes is kept")
 
     def test_layered_eligibility_rejects_bad_short_or_long_availability(self):
         node = healthy(100)
@@ -365,15 +437,14 @@ class HealthModelTests(unittest.TestCase):
         node["long_buckets"] = [{"hour": 1, "success": 85, "total": 100, "latency_sum": 8500}]
         self.assertFalse(router.eligible_for_optimization(node))
 
-    def test_adaptive_targets_probe_current_and_one_standby_per_group(self):
+    def test_every_candidate_of_every_line_is_a_target(self):
         proxy_data = {
             group: {"now": candidates[0]}
             for group, candidates in router.GROUPS.items()
         }
         state = {"groups": {}, "nodes": {}}
         targets = router.choose_probe_targets(state, proxy_data)
-        expected = len(router.GROUPS) * (1 + router.STANDBY_PROBES_PER_GROUP)
-        self.assertEqual(len(targets), expected)
+        self.assertEqual(set(targets), {name for candidates in router.GROUPS.values() for name in candidates})
 
     def test_confirmed_business_failure_triggers_effective_failure(self):
         node = {}

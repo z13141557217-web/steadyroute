@@ -99,6 +99,12 @@ class FakeNetwork(object):
     def api(self, method, path, payload=None, timeout=10):
         if method == "GET" and path == "/proxies":
             return {"proxies": self.proxy_data}
+        if method == "GET" and path.startswith("/proxies/") and "/delay" not in path:
+            from urllib.parse import unquote
+            item = self.proxy_data.get(unquote(path[len("/proxies/"):]))
+            if item is None:
+                raise RuntimeError("404 %s" % path)
+            return item
         if method == "GET" and path == "/connections":
             return {"connections": list(self.connections)}
         if method == "PUT" and path.startswith("/proxies/"):

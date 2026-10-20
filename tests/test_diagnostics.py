@@ -36,11 +36,13 @@ STATUS = {
         "connections": {"sites": [{"host": "secret-site.example", "count": 3}]},
     }],
     "nodes": {
-        "台湾 家宽 01": {"region_label": "台湾", "lifecycle_title": "节点已隔离", "short_availability": 0.7, "long_availability": 0.92,
-                     "latency": 88.9, "jitter": 2.1, "quality": 15, "samples": 400, "success_streak": 0, "failure_streak": 3,
-                     "quarantined": True, "quarantine_until": NOW + 900},
+        "台湾 家宽 01": {"region_label": "台湾", "lifecycle_title": "节点恢复验证中", "short_availability": 0.7, "long_availability": 0.92,
+                     "latency": 88.9, "jitter": 2.1, "quality": 15, "samples": 400, "success_streak": 3, "failure_streak": 0,
+                     "paused": True, "pause_need": 10, "pause_progress": 3,
+                     "window_success": 0.912, "window_samples": 360, "window_p50": 81, "window_p90": 240},
         "台湾 家宽 02": {"region_label": "台湾", "lifecycle_title": "节点健康", "short_availability": 1.0, "long_availability": 0.97,
-                     "latency": 133.2, "jitter": 3.0, "quality": 92, "samples": 400, "success_streak": 35, "failure_streak": 0},
+                     "latency": 133.2, "jitter": 3.0, "quality": 92, "samples": 400, "success_streak": 35, "failure_streak": 0,
+                     "window_success": 1.0, "window_samples": 360, "window_p50": 120, "window_p90": 168},
     },
 }
 SETTINGS = {
@@ -146,8 +148,8 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertIn("设置变更 · 写入 Clash：AI 台湾家宽线路，41 条规则", service)
         self.assertNotIn("NODE_DISCOVERED", text)
         nodes = self.section(text, "节点")
-        self.assertIn("台湾 家宽 01 | 台湾 | 节点已隔离 | 70%/92% | 89 ms | 2 ms | 15 | 400 | 0/3 | ", nodes)
-        self.assertIn("台湾 家宽 02 | 台湾 | 节点健康 | 100%/97% | 133 ms | 3 ms | 92 | 400 | 35/0 | —", nodes)
+        self.assertIn("台湾 家宽 01 | 台湾 | 节点恢复验证中 | 91%（360 次） | 81 / 240 ms | 92% | 2 ms | 15 | 400 | 3/0 | 3/10", nodes)
+        self.assertIn("台湾 家宽 02 | 台湾 | 节点健康 | 100%（360 次） | 120 / 168 ms | 97% | 3 ms | 92 | 400 | 35/0 | —", nodes)
         self.assertLess(nodes.index("台湾 家宽 02"), nodes.index("台湾 家宽 01"), "healthiest first within a region")
 
     def test_nothing_private_leaves(self):

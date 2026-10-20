@@ -129,7 +129,7 @@ class StatusApiContractTests(unittest.TestCase):
         self.assertIn("暂无成熟备援", group["decision"]["title"])
 
     def test_state_staleness_is_calculated_by_backend(self):
-        self.state["updated_at"] = self.now - (router.PROBE_INTERVAL_SECONDS * 3 + 1)
+        self.state["updated_at"] = self.now - (router.STALE_AFTER_SECONDS + 1)
         payload = router.build_status_snapshots(
             self.state, self.proxy_data, [], now=self.now, memory_mb=24.1
         )["v1"]
