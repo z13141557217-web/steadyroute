@@ -246,6 +246,8 @@ backend = """<script>(function(){
       if(body.migration==='dismiss'&&S.phase==='before')S.phase='dismissed';
       var result=p.clash_change?commit(n,p):{clash_change:false};save();return reply(200,result)}
     return reply(404,{error:'not_found'})};
+  document.addEventListener('click',function(e){if(e.target.closest&&e.target.closest('#download-trace')){e.preventDefault();
+    window.__pvToast&&window.__pvToast('预览环境不提供下载。在本机运行的稳航里，这个按钮会把最近 3 天的检测记录保存为一个 zip。')}},true);
   document.addEventListener('DOMContentLoaded',function(){label();
     document.getElementById('pv-reset').addEventListener('click',function(){S=fresh();save();location.reload()});
     document.getElementById('pv-lose').addEventListener('click',function(){
