@@ -127,7 +127,7 @@ LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR") or os.path.expanduser("~/Library
 MEMORY_SAMPLE_SECONDS = 600
 MEMORY_SAMPLE_LIMIT = 144
 EVENT_KEY_LIMIT = 1000
-LOCAL_CHECK_TIMEOUT_MS = 1000
+LOCAL_CHECK_TIMEOUT_MS = 1500
 LOCAL_CHECK_URLS = (
     "http://captive.apple.com/hotspot-detect.html",
     "https://www.baidu.com/favicon.ico",
@@ -1652,7 +1652,8 @@ def confirm_current_failure(current, cycle_cache, standby=None, first=None):
     if standby and standby != current:
         controls["standby"] = pool.submit(probe_url, standby, FAST_PROBE_URL, CONTROL_TIMEOUT_MS)
     if "local_ok" not in cycle_cache:
-        controls["local"] = pool.submit(local_network_ok)
+        # Own thread, not a probe worker: local_network_ok waits on probe workers itself.
+        controls["local"] = control_pool().submit(local_network_ok)
     answered = False
     for index in range(CONFIRM_PROBES):
         if index:
@@ -2577,6 +2578,17 @@ def refresh_cached_snapshot(proxy_data=None, now=None):
     for group in legacy["groups"]:
         group["timeline"] = public_timeline(group["name"], now)
     update_dashboard_cache(snapshots)
+
+
+CONTROL_POOL = None
+
+
+def control_pool():
+    global CONTROL_POOL
+    with PROBE_POOL_LOCK:
+        if CONTROL_POOL is None:
+            CONTROL_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="steadyroute-control")
+        return CONTROL_POOL
 
 
 STATE_LOCK = threading.RLock()   # the full cycle and the fast lane both change state.json

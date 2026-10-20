@@ -4,19 +4,41 @@
 
 ## [Unreleased]
 
-## [0.5.5] - 2026-10-06
+## [0.6.0] - 2026-10-20
 
 ### Changed
 
-- **切换逻辑变化**：AI 专线在当前节点持续偏慢时更换（`slow_exit`）。v0.5.1 起专线为 `failover_only`，节点慢但
-  探测仍成功时不会离开。现在每轮完整检测比较当前节点与评分最好的成熟备用节点：评分差
-  ≥ `MIN_ABSOLUTE_GAIN_MS`（180 ms）且 ≥ `MIN_RELATIVE_GAIN`（30%）的一轮记为偏慢。最近 `SLOW_EXIT_WINDOW`（45，
-  约 15 分钟）轮里有 `SLOW_EXIT_CYCLES`（30，约 10 分钟）轮偏慢、当前一轮也偏慢、且目标通过业务预检时切换，
-  方式与回优相同（保留旧连接，记为 `optimize`，事件带 `reason: sustained_slow`、切换前后的延迟与抖动、
+- **切换逻辑变化：检测与故障判定重做。**
+  - 快速通道每 `FAST_PROBE_INTERVAL_SECONDS`（1 秒）探测当前节点（HTTP 204，超时 1.5 秒），在独立线程运行。
+    `SUSPECT_AFTER_SECONDS`（0.5 秒）内无回应即进入 `confirm_current_failure`：`CONFIRM_PROBES`（4）次探测，
+    间隔 0.15 秒，各 `CONFIRM_TIMEOUT_MS`（700 ms），同时探测热备（`CONTROL_TIMEOUT_MS` 1000 ms）与 DIRECT
+    （`LOCAL_CHECK_TIMEOUT_MS` 1500 ms，独立线程池）。起疑的那次探测若稍后回应也算。任一回应为 `transient`；
+    当前节点、热备与 DIRECT 全无回应为 `local_offline`；其余为 `confirmed`，经 `evaluate_group` 故障切换并
+    关闭旧节点连接。从节点停止回应到切走约 2 秒（v0.5.4 中位约 7 秒）。
+  - 完整检测 `PROBE_INTERVAL_SECONDS` 由 20 秒改为 5 秒，每轮探测全部候选；24 小时可用率低于
+    `MIN_AVAILABILITY` 且未暂停的节点每 `LOW_TIER_PROBE_SECONDS`（30 秒）一次。取消热备外每轮 1 个的轮换抽查与
+    快速通道的预热加测。非当前节点的基础探测失败在同一轮重试一次，重试成功计为瞬时失败。
+  - 完整检测拆为 `plan_cycle`（持 `STATE_LOCK`）、`probe_cycle`（不持锁）、`record_cycle`（持锁，重新读取状态与
+    `/proxies`），快速通道在探测期间也能完成切换；当前节点在探测期间被改变的线路丢弃本轮业务判定。
+  - 取消固定 30 分钟隔离（`QUARANTINE_*`）。失败且未被同轮复测否定时暂停（`pause_need`），连续成功
+    `PAUSE_SUCCESSES`（5 / 10 / 20，按 24 小时内第几次暂停）后恢复；v0.5 状态中的 `quarantine_until`
+    迁移为一次 5 次的暂停。暂停的当前节点不再触发切换，只有确认故障才切换。节点状态 `quarantined` /
+    `half_open` 的文案改为“节点暂停使用” / “节点恢复验证中”，标题带恢复进度。
+  - 节点保留 `WINDOW_SECONDS`（30 分钟）检测结果（`window`、`win_n`、`win_success`、`win_p50`、`win_p90`）。
+    满 `WINDOW_MIN_SAMPLES`（60）后评分改为 `win_p90 + FAILURE_PENALTY_MS ×（失败百分点）`；切换目标要求
+    30 分钟成功率 ≥ `WINDOW_MIN_SUCCESS`（95%，满 12 个样本后生效）且 24 小时可用率 ≥ 90%。
+  - 以轮计数的门槛改为按时间：回优确认 `PERFORMANCE_CONFIRM_SECONDS`（60 秒，12 轮）；AI 专线偏慢窗口
+    15 分钟内 10 分钟（180 轮中 120 轮）。休眠判断的间隔回退规则固定按 20 秒（`RESUME_GAP_INTERVAL_SECONDS`），
+    页面过期阈值固定 50 秒（`STALE_AFTER_SECONDS`）。
+  - 曲线：快速通道每 5 秒保留一个点，未回应的每次都保留；`TIMELINE_LIMIT` 800。
+- AI 专线在当前节点持续偏慢时更换（`slow_exit`，原定 v0.5.5，未单独发布）。v0.5.1 起专线为 `failover_only`，
+  节点慢但探测仍成功时不会离开。现在每轮完整检测比较当前节点与评分最好的成熟备用节点：评分差
+  ≥ `MIN_ABSOLUTE_GAIN_MS`（180 ms）且 ≥ `MIN_RELATIVE_GAIN`（30%）的一轮记为偏慢。最近 `SLOW_EXIT_WINDOW`
+  （15 分钟）轮里有 `SLOW_EXIT_CYCLES`（10 分钟）轮偏慢、当前一轮也偏慢、且目标通过业务预检时切换，方式与回优
+  相同（保留旧连接，记为 `optimize`，事件带 `reason: sustained_slow`、切换前后的延迟与抖动、
   `slow_cycles` / `window_cycles`）。手动选择保护期内和任何一次切换后 `PERFORMANCE_COOLDOWN_SECONDS` 内记录清空；
-  每条专线 24 小时内最多 `SLOW_EXIT_DAILY_MAX`（3）次。故障切换路径未改。
-  先试过“连续计数、不满足则扣减”：对今晚这类抖动型慢节点（约三分之二的轮次满足门槛）中位要 30 分钟、
-  九成要 80 分钟才离开，因此改为窗口占比。
+  每条专线 24 小时内最多 `SLOW_EXIT_DAILY_MAX`（3）次。先试过“连续计数、不满足则扣减”：对抖动型慢节点中位
+  要 30 分钟、九成要 80 分钟才离开，因此改为窗口占比。
 - 设置 `ai_line.slow_exit`（默认开启）；设置页开关“节点变慢时更换”，关闭后行为与 v0.5.4 相同。修改它不触发
   Clash 写入。
 - 状态接口：专线 `stable` 的 `reason_code` 新增 `slow_exit_confirming`、`slow_exit_capped`；专线的
@@ -25,6 +47,15 @@
 ### Fixed
 
 - 诊断信息：专线已写入但服务刚启动、尚未做第一次运行核对时，显示“尚未核对”而不是“未写入专线”。
+
+### Added
+
+- 检测记录 `probe_trace.py`：快速通道、完整检测与确认结论逐条写入 `~/Library/Logs/SteadyRoute/trace/`
+  （按本地日期分文件，旧的 gzip，保留 3 天）；`GET /api/trace` 返回 zip（含 `names.json`、对应日期的
+  `events.jsonl` 与 `meta.json`）；设置页“高级信息”新增“下载检测记录”。
+- 状态接口节点字段 `pause_need`、`pause_progress`、`window_success`、`window_samples`、`window_p50_ms`、
+  `window_p90_ms`；策略字段 `pause_successes`、`window_seconds`、`window_min_success`、`failure_penalty_ms`、
+  `suspect_after_ms`、`confirm_timeout_ms`、`low_tier_probe_seconds`。
 
 ## [0.5.4] - 2026-10-05
 

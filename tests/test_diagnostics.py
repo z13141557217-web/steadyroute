@@ -24,7 +24,7 @@ def event(kind, ago, **fields):
 
 
 STATUS = {
-    "service": {"version": "0.5.5", "started_at": NOW - 3 * HOUR, "controller_connected": True,
+    "service": {"version": "0.6.0", "started_at": NOW - 3 * HOUR, "controller_connected": True,
                 "last_start": {"kind": "restart", "at": NOW - 3 * HOUR, "gap_seconds": 4},
                 "memory_current_mb": 32.9, "memory_peak_mb": 33.1, "cycle_count": 540, "state_title": "运行中",
                 "auto_lock_idle": {"🚀 节点选择": {"status": "excluded"}}},
@@ -108,7 +108,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_header_and_lines(self):
         text = self.report()
         head = text.split("\n\n", 1)[0]
-        self.assertIn("版本 0.5.5 · 已运行 3.0 小时", head)
+        self.assertIn("版本 0.6.0 · 已运行 3.0 小时", head)
         self.assertIn("macOS 15.6", head)
         self.assertIn("Clash 内核 v1.19.32 · TUN 开启 · IPv6 关闭 · 控制接口已连接", head)
         lines = self.section(text, "专线")
