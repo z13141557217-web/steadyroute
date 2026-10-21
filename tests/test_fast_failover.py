@@ -153,10 +153,12 @@ class FastFailoverCycleTests(unittest.TestCase):
         self.assertEqual(node.get("recent_failures", []), [])
         self.assertEqual(node["effective_failure_streak"], 0)
 
-    def test_confirmed_failures_still_quarantine(self):
+    def test_confirmed_failures_pause_the_node(self):
         self.net.down_nodes.add(self.current)
         self.net.run_cycle(self.state)
-        self.assertTrue(self.state["nodes"][self.current].get("recent_failures"))
+        node = self.state["nodes"][self.current]
+        self.assertEqual(node.get("pause_need"), router.PAUSE_SUCCESSES[0])
+        self.assertTrue(router.is_paused(node))
 
     def test_confirm_probes_do_not_inflate_samples(self):
         before = self.state["nodes"][self.current]["samples"]
@@ -172,7 +174,7 @@ class FastFailoverCycleTests(unittest.TestCase):
         self.assertIs(self.state["local_network_ok"], False)
         for name, length in before.items():
             self.assertEqual(len(self.state["nodes"][name]["short_results"]), length, name)
-            self.assertFalse(int(self.state["nodes"][name].get("quarantine_until", 0)))
+            self.assertFalse(int(self.state["nodes"][name].get("pause_need", 0)))
         codes = [event["code"] for event in self.state["events"]]
         self.assertIn("LOCAL_NETWORK_OFFLINE", codes)
         snapshot = router.build_status_snapshots(self.state, self.net.proxy_data, [], now=int(time.time()))
@@ -360,12 +362,25 @@ class HotStandbyTests(unittest.TestCase):
         router.choose_probe_targets(self.state, self.proxy_data)
         self.assertEqual(self.state["groups"][TW_GROUP]["hot_standby"], TW_NODES[3])
 
-    def test_round_robin_skips_hot_standby_and_quarantined(self):
-        self.state["nodes"][TW_NODES[2]]["quarantine_until"] = int(self.now) + 600
-        rotated = set()
-        for _ in range(len(TW_NODES) * 2):
-            rotated.update(router.choose_probe_targets(self.state, self.proxy_data))
-        self.assertNotIn(TW_NODES[2], rotated)
+    def test_every_candidate_is_probed_each_cycle_and_weak_ones_every_30_seconds(self):
+        self.state["nodes"][TW_NODES[2]]["pause_need"] = 5          # paused: measured every cycle
+        weak = self.state["nodes"][TW_NODES[3]] if len(TW_NODES) > 3 else self.state["nodes"][TW_NODES[1]]
+        weak_name = TW_NODES[3] if len(TW_NODES) > 3 else TW_NODES[1]
+        weak["long_buckets"] = [{"hour": int(self.now // 3600), "success": 80, "total": 100, "latency_sum": 8000}]
+        weak["samples"] = 200
+        weak["last_probe_at"] = int(self.now) - 10
+        weak["score"] = 5000.0
+        with mock.patch.object(router, "TOP_PROBE_COUNT", 1):
+            targets = set(router.choose_probe_targets(self.state, self.proxy_data, now=self.now))
+            self.assertTrue(set(TW_NODES) - {weak_name} <= targets)
+            self.assertNotEqual(weak_name, self.state["groups"][TW_GROUP].get("hot_standby"))
+            self.assertNotIn(weak_name, targets, "under 90% over 24 h and not among the best: every 30 s")
+            weak["last_probe_at"] = int(self.now) - 30
+            self.assertIn(weak_name, router.choose_probe_targets(self.state, self.proxy_data, now=self.now))
+        weak["last_probe_at"] = int(self.now) - 10
+        weak["score"] = 50.0
+        self.assertIn(weak_name, router.choose_probe_targets(self.state, self.proxy_data, now=self.now),
+                      "among the best five of its line: every 5 s even under 90%")
 
     def test_failover_storm_requires_full_preflight_and_logs_once(self):
         group = "storm-group"

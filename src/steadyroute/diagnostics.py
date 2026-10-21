@@ -137,10 +137,20 @@ def _switch_line(record, wake_times):
                   "断开连接 %s 个" % record.get("closed_connections"), "切换前探测 %s" % _probes(record.get("recent_probes"))]
         if record.get("storm"):
             parts.append("多节点同时失败")
+        if record.get("kept_connections"):
+            parts.append("保留仍在收数据的连接 %s 个" % record.get("kept_connections"))
+        if record.get("below_target"):
+            parts.append("没有达标的备用节点，换到当前能连通的最好节点")
         near = [at - wake for wake in wake_times if 0 <= at - wake <= NEAR_WAKE_SECONDS]
         if near:
             parts.append("距唤醒或启动 %d 秒" % min(near))
     elif kind == "optimize":
+        if record.get("reason") == "slow_answers":
+            parts.append("30 分钟内慢回应（超过 1 秒）%s 次 → 目标 %s 次" % (record.get("slow_from"), record.get("slow_to")))
+        if record.get("reason") == "sustained_slow":
+            parts.append("持续偏慢（近 %s 轮中 %s 轮）· 延迟 %s → %s ms · 抖动 %s → %s ms" % (
+                record.get("window_cycles"), record.get("slow_cycles"), record.get("latency_from"), record.get("latency_to"),
+                record.get("jitter_from"), record.get("jitter_to")))
         parts += ["评分 %s → %s" % (record.get("score_from"), record.get("score_to")),
                   "保留连接 %s 个" % record.get("preserved_connections")]
     elif kind == "auto_lock_adopt":
@@ -216,6 +226,9 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
             labels.get(line.get("country"), line.get("country")), line.get("group_name"),
             "已写入 %s 条规则，写入于 %s" % (settings.get("applied_rule_count"), _clock(applied.get("at")))
             if line.get("group_name") in (applied.get("groups") or []) else "尚未写入 Clash"))
+        out.append("换线方式：%s" % (
+            "节点故障时切换；15 分钟内累计 10 分钟明显慢于备用节点时更换，24 小时内最多 3 次"
+            if line.get("slow_exit", True) else "只在节点故障时切换（已关闭“节点变慢时更换”）"))
     else:
         out.append("AI 出口：未启用")
     managed = settings.get("managed_lines") or []
@@ -225,8 +238,10 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
     if applied.get("dropped"):
         out.append("内核缺少数据库而跳过的规则：%s" % "、".join(",".join(item) for item in applied["dropped"]))
     watch = settings.get("line_status") or {}
+    written = bool(applied.get("groups"))
     out.append("运行核对：%s%s%s" % (
-        {"ok": "与写入内容一致", "missing": "未生效", "unknown": "连不上 Clash", "off": "未写入专线"}.get(watch.get("state"), "未知"),
+        {"ok": "与写入内容一致", "missing": "未生效", "unknown": "连不上 Clash",
+         "off": "尚未核对（服务启动后约 20 秒开始）" if written else "未写入专线"}.get(watch.get("state"), "未知"),
         "（%s）" % watch["problem"] if watch.get("problem") else "",
         " · 最近一次自动重新写入 %s" % _clock(watch["repaired_at"]) if watch.get("repaired_at") else ""))
     if watch.get("error"):
@@ -244,7 +259,7 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
         lock = group.get("auto_lock") or {}
         metrics = group.get("metrics") or {}
         out.append("%s%s · 锁定%s · %s 个家宽候选 · 当前 %s · 热备 %s" % (
-            group.get("name"), "（AI 专线，只在故障时切换）" if group.get("ai_line") else "",
+            group.get("name"), "（AI 专线）" if group.get("ai_line") else "",
             lock.get("country_label") or group.get("region_label") or "?", lock.get("candidates", len(group.get("candidates") or [])),
             group.get("current"), group.get("hot_standby") or "无"))
         out.append("  状态 %s：%s · 近 24 小时 故障切换 %s · 回优 %s · 节点移除 %s · 切至家宽 %s · 活跃连接 %s" % (
@@ -293,17 +308,20 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
     others = [record for record in events if record.get("kind") not in SWITCH_LABELS]
     out += [_service_line(record) for record in reversed(others[-MAX_SERVICE_EVENTS:])] or ["没有记录"]
 
-    out += ["", "[节点]", "名称 | 地区 | 状态 | 可用率 短期/长期 | 延迟 | 抖动 | 评分 | 样本 | 连续成功/失败 | 隔离到"]
+    out += ["", "[节点]", "名称 | 地区 | 状态 | 30 分钟成功率 | 中位 / 慢请求延迟 | 24 小时可用率 | 抖动 | 评分 | 样本 | 连续成功/失败 | 恢复进度"]
     nodes = status.get("nodes") or {}
     for name in sorted(nodes, key=lambda key: (nodes[key].get("region_label") or "", -float(nodes[key].get("quality") or 0))):
         node = nodes[name]
-        out.append("%s | %s | %s | %s/%s | %s | %s | %s | %s | %s/%s | %s" % (
+        out.append("%s | %s | %s | %s | %s | %s | %s | %s | %s | %s/%s | %s" % (
             name, node.get("region_label") or "—", node.get("lifecycle_title") or node.get("lifecycle") or "—",
-            _percent(node.get("short_availability")), _percent(node.get("long_availability")),
-            "—" if node.get("latency") is None else "%d ms" % round(node["latency"]),
+            "%s（%s 次）" % (_percent(node.get("window_success")), node.get("window_samples"))
+            if node.get("window_samples") else _percent(node.get("short_availability")),
+            "%s / %s ms" % (node.get("window_p50"), node.get("window_p90")) if node.get("window_p90") is not None
+            else ("—" if node.get("latency") is None else "%d ms" % round(node["latency"])),
+            _percent(node.get("long_availability")),
             "—" if node.get("jitter") is None else "%d ms" % round(node["jitter"]),
             node.get("quality", "—"), node.get("samples", "—"), node.get("success_streak", 0), node.get("failure_streak", 0),
-            _clock(node["quarantine_until"]) if node.get("quarantined") else "—"))
+            "%s/%s" % (node.get("pause_progress") or 0, node["pause_need"]) if node.get("pause_need") else "—"))
     if not nodes:
         out.append("没有节点数据")
 

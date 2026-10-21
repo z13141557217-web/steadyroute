@@ -24,7 +24,7 @@ def event(kind, ago, **fields):
 
 
 STATUS = {
-    "service": {"version": "0.5.4", "started_at": NOW - 3 * HOUR, "controller_connected": True,
+    "service": {"version": "0.6.0", "started_at": NOW - 3 * HOUR, "controller_connected": True,
                 "last_start": {"kind": "restart", "at": NOW - 3 * HOUR, "gap_seconds": 4},
                 "memory_current_mb": 32.9, "memory_peak_mb": 33.1, "cycle_count": 540, "state_title": "运行中",
                 "auto_lock_idle": {"🚀 节点选择": {"status": "excluded"}}},
@@ -36,11 +36,13 @@ STATUS = {
         "connections": {"sites": [{"host": "secret-site.example", "count": 3}]},
     }],
     "nodes": {
-        "台湾 家宽 01": {"region_label": "台湾", "lifecycle_title": "节点已隔离", "short_availability": 0.7, "long_availability": 0.92,
-                     "latency": 88.9, "jitter": 2.1, "quality": 15, "samples": 400, "success_streak": 0, "failure_streak": 3,
-                     "quarantined": True, "quarantine_until": NOW + 900},
+        "台湾 家宽 01": {"region_label": "台湾", "lifecycle_title": "节点恢复验证中", "short_availability": 0.7, "long_availability": 0.92,
+                     "latency": 88.9, "jitter": 2.1, "quality": 15, "samples": 400, "success_streak": 3, "failure_streak": 0,
+                     "paused": True, "pause_need": 10, "pause_progress": 3,
+                     "window_success": 0.912, "window_samples": 360, "window_p50": 81, "window_p90": 240},
         "台湾 家宽 02": {"region_label": "台湾", "lifecycle_title": "节点健康", "short_availability": 1.0, "long_availability": 0.97,
-                     "latency": 133.2, "jitter": 3.0, "quality": 92, "samples": 400, "success_streak": 35, "failure_streak": 0},
+                     "latency": 133.2, "jitter": 3.0, "quality": 92, "samples": 400, "success_streak": 35, "failure_streak": 0,
+                     "window_success": 1.0, "window_samples": 360, "window_p50": 120, "window_p90": 168},
     },
 }
 SETTINGS = {
@@ -106,7 +108,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_header_and_lines(self):
         text = self.report()
         head = text.split("\n\n", 1)[0]
-        self.assertIn("版本 0.5.4 · 已运行 3.0 小时", head)
+        self.assertIn("版本 0.6.0 · 已运行 3.0 小时", head)
         self.assertIn("macOS 15.6", head)
         self.assertIn("Clash 内核 v1.19.32 · TUN 开启 · IPv6 关闭 · 控制接口已连接", head)
         lines = self.section(text, "专线")
@@ -115,7 +117,7 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertIn("跳过的规则：IP-ASN,399358", lines)
         self.assertIn("运行核对：与写入内容一致 · 最近一次自动重新写入", lines)
         groups = self.section(text, "线路")
-        self.assertIn("AI 台湾家宽线路（AI 专线，只在故障时切换） · 锁定台湾 · 11 个家宽候选 · 当前 台湾 家宽 02 · 热备 台湾 家宽 03", groups)
+        self.assertIn("AI 台湾家宽线路（AI 专线） · 锁定台湾 · 11 个家宽候选 · 当前 台湾 家宽 02 · 热备 台湾 家宽 03", groups)
         self.assertIn("近 24 小时 故障切换 3 · 回优 0", groups)
         self.assertIn("🚀 节点选择 · 未接管（excluded）", groups)
 
@@ -146,8 +148,8 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertIn("设置变更 · 写入 Clash：AI 台湾家宽线路，41 条规则", service)
         self.assertNotIn("NODE_DISCOVERED", text)
         nodes = self.section(text, "节点")
-        self.assertIn("台湾 家宽 01 | 台湾 | 节点已隔离 | 70%/92% | 89 ms | 2 ms | 15 | 400 | 0/3 | ", nodes)
-        self.assertIn("台湾 家宽 02 | 台湾 | 节点健康 | 100%/97% | 133 ms | 3 ms | 92 | 400 | 35/0 | —", nodes)
+        self.assertIn("台湾 家宽 01 | 台湾 | 节点恢复验证中 | 91%（360 次） | 81 / 240 ms | 92% | 2 ms | 15 | 400 | 3/0 | 3/10", nodes)
+        self.assertIn("台湾 家宽 02 | 台湾 | 节点健康 | 100%（360 次） | 120 / 168 ms | 97% | 3 ms | 92 | 400 | 35/0 | —", nodes)
         self.assertLess(nodes.index("台湾 家宽 02"), nodes.index("台湾 家宽 01"), "healthiest first within a region")
 
     def test_nothing_private_leaves(self):
@@ -174,6 +176,23 @@ class DiagnosticsTests(unittest.TestCase):
         text = self.report(settings=missing)
         self.assertIn("运行核对：未生效（Clash 中缺少 41 条 AI 规则（共写入 41 条））", text)
         self.assertIn("重新写入未成功：Clash 没有接受新配置", text)
+
+    def test_slow_exit_is_reported(self):
+        with open(str(self.logs / "events.jsonl"), "a", encoding="utf-8") as handle:
+            handle.write(event("optimize", 600, group="AI 台湾家宽线路", **{"from": "台湾 家宽 02"}, to="台湾 家宽 04",
+                               reason="sustained_slow", score_from=410.2, score_to=156.0, latency_from=228,
+                               latency_to=123, jitter_from=121, jitter_to=22, slow_cycles=30, window_cycles=41,
+                               preserved_connections=5) + "\n")
+        text = self.report()
+        self.assertIn("换线方式：节点故障时切换；15 分钟内累计 10 分钟明显慢于备用节点时更换，24 小时内最多 3 次", text)
+        self.assertIn("持续偏慢（近 41 轮中 30 轮）· 延迟 228 → 123 ms · 抖动 121 → 22 ms · 评分 410.2 → 156.0 · 保留连接 5 个", text)
+        off = dict(SETTINGS, ai_line=dict(SETTINGS["ai_line"], slow_exit=False))
+        self.assertIn("换线方式：只在节点故障时切换（已关闭“节点变慢时更换”）", self.report(settings=off))
+        # written, but the service has not made its first run-time check yet
+        starting = dict(SETTINGS, line_status={"state": "off", "problem": None, "error": None})
+        self.assertIn("运行核对：尚未核对（服务启动后约 20 秒开始）", self.report(settings=starting))
+        never = dict(starting, applied={})
+        self.assertIn("运行核对：未写入专线", self.report(settings=never))
 
     def test_size_is_bounded(self):
         many = [event("failover", index * 60, group="G", **{"from": "节点 %d" % index}, to="节点 %d" % (index + 1),

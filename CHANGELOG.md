@@ -4,12 +4,75 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-21
+
+### Changed
+
+- **切换逻辑变化：检测与故障判定重做。**
+  - 快速通道每 `FAST_PROBE_INTERVAL_SECONDS`（1 秒）探测当前节点（HTTP 204，超时 1.5 秒），在独立线程运行。
+    `SUSPECT_AFTER_SECONDS`（0.5 秒）内无回应即进入 `confirm_current_failure`：`CONFIRM_PROBES`（4）次探测，
+    间隔 0.15 秒，各 `CONFIRM_TIMEOUT_MS`（700 ms），同时探测热备（`CONTROL_TIMEOUT_MS` 1000 ms）与 DIRECT
+    （`LOCAL_CHECK_TIMEOUT_MS` 1500 ms，独立线程池）。起疑的那次探测若稍后回应也算。任一回应为 `transient`；
+    当前节点、热备与 DIRECT 全无回应为 `local_offline`；其余为 `confirmed`，经 `evaluate_group` 故障切换并
+    关闭旧节点连接。从节点停止回应到切走约 2 秒（v0.5.4 中位约 7 秒）。
+  - 完整检测 `PROBE_INTERVAL_SECONDS` 由 20 秒改为 5 秒，每轮探测全部候选；24 小时可用率低于
+    `MIN_AVAILABILITY` 且未暂停的节点每 `LOW_TIER_PROBE_SECONDS`（30 秒）一次。取消热备外每轮 1 个的轮换抽查与
+    快速通道的预热加测。每条线路评分最好的 `TOP_PROBE_COUNT`（5）个节点始终每 5 秒探测。非当前节点的基础探测
+    失败在同一轮重试一次，重试成功计为瞬时失败。
+  - 完整检测拆为 `plan_cycle`（持 `STATE_LOCK`）、`probe_cycle`（不持锁）、`record_cycle`（持锁，重新读取状态与
+    `/proxies`），快速通道在探测期间也能完成切换；当前节点在探测期间被改变的线路丢弃本轮业务判定。
+  - 取消固定 30 分钟隔离（`QUARANTINE_*`）。失败且未被同轮复测否定时暂停（`pause_need`），连续成功
+    `PAUSE_SUCCESSES`（5 / 10 / 20，按 24 小时内第几次暂停）后恢复；v0.5 状态中的 `quarantine_until`
+    迁移为一次 5 次的暂停。暂停的当前节点不再触发切换，只有确认故障才切换。节点状态 `quarantined` /
+    `half_open` 的文案改为“节点暂停使用” / “节点恢复验证中”，标题带恢复进度。
+  - 节点保留 `WINDOW_SECONDS`（30 分钟）检测结果（`window`、`win_n`、`win_success`、`win_p50`、`win_p90`）。
+    满 `WINDOW_MIN_SAMPLES`（60）后评分改为 `win_p90 + FAILURE_PENALTY_MS ×（失败百分点）`；切换目标要求
+    30 分钟成功率 ≥ `WINDOW_MIN_SUCCESS`（95%，满 12 个样本后生效）且 24 小时可用率 ≥ 90%。没有达标节点时，
+    `best_failover` 改选正在回应（连续成功 ≥ 2、未暂停）的最好节点，故障切换事件带 `below_target: true`；
+    节点从订阅消失时同样处理。回优、AI 专线偏慢更换与切至家宽仍只用达标节点。v0.5 在 24 小时可用率普遍
+    低于 90% 的订阅上没有任何备用节点，节点断开后停在原地。
+  - 以轮计数的门槛改为按时间：回优确认 `PERFORMANCE_CONFIRM_SECONDS`（60 秒，12 轮）；AI 专线偏慢窗口
+    15 分钟内 10 分钟（180 轮中 120 轮）。休眠判断的间隔回退规则固定按 20 秒（`RESUME_GAP_INTERVAL_SECONDS`），
+    页面过期阈值固定 50 秒（`STALE_AFTER_SECONDS`）。
+  - 曲线：快速通道每 5 秒保留一个点，未回应的每次都保留；`TIMELINE_LIMIT` 800。
+- 评分加入慢回应：窗口内超过 `SLOW_ANSWER_MS`（1000 ms）的回应每 1% 折算 `SLOW_PENALTY_MS`（100 ms）。
+- 稳定性回优 `stability_exit`（所有线路，含 AI 专线，在故障判定之后、其他回优之前）：当前节点 30 分钟窗口内的
+  慢回应比最好的备用节点多 `STABLE_EXIT_MARGIN`（4）次以上且至少一倍，目标达标、窗口满 60 个样本、成功率
+  ≥ `STABLE_TARGET_SUCCESS`（99%）时无损切换（`stability`，历史 `stability_switch_times`，事件 `optimize`，
+  `reason: slow_answers`）。手动选择保护期内、任何一次切换后 30 分钟内不切；每条线路 24 小时最多
+  `STALL_EXIT_DAILY_MAX`（6）次。看板计入“回优”。按卡顿次数（30 分钟卡 2 次、热备 0 次）切换的方案在模型中
+  没有减少等待（`sim/detection/stability.py`），未采用。
+- 故障切换只关闭确认期间没有收到数据的连接：快速通道起疑时读一次 `/connections`，确认故障时下载字节数
+  增加的连接保留（`close_old_connections(..., keep_ids)`，事件字段 `kept_connections`）。
+- AI 专线在当前节点持续偏慢时更换（`slow_exit`，原定 v0.5.5，未单独发布）。v0.5.1 起专线为 `failover_only`，
+  节点慢但探测仍成功时不会离开。现在每轮完整检测比较当前节点与评分最好的成熟备用节点：评分差
+  ≥ `MIN_ABSOLUTE_GAIN_MS`（180 ms）且 ≥ `MIN_RELATIVE_GAIN`（30%）的一轮记为偏慢。最近 `SLOW_EXIT_WINDOW`
+  （15 分钟）轮里有 `SLOW_EXIT_CYCLES`（10 分钟）轮偏慢、当前一轮也偏慢、且目标通过业务预检时切换，方式与回优
+  相同（保留旧连接，记为 `optimize`，事件带 `reason: sustained_slow`、切换前后的延迟与抖动、
+  `slow_cycles` / `window_cycles`）。手动选择保护期内和任何一次切换后 `PERFORMANCE_COOLDOWN_SECONDS` 内记录清空；
+  每条专线 24 小时内最多 `SLOW_EXIT_DAILY_MAX`（3）次。先试过“连续计数、不满足则扣减”：对抖动型慢节点中位
+  要 30 分钟、九成要 80 分钟才离开，因此改为窗口占比。
+- 设置 `ai_line.slow_exit`（默认开启）；设置页开关“节点变慢时更换”，关闭后行为与 v0.5.4 相同。修改它不触发
+  Clash 写入。
+- 状态接口：专线 `stable` 的 `reason_code` 新增 `slow_exit_confirming`、`slow_exit_capped`；专线的
+  `handover_grace` 文案不再出现“回优”。
+
+### Fixed
+
+- 诊断信息：专线已写入但服务刚启动、尚未做第一次运行核对时，显示“尚未核对”而不是“未写入专线”。
+
 ### Added
 
 - GitHub Actions 工作流 `releases`：每次推送 `main` 或 `v*` 标签时，为所有还没有 Release 页面的标签
   从标签代码重新构建发布包并发布（`scripts/publish-release.sh --missing`）。补发的页面开头注明原始
   发布日期。用于补齐 v0.1.0、v0.5.0–v0.5.4 缺失的 Release，此后不再依赖手动发布。
 - `docs/releases/v0.1.0.md`。
+- 检测记录 `probe_trace.py`：快速通道、完整检测与确认结论逐条写入 `~/Library/Logs/SteadyRoute/trace/`
+  （按本地日期分文件，旧的 gzip，保留 3 天）；`GET /api/trace` 返回 zip（含 `names.json`、对应日期的
+  `events.jsonl` 与 `meta.json`）；设置页“高级信息”新增“下载检测记录”。
+- 状态接口节点字段 `pause_need`、`pause_progress`、`window_success`、`window_samples`、`window_p50_ms`、
+  `window_p90_ms`；策略字段 `pause_successes`、`window_seconds`、`window_min_success`、`failure_penalty_ms`、
+  `suspect_after_ms`、`confirm_timeout_ms`、`low_tier_probe_seconds`。
 
 ## [0.5.4] - 2026-10-05
 

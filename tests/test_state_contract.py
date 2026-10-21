@@ -52,6 +52,33 @@ class DecisionContractTests(unittest.TestCase):
             self.assertEqual(len(descriptions), len(set(descriptions)))
             self.assertEqual(len(next_actions), len(set(next_actions)))
 
+    def test_ai_line_slow_exit_wording(self):
+        base = {"controller_connected": True, "candidate_count": 3, "failover_only": True, "slow_exit": True,
+                "slow_exit_required": 30, "slow_exit_minutes": 10, "slow_exit_window_minutes": 15,
+                "slow_exit_daily_max": 3}
+        idle = contract.resolve_group_decision(dict(base, slow_exit_current=5), 1789762600)
+        self.assertEqual((idle["code"], idle["reason_code"], idle["title"]),
+                         ("stable", "failover_only_keep", "当前节点正常，专线保持出口不变"))
+        self.assertIn("当前节点在 15 分钟内累计 10 分钟明显慢于备用节点时也会更换，24 小时内最多 3 次", idle["detail"])
+        slow = contract.resolve_group_decision(dict(base, slow_exit_current=12), 1789762600)
+        self.assertEqual((slow["code"], slow["reason_code"], slow["title"]),
+                         ("stable", "slow_exit_confirming", "当前节点偏慢，正在确认（12/30）"))
+        self.assertIn("15 分钟内累计 10 分钟即切到同国家的家宽节点，现有连接不中断", slow["detail"])
+        capped = contract.resolve_group_decision(
+            dict(base, slow_exit_current=30, slow_exit_blocked="capped"), 1789762600)
+        self.assertEqual((capped["reason_code"], capped["title"]),
+                         ("slow_exit_capped", "当前节点偏慢，24 小时内已更换 3 次，暂不再换"))
+        self.assertIn("节点故障时仍立即切换", capped["detail"])
+        moved = contract.resolve_group_decision(dict(base, handover_active=True), 1789762600)
+        self.assertEqual((moved["code"], moved["title"]), ("handover_grace", "新请求已使用新节点，旧连接自然结束中"))
+        for decision in (idle, slow, capped, moved):
+            for field in ("title", "detail", "next_action"):
+                self.assertNotIn("回优", decision[field])
+        # switched off: the v0.5.4 wording, whatever the counter says
+        off = contract.resolve_group_decision(dict(base, slow_exit=False, slow_exit_current=12), 1789762600)
+        self.assertEqual((off["reason_code"], off["detail"]),
+                         ("failover_only_keep", "AI 专线只在节点故障时切换，不为速度更换出口。"))
+
     def test_failover_only_line_is_never_described_as_optimising(self):
         """The AI line does not switch for speed: no "最佳选择", no "回优", no performance cooldown."""
         base = {"controller_connected": True, "candidate_count": 3, "failover_only": True}

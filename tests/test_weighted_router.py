@@ -3,6 +3,7 @@ import os
 import pathlib
 import stat
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -73,7 +74,7 @@ class RoutingDecisionTests(unittest.TestCase):
         self.original_select = router.select_node
         self.original_close = router.close_old_connections
         router.select_node = lambda group, node, dry_run: self.selected.append((group, node))
-        router.close_old_connections = lambda group, node, connections=None: self.closed.append((group, node)) or 1
+        router.close_old_connections = lambda group, node, connections=None, keep_ids=None: self.closed.append((group, node)) or 1
 
     def tearDown(self):
         router.select_node = self.original_select
@@ -117,6 +118,211 @@ class RoutingDecisionTests(unittest.TestCase):
             state["nodes"]["current"] = failed
             router.evaluate_group(group, ["current", "better"], {group: {"now": "current"}}, [], state, False)
         self.assertEqual(self.selected, [(group, "better")])
+
+    def _slow_line(self, **group_state):
+        group = "AI line"
+        state = {"nodes": {"current": healthy(500), "better": healthy(100)},
+                 "groups": {group: dict({"last_seen": "current", "last_switch_at": 0}, **group_state)}}
+        policy = {"group_name": group, "failover_only": True, "slow_exit": True,
+                  "include_pattern": ".", "exclude_pattern": "(?!)"}
+        return group, state, policy
+
+    def _cycles(self, group, state, count, connections=()):
+        for _ in range(count):
+            router.evaluate_group(group, ["current", "better"], {group: {"now": "current"}},
+                                  list(connections), state, False)
+
+    def test_ai_line_leaves_a_node_that_stays_slow(self):
+        group, state, policy = self._slow_line()
+        live = [{"id": "live", "chains": ["current", group]}]
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}), \
+                mock.patch.object(router.logging_setup, "write_event") as event:
+            self._cycles(group, state, router.SLOW_EXIT_CYCLES - 1, live)
+            self.assertEqual(self.selected, [], "three cycles are enough elsewhere; the AI line waits ten minutes")
+            self.assertEqual(sum(state["groups"][group]["slow_window"]), router.SLOW_EXIT_CYCLES - 1)
+            self._cycles(group, state, 1, live)
+        self.assertEqual(self.selected, [(group, "better")])
+        self.assertEqual(self.closed, [], "leaving a slow node must not cut existing connections")
+        self.assertEqual(state["groups"][group]["slow_window"], [])
+        self.assertEqual(len(state["groups"][group]["performance_switch_times"]), 1)
+        name, fields = event.call_args[0][0], event.call_args[1]
+        self.assertEqual((name, fields["reason"], fields["slow_cycles"], fields["preserved_connections"]),
+                         ("optimize", "sustained_slow", router.SLOW_EXIT_CYCLES, 1))
+
+    def test_ai_line_counts_slow_cycles_within_the_last_fifteen_minutes(self):
+        group, state, policy = self._slow_line()
+        slow, fine = healthy(500), healthy(150)
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}):
+            # a jittery node: slow two cycles out of three is 30 of 45, enough
+            for index in range(router.SLOW_EXIT_WINDOW - 1):
+                state["nodes"]["current"] = fine if index % 3 == 0 else slow
+                self._cycles(group, state, 1)
+            self.assertEqual(self.selected, [])
+            self.assertEqual(len(state["groups"][group]["slow_window"]), router.SLOW_EXIT_WINDOW - 1)
+            state["nodes"]["current"] = slow
+            self._cycles(group, state, 1)
+            self.assertEqual(self.selected, [(group, "better")])
+        # a bad spell that passes: old marks leave the window and the node is kept
+        self.selected.clear()
+        group, state, policy = self._slow_line()
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}):
+            self._cycles(group, state, router.SLOW_EXIT_CYCLES - 1)
+            state["nodes"]["current"] = fine
+            self._cycles(group, state, router.SLOW_EXIT_WINDOW - router.SLOW_EXIT_CYCLES + 5)
+            self.assertEqual(sum(state["groups"][group]["slow_window"]), router.SLOW_EXIT_CYCLES - 5)
+            self._cycles(group, state, router.SLOW_EXIT_WINDOW)
+            self.assertEqual(sum(state["groups"][group]["slow_window"]), 0)
+            # a gap below the ordinary performance threshold never counts
+            state["nodes"]["current"] = healthy(100 + router.MIN_ABSOLUTE_GAIN_MS - 20)
+            self._cycles(group, state, router.SLOW_EXIT_WINDOW + 5)
+        self.assertEqual(self.selected, [])
+
+    def test_ai_line_slow_exit_respects_manual_choice_cooldown_and_daily_cap(self):
+        now = time.time()
+        nearly = [1] * (router.SLOW_EXIT_CYCLES - 1)
+        for held, expected in (
+                ({"manual_hold_until": now + 600}, 0),
+                ({"last_switch_at": now - 60}, 0),
+                ({"performance_switch_times": [now - 3600 * hours for hours in (20, 12, 2)]}, router.SLOW_EXIT_CYCLES + 2),
+        ):
+            group, state, policy = self._slow_line(slow_window=list(nearly), **held)
+            with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}):
+                self._cycles(group, state, 3)
+            self.assertEqual(self.selected, [], held)
+            self.assertEqual(sum(state["groups"][group]["slow_window"]), expected, held)
+        # the oldest of the three has left the 24-hour window: allowed again
+        group, state, policy = self._slow_line(
+            slow_window=list(nearly), performance_switch_times=[now - 3600 * hours for hours in (25, 12, 2)])
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}):
+            self._cycles(group, state, 1)
+        self.assertEqual(self.selected, [(group, "better")])
+
+    def test_ai_line_slow_exit_can_be_turned_off_and_never_delays_failover(self):
+        nearly = [1] * (router.SLOW_EXIT_CYCLES - 1)
+        group, state, policy = self._slow_line(slow_window=list(nearly))
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: dict(policy, slow_exit=False)}):
+            self._cycles(group, state, 3)
+            self.assertEqual(self.selected, [])
+            self.assertEqual(state["groups"][group]["slow_window"], [])
+        group, state, policy = self._slow_line(slow_window=[1, 1, 1, 1], manual_hold_until=0)
+        failed = healthy(500)
+        failed["last_success"] = False
+        failed["failure_streak"] = router.FAILURES_BEFORE_SWITCH
+        state["nodes"]["current"] = failed
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}):
+            self._cycles(group, state, 1)
+        self.assertEqual(self.selected, [(group, "better")])
+        self.assertEqual(self.closed, [(group, "current")])
+        self.assertEqual(state["groups"][group]["slow_window"], [])
+
+    def test_ai_line_slow_exit_waits_for_a_mature_standby_and_its_preflight(self):
+        nearly = [1] * (router.SLOW_EXIT_CYCLES - 1)
+        group, state, policy = self._slow_line(slow_window=list(nearly))
+        state["nodes"]["better"]["samples"] = router.MIN_SAMPLES_FOR_OPTIMIZATION - 1
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}):
+            self._cycles(group, state, 1)
+            self.assertEqual((self.selected, state["groups"][group]["slow_window"]), ([], []))
+            state["nodes"]["better"] = healthy(100)
+            state["groups"][group]["slow_window"] = list(nearly)
+            with mock.patch.object(router, "business_preflight", return_value=False):
+                self._cycles(group, state, 1)
+            self.assertEqual(self.selected, [], "a standby that cannot reach the AI services is not a target")
+            self.assertEqual(sum(state["groups"][group]["slow_window"]), router.SLOW_EXIT_CYCLES - 5)
+
+    def test_failover_uses_the_best_answering_node_when_none_meets_the_thresholds(self):
+        """10-20 diagnostics: every Taiwan candidate was under 90% over 24 hours."""
+        group = "test-group"
+        current = healthy(100)
+        current.update({"last_success": False, "failure_streak": 2, "effective_failure_streak": 2})
+        weak = healthy(150)
+        weak["long_buckets"] = [{"hour": 1, "success": 88, "total": 100, "latency_sum": 8800}]
+        weaker = healthy(120)
+        weaker["long_buckets"] = [{"hour": 1, "success": 70, "total": 100, "latency_sum": 7000}]
+        weaker["score"] = 900.0
+        silent = healthy(50)
+        silent.update({"last_success": False, "success_streak": 0})
+        paused = healthy(40)
+        paused["pause_need"] = 5
+        state = {"nodes": {"current": current, "weak": weak, "weaker": weaker, "silent": silent, "paused": paused},
+                 "groups": {group: {"last_seen": "current"}}}
+        self.assertFalse(any(router.eligible_for_optimization(state["nodes"][n]) for n in ("weak", "weaker")))
+        with mock.patch.object(router, "business_preflight", return_value=True), \
+                mock.patch.object(router.logging_setup, "write_event") as event:
+            router.evaluate_group(group, ["current", "weak", "weaker", "silent", "paused"],
+                                  {group: {"now": "current"}}, [], state, False)
+        self.assertEqual(self.selected, [(group, "weak")], "best score among nodes answering now")
+        self.assertTrue(event.call_args[1]["below_target"])
+        # with a node that meets the thresholds, that one wins even if its score is worse
+        self.selected.clear()
+        good = healthy(300)
+        state["nodes"].update({"current": dict(current), "good": good})
+        state["groups"][group] = {"last_seen": "current"}
+        with mock.patch.object(router, "business_preflight", return_value=True):
+            router.evaluate_group(group, ["current", "weak", "good"], {group: {"now": "current"}}, [], state, False)
+        self.assertEqual(self.selected, [(group, "good")])
+
+    def _stable_line(self, policy_extra=None, **group_state):
+        group = "stable-line"
+        now = time.time()
+        current = healthy(150)
+        current["window"] = [[now - 5 * k, 1400 if k % 50 == 0 else 120] for k in range(360)]   # 8 slow answers
+        target = healthy(180)
+        target.update({"win_n": 360, "win_success": 1.0,
+                       "window": [[now - 5 * k, 1200 if k == 100 else 130] for k in range(360)]})   # 1 slow answer
+        state = {"nodes": {"current": current, "target": target},
+                 "groups": {group: dict({"last_seen": "current", "last_switch_at": 0}, **group_state)}}
+        policy = dict({"group_name": group, "include_pattern": ".", "exclude_pattern": "(?!)"}, **(policy_extra or {}))
+        return group, state, policy, now
+
+    def _evaluate(self, group, state, policy, connections=()):
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}), \
+                mock.patch.object(router, "business_preflight", return_value=True), \
+                mock.patch.object(router.logging_setup, "write_event") as event:
+            router.evaluate_group(group, ["current", "target"], {group: {"now": "current"}}, list(connections), state, False)
+        return event
+
+    def test_a_node_that_answers_slowly_more_often_is_left_without_cutting_connections(self):
+        group, state, policy, now = self._stable_line()
+        live = [{"id": "chat", "chains": ["current", group]}]
+        event = self._evaluate(group, state, policy, live)
+        self.assertEqual(self.selected, [(group, "target")], "8 slow answers against 1 in 30 minutes")
+        self.assertEqual(self.closed, [], "lossless: old connections stay")
+        self.assertEqual(len(state["groups"][group]["stability_switch_times"]), 1)
+        name, fields = event.call_args[0][0], event.call_args[1]
+        self.assertEqual((name, fields["reason"], fields["slow_from"], fields["slow_to"]), ("optimize", "slow_answers", 8, 1))
+
+    def test_the_ai_line_also_leaves_a_node_with_many_slow_answers(self):
+        group, state, policy, now = self._stable_line({"failover_only": True, "slow_exit": True})
+        self._evaluate(group, state, policy)
+        self.assertEqual(self.selected, [(group, "target")])
+
+    def test_stability_switch_needs_a_clear_gap_a_clean_target_and_respects_limits(self):
+        now = time.time()
+        few = [[now - 5 * k, 1400 if k % 120 == 0 else 120] for k in range(360)]           # 3 slow answers
+        cases = (
+            ("3 slow answers are under the margin", {}, lambda s: s["nodes"]["current"].update(window=few)),
+            ("the target answers slowly almost as often",
+             {}, lambda s: s["nodes"]["target"].update(window=[[now - 5 * k, 1300 if k % 80 == 0 else 120] for k in range(360)])),
+            ("the target missed probes", {}, lambda s: s["nodes"]["target"].update(win_success=0.97)),
+            ("the target is not observed long enough", {}, lambda s: s["nodes"]["target"].update(win_n=30)),
+            ("manual choice", {"manual_hold_until": now + 600}, lambda s: None),
+            ("within 30 minutes of a switch", {"last_switch_at": now - 600}, lambda s: None),
+            ("six already today", {"stability_switch_times": [now - 3600 * h for h in range(1, 7)]}, lambda s: None),
+        )
+        for label, group_state, change in cases:
+            group, state, policy, _now = self._stable_line(**group_state)
+            change(state)
+            self._evaluate(group, state, policy)
+            self.assertEqual(self.selected, [], label)
+
+    def test_slow_answers_raise_the_score(self):
+        steady, spiky = {}, {}
+        t = 1_000_000
+        for step in range(360):
+            router.update_node_stats(steady, 120, t + 5 * step)
+            router.update_node_stats(spiky, 1500 if step % 20 == 0 else 120, t + 5 * step)
+        self.assertEqual((steady["win_p90"], spiky["win_p90"]), (120, 120), "p90 alone cannot tell them apart")
+        self.assertAlmostEqual(spiky["score"] - steady["score"], router.SLOW_PENALTY_MS * 100 * 18 / 360.0, places=3)
 
     def test_real_failure_still_closes_only_stale_connections(self):
         group = "test-group"
@@ -164,11 +370,23 @@ class RoutingDecisionTests(unittest.TestCase):
             ["MANUAL_PREFERENCE_STARTED", "MANUAL_PREFERENCE_INTERRUPTED"],
         )
 
-    def test_quarantined_manual_node_requires_mature_backup_or_fails_closed(self):
+    def test_paused_manual_node_that_answers_is_kept(self):
+        group = "test-group"
+        now = 1800000000
+        paused = healthy(500)
+        paused.update({"pause_need": 5, "success_streak": 2})
+        state = {"nodes": {"manual": paused, "backup": healthy(100)},
+                 "groups": {group: {"last_seen": "old", "last_router_selection": "old"}}, "events": []}
+        with mock.patch.object(router.time, "time", return_value=now):
+            router.evaluate_group(group, ["manual", "backup"], {group: {"now": "manual"}}, [], state, False)
+        self.assertEqual(self.selected, [], "v0.6: only a confirmed failure moves a line")
+        self.assertGreater(state["groups"][group]["manual_hold_until"], now)
+
+    def test_failed_manual_node_requires_mature_backup_or_fails_closed(self):
         group = "test-group"
         now = 1800000000
         quarantined = healthy(500)
-        quarantined["quarantine_until"] = now + 600
+        quarantined.update({"last_success": False, "failure_streak": 2, "effective_failure_streak": 2})
         immature = healthy(100)
         immature["samples"] = 2
         state = {
@@ -230,19 +448,79 @@ class RoutingDecisionTests(unittest.TestCase):
 
 
 class HealthModelTests(unittest.TestCase):
-    def test_quarantine_requires_time_and_three_recovery_successes(self):
+    def test_pause_ends_after_successes_not_after_a_timer(self):
         node = {}
-        started = 1_000_000
-        router.update_node_stats(node, None, started)
-        router.update_node_stats(node, None, started + 60)
-        router.update_node_stats(node, None, started + 120)
-        self.assertTrue(router.is_quarantined(node, started + 121))
+        t = 1_000_000
+        router.update_node_stats(node, 100, t)
+        router.update_node_stats(node, None, t + 5)
+        self.assertTrue(router.is_paused(node, t + 5))
+        for step in range(1, router.PAUSE_SUCCESSES[0]):
+            router.update_node_stats(node, 100, t + 5 + 5 * step)
+            self.assertTrue(router.is_paused(node), "still %d successes short" % (router.PAUSE_SUCCESSES[0] - step))
+        router.update_node_stats(node, 100, t + 5 + 5 * router.PAUSE_SUCCESSES[0])
+        self.assertFalse(router.is_paused(node), "five in a row: 25 s, no 30-minute wait")
+        # a failure in the middle starts the count again
+        router.update_node_stats(node, None, t + 100)
+        router.update_node_stats(node, 100, t + 105)
+        router.update_node_stats(node, None, t + 110)
+        for step in range(router.PAUSE_SUCCESSES[1] - 1):
+            router.update_node_stats(node, 100, t + 115 + 5 * step)
+        self.assertTrue(router.is_paused(node))
+        router.update_node_stats(node, 100, t + 200)
+        self.assertFalse(router.is_paused(node), "second pause in 24 h: 10 in a row")
 
-        router.update_node_stats(node, 100, started + 180)
-        router.update_node_stats(node, 100, started + 240)
-        router.update_node_stats(node, 100, started + 300)
-        self.assertTrue(router.is_quarantined(node, started + 301), "30-minute isolation must still apply")
-        self.assertFalse(router.is_quarantined(node, started + 120 + router.QUARANTINE_SECONDS + 1))
+    def test_repeat_pauses_in_24_hours_need_10_then_20_successes(self):
+        node = {}
+        t = 1_000_000
+        needs = []
+        for round_index in range(4):
+            start = t + round_index * 3600
+            router.update_node_stats(node, None, start)
+            needs.append(node["pause_need"])
+            for step in range(node["pause_need"]):
+                router.update_node_stats(node, 100, start + 5 * (step + 1))
+            self.assertFalse(router.is_paused(node))
+        self.assertEqual(needs, [5, 10, 20, 20])
+        router.update_node_stats(node, None, t + 30 * 3600)      # a day later: back to 5
+        self.assertEqual(node["pause_need"], 5)
+
+    def test_transient_failure_does_not_pause(self):
+        node = {}
+        router.update_node_stats(node, 100, 1_000_000)
+        router.update_node_stats(node, None, 1_000_005, quarantine=False)
+        self.assertFalse(router.is_paused(node))
+
+    def test_v05_quarantine_becomes_a_pause(self):
+        node = healthy(100)
+        node.update({"quarantine_until": 2_000_000, "quarantine_recovery_streak": 1, "recent_failures": [1]})
+        self.assertTrue(router.is_paused(node, 1_999_000))
+        self.assertEqual(node["pause_need"], router.PAUSE_SUCCESSES[0])
+        self.assertNotIn("quarantine_until", node)
+        expired = healthy(100)
+        expired["quarantine_until"] = 1_000
+        self.assertFalse(router.is_paused(expired, 2_000))
+
+    def test_window_score_and_target_threshold(self):
+        node = {}
+        t = 1_000_000
+        for step in range(360):                                   # 30 minutes of 5-second probes
+            delay = None if step % 25 == 0 else (400 if step % 10 == 0 else 100)
+            router.update_node_stats(node, delay, t + 5 * step, quarantine=False)
+        self.assertEqual(node["win_n"], 360)
+        self.assertAlmostEqual(node["win_success"], 1 - 15 / 360.0, places=3)
+        self.assertEqual(node["win_p50"], 100)
+        self.assertEqual(node["win_p90"], 100, "28 slow answers out of 345 are under the slowest 10%")
+        expected = 100 + router.FAILURE_PENALTY_MS * 100 * (1 - node["win_success"])
+        self.assertAlmostEqual(node["score"], expected, places=3)
+        self.assertTrue(router.eligible_for_optimization(node), "95.8% >= 95%")
+        for step in range(360, 372):                               # a bad minute: 12 misses
+            router.update_node_stats(node, None, t + 5 * step, quarantine=False)
+        router.update_node_stats(node, 100, t + 5 * 372)
+        node["success_streak"] = 10
+        self.assertLess(node["win_success"], router.WINDOW_MIN_SUCCESS)
+        self.assertFalse(router.eligible_for_optimization(node), "under 95% over 30 minutes")
+        old = [item for item in node["window"] if item[0] < t + 5 * 372 - router.WINDOW_SECONDS]
+        self.assertEqual(old, [], "nothing older than 30 minutes is kept")
 
     def test_layered_eligibility_rejects_bad_short_or_long_availability(self):
         node = healthy(100)
@@ -254,15 +532,14 @@ class HealthModelTests(unittest.TestCase):
         node["long_buckets"] = [{"hour": 1, "success": 85, "total": 100, "latency_sum": 8500}]
         self.assertFalse(router.eligible_for_optimization(node))
 
-    def test_adaptive_targets_probe_current_and_one_standby_per_group(self):
+    def test_every_candidate_of_every_line_is_a_target(self):
         proxy_data = {
             group: {"now": candidates[0]}
             for group, candidates in router.GROUPS.items()
         }
         state = {"groups": {}, "nodes": {}}
         targets = router.choose_probe_targets(state, proxy_data)
-        expected = len(router.GROUPS) * (1 + router.STANDBY_PROBES_PER_GROUP)
-        self.assertEqual(len(targets), expected)
+        self.assertEqual(set(targets), {name for candidates in router.GROUPS.values() for name in candidates})
 
     def test_confirmed_business_failure_triggers_effective_failure(self):
         node = {}

@@ -4,6 +4,7 @@ import importlib.util
 import pathlib
 import sys
 import threading
+import time
 from unittest import mock
 
 
@@ -69,6 +70,10 @@ class FakeNetwork(object):
         self.local_offline = False       # everything fails, including DIRECT
         self.fail_once = {}              # node -> remaining failures before recovering
         self.latency = {}                # node -> ms
+        self.realtime = False            # probes take real time (timeouts, stalls, latency)
+        self.stall = {}                  # node -> time.monotonic() until which it does not answer
+        self.slow_urls = {}              # url -> extra seconds (real time only)
+        self.connection_growth = {}      # connection id -> bytes added on every /connections read
         self.probe_calls = []
         self.puts = []
         self.deletes = []
@@ -85,22 +90,55 @@ class FakeNetwork(object):
     def probe(self, name, url, timeout_ms):
         with self.lock:
             self.probe_calls.append((name, url))
-            if self.local_offline:
-                return None
-            if name == "DIRECT":
-                return 20
-            if self.fail_once.get(name, 0) > 0:
-                self.fail_once[name] -= 1
-                return None
-            if name in self.down_nodes or url in self.site_down or (name, url) in self.node_url_failures:
-                return None
-            return int(self.latency.get(name, 80))
+            outcome = self._outcome(name, url)
+        if not self.realtime:
+            return outcome
+        # Real time: a probe that gets no answer takes its whole timeout; a node in a stall
+        # answers once the stall ends, if that is within the timeout.
+        if name == "DIRECT" and outcome is not None:
+            return outcome
+        now = time.monotonic()
+        stall_end = self.stall.get(name, 0)
+        if outcome is not None and now < stall_end:
+            wait = stall_end - now + outcome / 1000.0
+            if wait * 1000 < timeout_ms:
+                time.sleep(wait)
+                return int(wait * 1000)
+            time.sleep(timeout_ms / 1000.0)
+            return None
+        if outcome is None:
+            time.sleep(timeout_ms / 1000.0)
+            return None
+        delay = self.slow_urls.get(url, 0) + outcome / 1000.0
+        time.sleep(min(delay, timeout_ms / 1000.0))
+        return int(delay * 1000) if delay * 1000 < timeout_ms else None
+
+    def _outcome(self, name, url):
+        if self.local_offline:
+            return None
+        if name == "DIRECT":
+            return 20
+        if self.fail_once.get(name, 0) > 0:
+            self.fail_once[name] -= 1
+            return None
+        if name in self.down_nodes or url in self.site_down or (name, url) in self.node_url_failures:
+            return None
+        return int(self.latency.get(name, 80))
 
     def api(self, method, path, payload=None, timeout=10):
         if method == "GET" and path == "/proxies":
             return {"proxies": self.proxy_data}
+        if method == "GET" and path.startswith("/proxies/") and "/delay" not in path:
+            from urllib.parse import unquote
+            item = self.proxy_data.get(unquote(path[len("/proxies/"):]))
+            if item is None:
+                raise RuntimeError("404 %s" % path)
+            return item
         if method == "GET" and path == "/connections":
-            return {"connections": list(self.connections)}
+            with self.lock:
+                for item in self.connections:
+                    item["download"] = int(item.get("download", 0)) + int(self.connection_growth.get(item.get("id"), 0))
+                return {"connections": [dict(item) for item in self.connections]}
         if method == "PUT" and path.startswith("/proxies/"):
             from urllib.parse import unquote
             group = unquote(path[len("/proxies/"):])

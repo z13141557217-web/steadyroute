@@ -204,11 +204,8 @@ def reconcile(config, state, proxy_data, now, controller_ok=True):
 
 
 def _desired_lifecycle(policy, health, now):
-    quarantine_until = health.get("quarantine_until")
-    if quarantine_until is not None and int(quarantine_until) > int(now):
-        return "quarantined"
-    if quarantine_until and int(health.get("quarantine_recovery_streak", 0)) < 3:
-        return "half_open"
+    if int(health.get("pause_need", 0) or 0):
+        return "half_open" if int(health.get("success_streak", 0)) else "quarantined"
     samples = int(health.get("samples", 0))
     if samples < int(policy["warmup_samples"]):
         return "warming"

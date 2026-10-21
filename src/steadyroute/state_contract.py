@@ -53,6 +53,9 @@ class InvalidTransitionError(StateContractError):
     """Raised when a caller attempts to skip the declared state machine."""
 
 
+# AI line: the slow-node count is shown from two minutes' worth of slow cycles, not on every blip.
+SLOW_EXIT_VISIBLE_CYCLES = 6
+
 GROUP_DECISION_COPY = {
     "stable": {
         "severity": "ok", "title": "当前线路稳定且为最佳选择",
@@ -130,12 +133,12 @@ NODE_LIFECYCLE_COPY = {
         "next_action_code": "watch_degradation", "next_action": "提高关注度并避免未经确认的回优。",
     },
     "quarantined": {
-        "severity": "critical", "title": "节点已隔离", "description": "节点在故障窗口内达到隔离门槛。",
-        "next_action_code": "wait_quarantine", "next_action": "隔离期内不参与选路并保留低频验证。",
+        "severity": "critical", "title": "节点暂停使用", "description": "检测失败且复测未通过，暂不作为切换目标。",
+        "next_action_code": "wait_quarantine", "next_action": "每 5 秒继续检测，连续成功达到次数后恢复。",
     },
     "half_open": {
-        "severity": "warning", "title": "节点正在半开放验证", "description": "隔离时间已到，节点正在用有限探测验证恢复。",
-        "next_action_code": "verify_recovery", "next_action": "达到连续成功门槛后恢复健康状态。",
+        "severity": "warning", "title": "节点恢复验证中", "description": "暂停后已重新连通，正在累计连续成功次数。",
+        "next_action_code": "verify_recovery", "next_action": "达到连续成功次数后恢复使用。",
     },
     "retired": {
         "severity": "info", "title": "节点已退役", "description": "节点已从订阅候选集合消失并进入审计保留期。",
@@ -363,8 +366,11 @@ def resolve_group_decision(facts, updated_at):
         code, reason = "candidate_confirming", "confirmation_incomplete"
     else:
         code, reason = "stable", "current_best"
+    slow_current = int(facts.get("slow_exit_current", 0))
     if code == "stable" and facts.get("failover_only"):
         reason = "failover_only_keep"
+        if facts.get("slow_exit") and slow_current >= SLOW_EXIT_VISIBLE_CYCLES:
+            reason = "slow_exit_capped" if facts.get("slow_exit_blocked") == "capped" else "slow_exit_confirming"
     copy_item = GROUP_DECISION_COPY[code]
     detail = copy_item["description"]
     if code == "candidate_confirming":
@@ -383,6 +389,24 @@ def resolve_group_decision(facts, updated_at):
         title = "当前节点正常，专线保持出口不变"
         detail = "AI 专线只在节点故障时切换，不为速度更换出口。"
         next_action = "继续检测当前节点，故障时切到同国家的家宽节点。"
+        if facts.get("slow_exit"):
+            detail = "AI 专线在节点故障时切换；当前节点在 %d 分钟内累计 %d 分钟明显慢于备用节点时也会更换，24 小时内最多 %d 次。" % (
+                int(facts.get("slow_exit_window_minutes", 15)), int(facts.get("slow_exit_minutes", 10)),
+                int(facts.get("slow_exit_daily_max", 3)))
+            next_action = "继续检测当前节点与备用节点。"
+    elif reason == "slow_exit_confirming":
+        title = "当前节点偏慢，正在确认（%d/%d）" % (slow_current, max(1, int(facts.get("slow_exit_required", 30))))
+        detail = "当前节点的延迟与抖动明显高于备用节点。%d 分钟内累计 %d 分钟即切到同国家的家宽节点，现有连接不中断。" % (
+            int(facts.get("slow_exit_window_minutes", 15)), int(facts.get("slow_exit_minutes", 10)))
+        next_action = "继续比较；差距消失则保持当前出口。"
+    elif reason == "slow_exit_capped":
+        title = "当前节点偏慢，24 小时内已更换 %d 次，暂不再换" % int(facts.get("slow_exit_daily_max", 3))
+        detail = "为避免出口频繁变化，因变慢更换每 24 小时最多 %d 次；节点故障时仍立即切换。" % int(
+            facts.get("slow_exit_daily_max", 3))
+        next_action = "继续检测；最早一次更换满 24 小时后恢复比较。"
+    elif code == "handover_grace" and facts.get("failover_only"):
+        title = "新请求已使用新节点，旧连接自然结束中"
+        detail = "当前节点持续偏慢，已换到同国家的家宽节点；旧连接保留到自然结束。"
     return {
         "code": code,
         "severity": copy_item["severity"],
@@ -397,12 +421,14 @@ def resolve_group_decision(facts, updated_at):
 
 
 def resolve_node_lifecycle(facts, now):
-    quarantine_until = facts.get("quarantine_until")
+    # v0.6: "quarantined" is a pause that ends after pause_need successes in a row (no timer);
+    # "half_open" is a paused node that has started answering again.
+    pause_need = int(facts.get("pause_need", 0) or 0)
     if facts.get("retired_at") is not None:
         code = "retired"
-    elif quarantine_until is not None and int(quarantine_until) > int(now):
+    elif pause_need and int(facts.get("success_streak", 0)) == 0:
         code = "quarantined"
-    elif quarantine_until is not None and int(quarantine_until) > 0 and int(facts.get("quarantine_recovery_streak", 0)) < 3:
+    elif pause_need:
         code = "half_open"
     elif int(facts.get("samples", 0)) == 0:
         code = "discovered"

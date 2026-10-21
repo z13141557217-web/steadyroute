@@ -104,9 +104,12 @@ class CandidateRegistryTests(unittest.TestCase):
         candidate_registry.refresh_lifecycles(self.config, self.state, self.now + 60)
         self.assertEqual(self.policy_state()["nodes"][name]["lifecycle"], "healthy")
 
-        health["quarantine_until"] = self.now + 1000
+        health.update({"pause_need": 5, "success_streak": 0})
         candidate_registry.refresh_lifecycles(self.config, self.state, self.now + 80)
         self.assertEqual(self.policy_state()["nodes"][name]["lifecycle"], "quarantined")
+        health["success_streak"] = 2
+        candidate_registry.refresh_lifecycles(self.config, self.state, self.now + 85)
+        self.assertEqual(self.policy_state()["nodes"][name]["lifecycle"], "half_open")
 
     def test_retired_records_survive_restart_then_purge_after_24_hours(self):
         name = "台湾 HINET 家宽 A"

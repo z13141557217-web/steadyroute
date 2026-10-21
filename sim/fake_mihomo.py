@@ -30,6 +30,7 @@ class World(object):
         self.site_down = set()        # URLs failing through every node
         self.local_offline = False
         self.blackout_until = 0.0     # every proxy probe fails (e.g. just after wake)
+        self.stall_until = {}         # node -> time until which it does not answer (then it does)
         self.connections = {}         # id -> {"group", "node"}
         self.log = []                 # controller-side actions, for the report
         self.started = time.time()
@@ -68,6 +69,7 @@ class World(object):
                 return None
             if self.rng.random() < self.flaky.get(name, 0.0):
                 return None
+            stall = float(self.stall_until.get(name, 0)) - now
             base = float(self.latency.get(name, 120))
             spread = float(self.jitter.get(name, 5))
             value = max(5.0, self.rng.gauss(base, spread / 1.5))
@@ -75,6 +77,8 @@ class World(object):
                 value *= 1.6
             elif url.startswith("http://"):
                 value *= 0.6          # plain HTTP skips the TLS handshake
+            if stall > 0:
+                value += stall * 1000.0  # the request waits for the stall to end
             return int(value) if value < timeout_ms else None
 
     def proxies_payload(self):
@@ -127,6 +131,9 @@ def make_handler(world):
                 return self.reply(200, world.proxies_payload())
             if route == "/connections":
                 return self.reply(200, world.connections_payload())
+            if route.startswith("/proxies/") and not route.endswith("/delay"):
+                item = world.proxies_payload()["proxies"].get(route[len("/proxies/"):])
+                return self.reply(200, item) if item else self.reply(404, {"message": "resource not found"})
             if route.startswith("/proxies/") and route.endswith("/delay"):
                 name = route[len("/proxies/"):-len("/delay")]
                 query = parse_qs(parts.query)
@@ -172,6 +179,9 @@ def make_handler(world):
 
 class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
+    # Mihomo listens with the system maximum backlog. With the default of 5 a burst of parallel
+    # probes (v0.6 probes every candidate at once) is refused on Linux and reads as failures.
+    request_queue_size = 128
 
 
 def serve(world, socket_path):

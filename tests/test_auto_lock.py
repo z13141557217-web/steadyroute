@@ -305,26 +305,21 @@ class RouterTests(unittest.TestCase):
         self.cycle()
 
     def ticks_until(self, predicate, limit=30):
+        """Full cycles (every candidate, 5 s apart) until predicate holds."""
         for tick in range(1, limit + 1):
-            self.net.run_fast_tick(self.state)
-            self.state = router.RUNTIME["last_state"]
+            self.cycle()
             if predicate():
                 return tick
         return None
 
-    def test_fresh_install_gets_a_mature_backup_within_a_minute_of_fast_ticks(self):
+    def test_fresh_install_gets_a_mature_backup_within_a_minute(self):
         self.fresh_install()
         mature = lambda: any(router.eligible_for_optimization(self.state["nodes"].get(n, {})) for n in US_RES[1:])
         ticks = self.ticks_until(mature)
         self.assertIsNotNone(ticks)
-        self.assertLessEqual(ticks * router.FAST_PROBE_INTERVAL_SECONDS, 60, "about a minute, not four")
+        self.assertLessEqual(ticks * router.PROBE_INTERVAL_SECONDS, 60, "about a minute")
         probed = {name for name, url in self.net.probe_calls if url == router.TEST_URL}
-        self.assertFalse(probed & set(JP_RES + US_DC + JP_DC), "only this line's own candidates are warmed")
-        # The boost stops once a backup is mature.
-        before = len(self.net.probe_calls)
-        self.net.run_fast_tick(self.state)
-        extra = [c for c in self.net.probe_calls[before:] if c[1] == router.TEST_URL]
-        self.assertEqual(extra, [])
+        self.assertFalse(probed & set(JP_RES + US_DC + JP_DC), "only this line's own candidates are measured")
         # And the backup is usable straight away.
         self.net.down_nodes.add(US_RES[0])
         self.assertEqual(self.net.run_fast_tick(router.RUNTIME["last_state"]), "failover")
@@ -380,6 +375,29 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(legacy[GROUP]["region_label"], "美国")
         self.assertEqual(legacy[AI_GROUP]["auto_lock"]["country_label"], "日本")
         self.assertNotIn("♻️ 自动选择", snapshots["legacy"]["service"]["auto_lock_idle"], "url-test groups are not listed")
+
+    def test_ai_line_leaves_a_slow_node_after_ten_minutes_of_slow_cycles(self):
+        slow = US_RES[2]
+        for setting, expected in (({}, [(AI_GROUP, US_RES[0])]), ({"slow_exit": False}, [])):
+            with self.subTest(setting=setting):
+                self.setUp()
+                self.serve(friend_proxies(now_ai=slow))
+                self.net.latency[slow] = 520
+                self.net.connections = [{"id": "chat", "chains": [slow, AI_GROUP]}]
+                line = dict({"enabled": True, "group_name": AI_GROUP, "country": "US"}, **setting)
+                with mock.patch.dict(router.POLICY_CONFIG, {"ai_line": line}):
+                    for _ in range(router.SLOW_EXIT_CYCLES - 1):
+                        self.cycle()
+                    self.assertEqual(self.net.puts, [], "ordinary lines would have moved after three cycles")
+                    for _ in range(8):
+                        self.cycle()
+                    snapshots = router.build_status_snapshots(self.state, self.net.proxy_data, [], now=int(time.time()))
+                self.assertEqual(self.net.puts, expected)
+                self.assertEqual(self.net.deletes, [], "existing connections stay on the old node")
+                self.assertEqual(self.net.proxy_data[GROUP]["now"], US_RES[0], "the other line is not involved")
+                group = {item["name"]: item for item in snapshots["v1"]["groups"]}[AI_GROUP]
+                self.assertEqual(group["metrics"]["performance_switches_24h"], len(expected))
+                self.assertNotIn("回优", group["decision"]["title"] + group["decision"]["detail"])
 
     def test_fixed_profile_is_untouched(self):
         fixed = cycle_harness.load_router("auto_lock_fixed_router")

@@ -211,3 +211,15 @@ type, udp, residential, group, role, delay_ms, delay_at}`。`role` 为 `current`
 请求体超过 64 KB 返回 `413`；输入无效返回 `400`；写入 Clash 失败返回 `409` 并附原因。
 自定义请求头和 JSON 类型会触发浏览器 CORS 预检，而服务从不应答预检，因此其他网页无法
 修改设置。每次成功修改记录一条 `settings_changed` 事件。
+
+## v0.6.0
+
+`next_cycle_at` 以周期开始时间加 5 秒计算；过期阈值仍为 50 秒（`STALE_AFTER_SECONDS`）。快速通道每秒
+一次，曲线每 5 秒保留一个点、未回应的每次都保留，每组最多 800 点。节点追加 `pause_need`（恢复还需的
+连续成功次数，未暂停为 `null`）、`pause_progress`、`window_success`、`window_samples`、`window_p50_ms`、
+`window_p90_ms`；`quarantine_until` 恒为 `null`（保留字段）。生命周期码不变：`quarantined` 表示暂停且
+尚未重新成功，`half_open` 表示暂停中已重新成功；legacy `lifecycle_title` 带恢复进度，如“（3/5）”。
+策略追加 `pause_successes`、`window_seconds`、`window_min_success`、`failure_penalty_ms`、
+`suspect_after_ms`、`confirm_timeout_ms`、`fast_probe_interval_seconds`、`low_tier_probe_seconds`；
+移除 `quarantine_*` 与 `standby_probes_per_group`。`confirm_probes` 为 1 + 复测次数（5）。
+新增只读 `GET /api/trace`：检测记录 zip。

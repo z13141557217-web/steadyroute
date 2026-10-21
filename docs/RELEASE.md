@@ -50,8 +50,8 @@
    ./install.command
    ```
 
-7. 推送标签。GitHub Actions 的 `releases` 工作流会自动发布该版本的 GitHub Release
-   （见下文），不需要在本机操作。
+7. 合并到 `main`。GitHub Actions 的 `releases` 工作流发现 `VERSION` 还没有标签时，在合并提交上打
+   `v<版本>` 标签，再发布该版本的 GitHub Release（见下文），不需要在本机操作。
 
 ## 发布包
 

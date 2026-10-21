@@ -151,7 +151,7 @@ tr.is-view .nm-copy b { font-weight: 500; color: var(--ink-2); }
   </section>
 </main>
 
-<footer class="wrap"><span>仅监听本机 127.0.0.1 · 每 20 秒随完整检测更新 · 不显示服务器地址</span><span id="footer-version"></span></footer>
+<footer class="wrap"><span>仅监听本机 127.0.0.1 · 每 5 秒随完整检测更新 · 不显示服务器地址</span><span id="footer-version"></span></footer>
 
 <script>
 'use strict';
@@ -270,7 +270,7 @@ function pollNodes() {
   fetch('/api/nodes', { cache: 'no-store' })
     .then(r => r.status === 503 ? 'pending' : r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
     .then(d => {
-      if (d === 'pending') { if (!catalog) renderError('还没有订阅快照', '稳航完成第一轮检测（约 20 秒）后会自动出现。'); return; }
+      if (d === 'pending') { if (!catalog) renderError('还没有订阅快照', '稳航完成第一轮检测（约 5 秒）后会自动出现。'); return; }
       catalog = d;
       render();
     })

@@ -84,6 +84,8 @@ class FreshnessTests(unittest.TestCase):
         with mock.patch.object(router, "run_cycle", side_effect=fake_cycle), \
                 mock.patch.object(router, "PROBE_INTERVAL_SECONDS", 0.6), \
                 mock.patch.object(router, "start_dashboard", return_value=None), \
+                mock.patch.object(router, "fast_lane_loop"), \
+                mock.patch.object(router.probe_trace, "configure"), \
                 mock.patch.object(router, "log"), \
                 mock.patch.object(router.logging_setup, "configure"), \
                 mock.patch.object(router, "sync_state_events"), \

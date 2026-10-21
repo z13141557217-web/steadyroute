@@ -71,7 +71,7 @@ class FastLaneTests(unittest.TestCase):
         legacy = router.build_status_snapshots(self.state, self.net.proxy_data, [], now=int(time.time()))["legacy"]
         group = next(item for item in legacy["groups"] if item["name"] == TW_GROUP)
         kinds = [point[2] for point in group["timeline"]]
-        self.assertGreaterEqual(kinds.count("probe"), 3)
+        self.assertGreaterEqual(kinds.count("probe"), 2, "one point per 5 s plus every miss")
         self.assertIn("switch", kinds)
         self.assertIsNone(group["timeline"][-2][1], "the failed probe is kept as a gap")
         self.assertEqual(legacy["service"]["fast_probe_interval_seconds"], router.FAST_PROBE_INTERVAL_SECONDS)

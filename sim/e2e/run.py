@@ -179,6 +179,9 @@ REC = {"status": [], "markers": [], "api": {}}
 REC_STOP = threading.Event()
 
 
+REC_EVERY = [2]
+
+
 def recorder():
     while not REC_STOP.is_set():
         try:
@@ -187,7 +190,7 @@ def recorder():
                 REC["status"].append({"at": time.time(), "data": data})
         except Exception:
             pass
-        REC_STOP.wait(2)
+        REC_STOP.wait(REC_EVERY[0])
 
 
 def mark(label):
@@ -296,13 +299,98 @@ RESULT["status_after_apply"] = status
 step("dashboard", groups=[(g["name"], g.get("ai_line"), (g.get("auto_lock") or {}).get("country_label"), g["current"],
                            g.get("hot_standby"), g.get("decision")) for g in status["groups"]])
 
+# ---- 4b. "节点变慢时更换" is a SteadyRoute setting: switching it never writes to Clash
+reloads_before, files_before = CLASH.reloads, files()
+toggles = []
+for value in (False, True):
+    code, plan = post("/api/settings/preview", {"ai_line": {"slow_exit": value}})
+    code, done = post("/api/settings/apply", {"ai_line": {"slow_exit": value}})
+    toggles.append((value, code, plan, done, http("GET", "/api/settings")[1]["ai_line"]))
+step("slow exit switch", toggles=toggles, reloads=CLASH.reloads - reloads_before, files_same=files() == files_before)
+assert CLASH.reloads == reloads_before and files() == files_before
+
+# ---- 4c. the AI line's node keeps answering but turns slow and jittery. It never fails, so a
+#          failover never comes: the slow-node exit moves the line after about ten minutes.
+AI = "AI 台湾家宽线路"
+slow = CLASH.groups[AI]["now"]
+normal = (CLASH.latency[slow], CLASH.jitter[slow])
+chats = [CLASH.open_stream(AI, "claude.ai", "Claude"), CLASH.open_stream(AI, "api.anthropic.com", "claude")]
+mark("当前节点变慢：%s 仍然连通，延迟和抖动升高" % slow)
+CLASH.latency[slow], CLASH.jitter[slow] = 300, 150
+REC_EVERY[0] = 4
+t0 = time.time()
+seen, selects_before = {}, len([e for e in CLASH.log if e["kind"] == "select"])
+closes_before = len([e for e in CLASH.log if e["kind"] == "close"])
+while time.time() - t0 < 20 * 60 and CLASH.groups[AI]["now"] == slow:
+    group = [g for g in http("GET", "/api/status")[1]["groups"] if g.get("ai_line")][0]
+    if "正在确认" in group["decision"] and "confirming" not in seen:
+        seen["confirming"] = {"at": round(time.time() - t0), "title": group["decision"], "detail": group["decision_detail"],
+                              "code": group["decision_code"], "failovers_24h": group.get("failovers_24h")}
+        mark("看板显示：%s" % group["decision"])
+    if group["decision_code"] in ("failover_now",):
+        seen["failed"] = True
+    time.sleep(2)
+moved = CLASH.groups[AI]["now"]
+waited = round(time.time() - t0, 1)
+mark("因持续变慢更换：%s → %s（旧连接保留）" % (slow, moved))
+time.sleep(8)
+group = [g for g in http("GET", "/api/status")[1]["groups"] if g.get("ai_line")][0]
+events = [json.loads(line) for line in (HOME / "Library/Logs/SteadyRoute/events.jsonl").read_text(encoding="utf-8").splitlines()
+          if '"optimize"' in line]
+step("slow exit", slow=slow, now=moved, seconds=waited, same_country=moved in world.TW, never_failed="failed" not in seen,
+     confirming=seen.get("confirming"), after_title=group["decision"], after_detail=group["decision_detail"],
+     closed_connections=len([e for e in CLASH.log if e["kind"] == "close"]) - closes_before,
+     old_connections_still_on_old_node=[CLASH.connections.get(cid, {}).get("node") == slow for cid in chats],
+     selects=len([e for e in CLASH.log if e["kind"] == "select"]) - selects_before,
+     event=events[-1] if events else None)
+assert moved != slow and moved in world.TW, "the slow node was not left for a Taiwan residential node"
+assert all(CLASH.connections.get(cid, {}).get("node") == slow for cid in chats), "an existing connection was cut"
+CLASH.latency[slow], CLASH.jitter[slow] = normal
+for cid in chats:
+    CLASH.connections.pop(cid, None)
+REC_EVERY[0] = 2
+time.sleep(20)
+
+# ---- 4d. v0.6: a one-second stall is a blip (answered within the confirmation): no switch.
+#          A four-second stall is not: the line moves within about 2 s and the page can reload.
+TRACE_DIR = HOME / "Library/Logs/SteadyRoute/trace"
+
+
+def trace_verdicts():
+    out = []
+    for path in sorted(TRACE_DIR.glob("trace-*.tsv")):
+        out += [line.split("\t")[3] for line in path.read_text(encoding="utf-8").splitlines() if "\tk\t" in line]
+    return out
+
+
+time.sleep(35)                                   # let the slow-exit handover settle and the trace flush
+cur = CLASH.groups[AI]["now"]
+selects_before = len([e for e in CLASH.log if e["kind"] == "select"])
+mark("当前节点卡顿 1 秒：%s" % cur)
+CLASH.stall_until[cur] = time.time() + 1.0
+time.sleep(8)
+blip_selects = len([e for e in CLASH.log if e["kind"] == "select"]) - selects_before
+step("one-second stall", node=cur, kept=CLASH.groups[AI]["now"] == cur, selects=blip_selects)
+assert CLASH.groups[AI]["now"] == cur, "a one-second stall moved the line"
+mark("当前节点卡顿 4 秒：%s" % cur)
+t0 = time.time()
+CLASH.stall_until[cur] = t0 + 4.0
+while time.time() - t0 < 10 and CLASH.groups[AI]["now"] == cur:
+    time.sleep(0.05)
+stall_moved = CLASH.groups[AI]["now"]
+stall_seconds = round(time.time() - t0, 2)
+step("four-second stall", node=cur, now=stall_moved, seconds=stall_seconds, same_country=stall_moved in world.TW)
+mark("卡顿 %.1f 秒后切走：%s → %s" % (stall_seconds, cur, stall_moved))
+assert stall_moved != cur and stall_seconds < 4.0
+time.sleep(10)
+
 # ---- 5. a Taiwan node fails: the replacement must be Taiwan residential
 current = CLASH.groups["AI 台湾家宽线路"]["now"]
 mark("台湾节点断开：%s" % current)
 CLASH.down_nodes.add(current)
 t0 = time.time()
 while time.time() - t0 < 40 and CLASH.groups["AI 台湾家宽线路"]["now"] == current:
-    time.sleep(0.5)
+    time.sleep(0.05)
 new = CLASH.groups["AI 台湾家宽线路"]["now"]
 step("failover", failed=current, now=new, seconds=round(time.time() - t0, 1), same_country=new in world.TW)
 mark("故障切换完成：%s" % new)
@@ -353,6 +441,24 @@ assert repaired is not None, "the lines were not written again"
 time.sleep(25)
 
 REC["api"]["diagnostics"] = http("GET", "/api/diagnostics")[1]
+import io, zipfile  # noqa: E402,E401
+connection = httpclient.HTTPConnection("127.0.0.1", PORT, timeout=60)
+connection.request("GET", "/api/trace", headers={"Host": "127.0.0.1:%d" % PORT})
+response = connection.getresponse()
+archive = zipfile.ZipFile(io.BytesIO(response.read()))
+disposition = response.getheader("Content-Disposition")
+connection.close()
+names = archive.namelist()
+lines = sum(archive.read(n).decode("utf-8").count("\n") for n in names if n.startswith("trace-") and n.endswith(".tsv"))
+kinds = {}
+for n in names:
+    if n.startswith("trace-") and n.endswith(".tsv"):
+        for line in archive.read(n).decode("utf-8").splitlines():
+            kinds[line.split("\t")[1]] = kinds.get(line.split("\t")[1], 0) + 1
+verdicts = trace_verdicts()
+step("detection record", files=names, disposition=disposition, lines=lines, kinds=kinds,
+     verdicts={v: verdicts.count(v) for v in set(verdicts)}, bytes=sum(archive.getinfo(n).file_size for n in names),
+     minutes=round((time.time() - REC["status"][0]["at"]) / 60, 1))
 step("diagnostics", bytes=REC["api"]["diagnostics"]["bytes"], lines=REC["api"]["diagnostics"]["text"].count("\n"),
      has_failover="故障切换 · AI 台湾家宽线路" in REC["api"]["diagnostics"]["text"],
      has_rewrite="专线重新写入" in REC["api"]["diagnostics"]["text"],

@@ -8,6 +8,7 @@ import concurrent.futures
 import fcntl
 import http.server
 import json
+import math
 import logging
 import os
 import resource
@@ -31,6 +32,7 @@ try:
     import auto_lock
     import ai_line
     import diagnostics
+    import probe_trace
     import settings_service
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,6 +47,7 @@ except ModuleNotFoundError:
     import auto_lock
     import ai_line
     import diagnostics
+    import probe_trace
     import settings_service
 
 
@@ -89,28 +92,43 @@ DASHBOARD_CACHE_LOCK = threading.Lock()
 TEST_URL = "https://cp.cloudflare.com/generate_204"
 PROBE_TIMEOUT_MS = 3000
 BUSINESS_PROBE_TIMEOUT_MS = 5000
-PROBE_WORKERS = 10
-PROBE_INTERVAL_SECONDS = 20
+PROBE_WORKERS = 32
+# v0.6: every candidate every 5 s; the current node of each line every second (fast lane).
+PROBE_INTERVAL_SECONDS = 5
+LOW_TIER_PROBE_SECONDS = 30           # nodes under MIN_AVAILABILITY over 24 h that are not paused
+TOP_PROBE_COUNT = 5                   # ...unless among the best five of their line: always every 5 s
 CYCLE_BUDGET_SECONDS = 10
+STALE_AFTER_SECONDS = 50              # no completed cycle for this long: the page says data may be old
+# Sleep detection compares the wall and monotonic clocks (macOS stops the latter while asleep).
+# The plain gap rule is only a fallback; at 5-second cycles it must not read a slow cycle as sleep.
+RESUME_GAP_INTERVAL_SECONDS = 20
 CYCLE_DURATION_SAMPLES = 60
 SWITCH_TIMES_LIMIT = 500             # per kind; only the last 24 h are kept, this is a safety cap
 PREFLIGHT_FRESH_SECONDS = 120
 BUSINESS_TARGET_DOWN_SECONDS = 300
-CONFIRM_TIMEOUT_MS = 2000
-CONFIRM_PROBES = 2
-CONFIRM_STAGGER_SECONDS = 0.7
-FAST_PROBE_INTERVAL_SECONDS = 5
+# A probe of the current node that has no answer after SUSPECT_AFTER_SECONDS starts the
+# confirmation at once: CONFIRM_PROBES probes CONFIRM_STAGGER_SECONDS apart, each allowed
+# CONFIRM_TIMEOUT_MS, together with the hot standby and DIRECT. Only when none of them (nor the
+# first probe) answers is the node down: about 2 s from the moment it stopped answering. Any
+# answer means a blip, and a blip never switches.
+CONFIRM_TIMEOUT_MS = 700
+CONFIRM_PROBES = 4
+CONFIRM_STAGGER_SECONDS = 0.15
+CONTROL_TIMEOUT_MS = 1000
+FAST_PROBE_INTERVAL_SECONDS = 1
 FAST_PROBE_URL = "http://cp.cloudflare.com/generate_204"
-FAST_PROBE_TIMEOUT_MS = 2000
+FAST_PROBE_TIMEOUT_MS = 1500
+SUSPECT_AFTER_SECONDS = 0.5
+FAST_TIMELINE_SECONDS = 5             # the chart keeps one fast-lane point per 5 s, failures always
 TIMELINE_WINDOW_SECONDS = 30 * 60     # legacy API: dashboard chart offers 5 / 15 / 30 minutes
 V1_TIMELINE_WINDOW_SECONDS = 300      # v1 recent_probes keeps its original 5-minute contract
-TIMELINE_LIMIT = 480                  # 360 fast-lane points + 90 standby points + switches
+TIMELINE_LIMIT = 800                  # 360 fast-lane points + 360 standby points + switches
 CONNECTION_SITE_LIMIT = 30
 LOG_DIR = os.environ.get("STEADYROUTE_LOG_DIR") or os.path.expanduser("~/Library/Logs/SteadyRoute")
 MEMORY_SAMPLE_SECONDS = 600
 MEMORY_SAMPLE_LIMIT = 144
 EVENT_KEY_LIMIT = 1000
-LOCAL_CHECK_TIMEOUT_MS = 3000
+LOCAL_CHECK_TIMEOUT_MS = 1500
 LOCAL_CHECK_URLS = (
     "http://captive.apple.com/hotspot-detect.html",
     "https://www.baidu.com/favicon.ico",
@@ -119,21 +137,30 @@ FAILOVER_STORM_WINDOW_SECONDS = 10 * 60
 FAILOVER_STORM_THRESHOLD = 3
 MASS_FAILURE_MIN_TARGETS = 3
 BUSINESS_PROBE_INTERVAL_SECONDS = 60
-STANDBY_PROBES_PER_GROUP = 1
-# Warm-up boost: while a line has no mature backup (fresh install, new country, new
-# subscription), each 5-second fast tick also measures a few immature candidates, so a
-# backup is ready in about a minute instead of four. Stops by itself once one is mature.
-WARMUP_BOOST_PER_GROUP = 4
-WARMUP_BOOST_MAX = 8
 FAILURES_BEFORE_SWITCH = 2
 MIN_SAMPLES_FOR_OPTIMIZATION = 10
 MIN_SUCCESS_STREAK = 3
 MIN_AVAILABILITY = 0.90
-PERFORMANCE_CONFIRMATIONS = 3
+PERFORMANCE_CONFIRM_SECONDS = 60
+PERFORMANCE_CONFIRMATIONS = PERFORMANCE_CONFIRM_SECONDS // PROBE_INTERVAL_SECONDS
 MIN_ABSOLUTE_GAIN_MS = 180
 MIN_RELATIVE_GAIN = 0.30
 PERFORMANCE_COOLDOWN_SECONDS = 30 * 60
 MANUAL_HOLD_SECONDS = 60 * 60
+# AI line only: leave a node that works but has stayed clearly slower than a standby.
+SLOW_EXIT_WINDOW = 15 * 60 // PROBE_INTERVAL_SECONDS   # full cycles looked at: 15 minutes
+SLOW_EXIT_CYCLES = 10 * 60 // PROBE_INTERVAL_SECONDS   # of those, cycles the gap must be there: 10 minutes
+SLOW_EXIT_DAILY_MAX = 3               # per line, per 24 hours
+# Slow answers (over SLOW_ANSWER_MS) on a working node are most of what a page waits for
+# (sim/detection/stability.py). The score counts them, and every line leaves a node whose
+# answers are slow clearly more often than the best other node's: at least STABLE_EXIT_MARGIN
+# more slow answers in the 30-minute window and at least twice as many, to a target that meets
+# the thresholds and answered >= STABLE_TARGET_SUCCESS of its probes. Lossless.
+SLOW_ANSWER_MS = 1000
+SLOW_PENALTY_MS = 100                 # per percentage point of slow answers (failures: 200)
+STABLE_EXIT_MARGIN = 4
+STABLE_TARGET_SUCCESS = 0.99
+STALL_EXIT_DAILY_MAX = 6              # stability switches per line, per 24 hours
 LATENCY_ALPHA = 0.25
 AVAILABILITY_ALPHA = 0.20
 JITTER_ALPHA = 0.25
@@ -142,10 +169,18 @@ JITTER_WEIGHT = 1.5
 SHORT_WINDOW_SIZE = 20
 LONG_WINDOW_HOURS = 24
 SHORT_MIN_AVAILABILITY = 0.80
-QUARANTINE_FAILURES = 3
-QUARANTINE_WINDOW_SECONDS = 10 * 60
-QUARANTINE_SECONDS = 30 * 60
-QUARANTINE_RECOVERY_SUCCESSES = 3
+# Ranking: the last 30 minutes of 5-second samples. Score = p90 latency of the answers plus
+# FAILURE_PENALTY_MS for every percentage point of failed probes; lower is better.
+WINDOW_SECONDS = 30 * 60
+WINDOW_MIN_SAMPLES = 60               # 5 minutes of samples before the window decides the score
+WINDOW_MIN_CHECK_SAMPLES = 12         # 1 minute: enough to hold a target to WINDOW_MIN_SUCCESS
+WINDOW_MIN_SUCCESS = 0.95             # a failover or performance target must answer 95% of probes
+FAILURE_PENALTY_MS = 200
+# A failed probe pauses a node (a retry in the same cycle that answers does not). It is used
+# again after this many successes in a row: 5 (25 s), 10 if it already paused once in the last
+# 24 hours, 20 from the third time. No fixed waiting time.
+PAUSE_SUCCESSES = (5, 10, 20)
+PAUSE_HISTORY_SECONDS = 24 * 3600
 
 # In-memory only: never persisted, reset on process start.
 RUNTIME = {"last_cycle_wall": None, "last_cycle_mono": None, "last_duration_s": 0.0}
@@ -208,7 +243,10 @@ def refresh_auto_lock(state, proxy_data, now):
     policies, statuses, events = auto_lock.build_policies(proxy_data, state, now, settings)
     for policy in policies:
         if line.get("enabled") and policy["group_name"] == line.get("group_name"):
+            # No ordinary performance switch on the AI line. slow_exit (on unless the user
+            # turned it off) still lets it leave a node that stays clearly slower.
             policy["failover_only"] = True
+            policy["slow_exit"] = bool(line.get("slow_exit", True))
     # A country without residential nodes is shown but never routed.
     routed = [policy for policy in policies if policy["static_candidates"]]
     apply_policies(routed)
@@ -414,7 +452,11 @@ def load_state():
     return state_contract.load_persistent_state(STATE_PATH)
 
 
+STATE_GENERATION = [0]   # bumped on every save, so a cycle can tell whether the fast lane wrote meanwhile
+
+
 def save_state(state):
+    STATE_GENERATION[0] += 1
     state_contract.save_persistent_state(STATE_PATH, state)
 
 
@@ -564,12 +606,11 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         target = group_state.get("handover_new_node")
     last_switch = int(group_state.get("last_switch_at", 0))
     cooldown = max(0, PERFORMANCE_COOLDOWN_SECONDS - (int(now) - last_switch)) if last_switch else 0
-    failover_only = bool((POLICY_BY_GROUP.get(group_name) or {}).get("failover_only"))
+    policy = POLICY_BY_GROUP.get(group_name) or {}
+    failover_only = bool(policy.get("failover_only"))
+    slow_exit_on = bool(failover_only and policy.get("slow_exit"))
     manual_hold = max(0, int(group_state.get("manual_hold_until", 0)) - int(now))
-    safe_backup_available = any(
-        name != current and eligible_for_optimization(state.get("nodes", {}).get(name, {}))
-        for name in candidates
-    )
+    safe_backup_available = best_failover(candidates, state.get("nodes", {}), current) is not None
     old_node = group_state.get("handover_old_node")
     old_connections = connection_count_for_node(group_name, old_node, connections) if old_node else 0
     handover_until = int(group_state.get("handover_grace_until", 0))
@@ -598,6 +639,13 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         # The AI line never switches for speed, so it has no performance cooldown to sit out.
         "cooldown_remaining_seconds": 0 if failover_only else cooldown,
         "failover_only": failover_only,
+        "slow_exit": slow_exit_on,
+        "slow_exit_current": sum(group_state.get("slow_window") or []) if slow_exit_on else 0,
+        "slow_exit_required": SLOW_EXIT_CYCLES,
+        "slow_exit_blocked": slow_exit_state(group_state, now) if slow_exit_on else None,
+        "slow_exit_daily_max": SLOW_EXIT_DAILY_MAX,
+        "slow_exit_minutes": SLOW_EXIT_CYCLES * PROBE_INTERVAL_SECONDS // 60,
+        "slow_exit_window_minutes": SLOW_EXIT_WINDOW * PROBE_INTERVAL_SECONDS // 60,
         "manual_hold_remaining_seconds": manual_hold,
         "performance_optimization_paused": manual_hold > 0,
         "safety_failover_active": bool(state.get("controller_connected", bool(proxy_data)) and candidates),
@@ -610,12 +658,11 @@ def node_contract(group_name, node_name, node_state, now, current_names):
     latency = node_state.get("latency_ewma")
     score = node_state.get("score")
     samples = int(node_state.get("samples", 0))
-    quarantine_until = node_state.get("quarantine_until")
-    if not quarantine_until:
-        quarantine_until = None
+    pause_need = int(node_state.get("pause_need", 0) or 0)
     last_probe = node_state.get("last_probe_at")
     current = node_name in current_names
-    probe_gap = PROBE_INTERVAL_SECONDS if current else PROBE_INTERVAL_SECONDS * max(1, len(GROUPS.get(group_name, [])))
+    low = (samples >= WINDOW_MIN_SAMPLES and long_availability(node_state) < MIN_AVAILABILITY and not pause_need)
+    probe_gap = FAST_PROBE_INTERVAL_SECONDS if current else LOW_TIER_PROBE_SECONDS if low else PROBE_INTERVAL_SECONDS
     return {
         "id": state_contract.node_ui_id(group_name, node_name),
         "name": node_name,
@@ -641,8 +688,14 @@ def node_contract(group_name, node_name, node_state, now, current_names):
         "last_probe_at_iso": iso_timestamp(last_probe),
         "next_probe_at": int(last_probe) + probe_gap if last_probe is not None else None,
         "next_probe_at_iso": iso_timestamp(int(last_probe) + probe_gap) if last_probe is not None else None,
-        "quarantine_until": int(quarantine_until) if quarantine_until is not None else None,
-        "quarantine_until_iso": iso_timestamp(quarantine_until),
+        "quarantine_until": None,
+        "quarantine_until_iso": None,
+        "pause_need": pause_need or None,
+        "pause_progress": min(int(node_state.get("success_streak", 0)), pause_need) if pause_need else None,
+        "window_success": node_state.get("win_success"),
+        "window_samples": int(node_state.get("win_n", 0)),
+        "window_p50_ms": node_state.get("win_p50"),
+        "window_p90_ms": node_state.get("win_p90"),
         "warmup_progress": round(min(1.0, float(samples) / MIN_SAMPLES_FOR_OPTIMIZATION), 3)
         if lifecycle["code"] == "warming" else None,
     }
@@ -796,7 +849,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
     state.clear()
     state.update(migrated)
     last_cycle = state.get("updated_at")
-    stale_after = PROBE_INTERVAL_SECONDS * 2 + CYCLE_BUDGET_SECONDS
+    stale_after = STALE_AFTER_SECONDS
     state_stale = last_cycle is None or now - int(last_cycle) > stale_after
     cycle_started = state.get("last_cycle_started_at", last_cycle)
     stale_at = int(last_cycle) + stale_after if last_cycle is not None else None
@@ -934,7 +987,10 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "metrics": {
                 "failovers_24h": health_model.count_recent(group_state.get("failover_times"), now, 86400),
                 "performance_switches_24h": health_model.count_recent(
-                    group_state.get("performance_switch_times"), now, 86400),
+                    group_state.get("performance_switch_times"), now, 86400) + health_model.count_recent(
+                    group_state.get("stability_switch_times"), now, 86400),
+                "stability_switches_24h": health_model.count_recent(
+                    group_state.get("stability_switch_times"), now, 86400),
                 "removal_switches_24h": health_model.count_recent(
                     group_state.get("removal_switch_times"), now, 86400),
                 "adopt_switches_24h": health_model.count_recent(
@@ -1009,7 +1065,8 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
         "policies": {
             "probe_interval_seconds": PROBE_INTERVAL_SECONDS,
             "business_probe_interval_seconds": BUSINESS_PROBE_INTERVAL_SECONDS,
-            "standby_probes_per_group": STANDBY_PROBES_PER_GROUP,
+            "fast_probe_interval_seconds": FAST_PROBE_INTERVAL_SECONDS,
+            "low_tier_probe_seconds": LOW_TIER_PROBE_SECONDS,
             "min_samples": MIN_SAMPLES_FOR_OPTIMIZATION,
             "confirmations": PERFORMANCE_CONFIRMATIONS,
             "min_availability": MIN_AVAILABILITY,
@@ -1017,9 +1074,9 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "short_window_size": SHORT_WINDOW_SIZE,
             "long_window_hours": LONG_WINDOW_HOURS,
             "failures_before_switch": FAILURES_BEFORE_SWITCH,
-            "quarantine_failures": QUARANTINE_FAILURES,
-            "quarantine_seconds": QUARANTINE_SECONDS,
-            "quarantine_recovery_successes": QUARANTINE_RECOVERY_SUCCESSES,
+            "pause_successes": list(PAUSE_SUCCESSES),
+            "window_seconds": WINDOW_SECONDS,
+            "window_min_success": WINDOW_MIN_SUCCESS,
             "performance_cooldown_seconds": PERFORMANCE_COOLDOWN_SECONDS,
             "score": {"lower_is_better": True, "unit": "weighted_milliseconds"},
         },
@@ -1055,10 +1112,18 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "short_availability": node["availability_short"],
             "long_availability": node["availability_long"],
             "quarantined": node["lifecycle"] == "quarantined",
-            "quarantine_until": node["quarantine_until"],
+            "quarantine_until": None,
+            "paused": bool(node["pause_need"]),
+            "pause_need": node["pause_need"],
+            "pause_progress": node["pause_progress"],
+            "window_success": node["window_success"],
+            "window_samples": node["window_samples"],
+            "window_p50": node["window_p50_ms"],
+            "window_p90": node["window_p90_ms"],
             "business_last_success": state["nodes"][node["name"]].get("business_last_success"),
             "lifecycle": node["lifecycle"],
-            "lifecycle_title": node["lifecycle_status"]["title"],
+            "lifecycle_title": node["lifecycle_status"]["title"] + (
+                "（%d/%d）" % (node["pause_progress"] or 0, node["pause_need"]) if node["pause_need"] else ""),
             "lifecycle_severity": node["lifecycle_status"]["severity"],
             "lifecycle_detail": node["lifecycle_status"]["detail"],
         }
@@ -1138,12 +1203,15 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "short_window_size": SHORT_WINDOW_SIZE,
             "long_window_hours": LONG_WINDOW_HOURS,
             "short_min_availability": SHORT_MIN_AVAILABILITY,
-            "quarantine_failures": QUARANTINE_FAILURES,
-            "quarantine_window_seconds": QUARANTINE_WINDOW_SECONDS,
-            "quarantine_seconds": QUARANTINE_SECONDS,
-            "quarantine_recovery_successes": QUARANTINE_RECOVERY_SUCCESSES,
+            "pause_successes": list(PAUSE_SUCCESSES),
+            "window_seconds": WINDOW_SECONDS,
+            "window_min_success": WINDOW_MIN_SUCCESS,
+            "failure_penalty_ms": FAILURE_PENALTY_MS,
+            "suspect_after_ms": int(SUSPECT_AFTER_SECONDS * 1000),
+            "confirm_timeout_ms": CONFIRM_TIMEOUT_MS,
+            "fast_probe_interval_seconds": FAST_PROBE_INTERVAL_SECONDS,
+            "low_tier_probe_seconds": LOW_TIER_PROBE_SECONDS,
             "business_probe_interval_seconds": BUSINESS_PROBE_INTERVAL_SECONDS,
-            "standby_probes_per_group": STANDBY_PROBES_PER_GROUP,
         },
         "groups": legacy_groups,
         "nodes": legacy_nodes,
@@ -1272,10 +1340,12 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         except EXPECTED_DISCONNECTS:
             self.close_connection = True
 
-    def _reply(self, status, content_type, content, api=False):
+    def _reply(self, status, content_type, content, api=False, filename=None):
         """Every response goes through here, so no route can forget the security headers."""
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if filename:
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -1306,6 +1376,11 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             return
         if route in ("/api/status", "/api/v1/status", "/api/nodes"):
             self._reply(*cached_api_response(route), api=True)
+            return
+        if route == "/api/trace":
+            stamp = time.strftime("%Y%m%d-%H%M")
+            self._reply(200, "application/zip", trace_export(), api=True,
+                        filename="steadyroute-trace-%s.zip" % stamp)
             return
         if route in ("/api/settings", "/api/ai-check", "/api/diagnostics"):
             status, payload = settings_get(route)
@@ -1403,6 +1478,16 @@ def settings_get(route):
     except Exception as error:
         return 500, {"error": str(error)}
     return 404, {"error": "not_found"}
+
+
+def trace_export():
+    """The detection record behind 下载检测记录: probes of the kept days, names, events."""
+    meta = {"version": read_service_version(), "probe_interval_seconds": PROBE_INTERVAL_SECONDS,
+            "fast_probe_interval_seconds": FAST_PROBE_INTERVAL_SECONDS,
+            "suspect_after_ms": int(SUSPECT_AFTER_SECONDS * 1000), "confirm_probes": CONFIRM_PROBES,
+            "confirm_timeout_ms": CONFIRM_TIMEOUT_MS, "fast_probe_url": FAST_PROBE_URL, "test_url": TEST_URL,
+            "lines": {policy["group_name"]: list(policy["static_candidates"]) for policy in POLICIES}}
+    return probe_trace.export(os.path.join(LOG_DIR, "events.jsonl"), meta)
 
 
 def diagnostics_report(service):
@@ -1564,38 +1649,57 @@ def ensure_local_check(cycle_cache):
     return cycle_cache["local_ok"]
 
 
-def confirm_current_failure(current, cycle_cache):
+def confirm_current_failure(current, cycle_cache, standby=None, first=None):
     """Return 'confirmed' | 'transient' | 'local_offline'.
 
-    Runs after one failed probe of the current node. The confirmation probes run
-    in parallel, a little staggered, together with the read-only local-network
-    check, so a dead node is confirmed in about CONFIRM_TIMEOUT_MS plus the stagger.
+    Runs as soon as a probe of the current node has gone SUSPECT_AFTER_SECONDS without an
+    answer. CONFIRM_PROBES probes, CONFIRM_STAGGER_SECONDS apart, each allowed
+    CONFIRM_TIMEOUT_MS; the hot standby and DIRECT are probed at the same time as controls.
+    first: the still-running probe that raised the suspicion; its answer counts too.
+    - any answer from the current node: 'transient' (a blip; never switches)
+    - no answer, and neither the standby nor DIRECT answers: 'local_offline' (this Mac)
+    - otherwise: 'confirmed'
     cycle_cache is shared within one cycle so the local check runs at most once.
     """
-    need_local = "local_ok" not in cycle_cache
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONFIRM_PROBES + 1) as executor:
-        local = executor.submit(local_network_ok) if need_local else None
-        confirms = []
-        for index in range(CONFIRM_PROBES):
-            if index:
-                time.sleep(CONFIRM_STAGGER_SECONDS)
-            confirms.append(executor.submit(probe_url, current, FAST_PROBE_URL, CONFIRM_TIMEOUT_MS))
-        delays = [future.result() for future in confirms]
-        if local is not None:
-            cycle_cache["local_ok"] = local.result()
-    if not cycle_cache["local_ok"]:
-        return "local_offline"
-    if any(delay is not None for delay in delays):
+    pool = probe_pool()
+    pending = [first] if first is not None else []
+    controls = {}
+    if standby and standby != current:
+        controls["standby"] = pool.submit(probe_url, standby, FAST_PROBE_URL, CONTROL_TIMEOUT_MS)
+    if "local_ok" not in cycle_cache:
+        # Own thread, not a probe worker: local_network_ok waits on probe workers itself.
+        controls["local"] = control_pool().submit(local_network_ok)
+    answered = False
+    for index in range(CONFIRM_PROBES):
+        if index:
+            time.sleep(CONFIRM_STAGGER_SECONDS)
+        if any(f.done() and f.result() is not None for f in pending):
+            answered = True
+            break
+        pending.append(pool.submit(probe_url, current, FAST_PROBE_URL, CONFIRM_TIMEOUT_MS))
+    if not answered:
+        for future in concurrent.futures.as_completed(pending):
+            if future.result() is not None:
+                answered = True
+                break
+    if "local" in controls:
+        cycle_cache["local_ok"] = bool(controls["local"].result())
+    standby_ok = controls["standby"].result() is not None if "standby" in controls else None
+    cycle_cache["standby_ok"] = standby_ok
+    if answered:
         return "transient"
+    if not cycle_cache["local_ok"] and not standby_ok:
+        return "local_offline"
     return "confirmed"
 
 
 def timeline_add(group_name, point):
     """Keep a short in-memory history for the dashboard's live strip."""
-    items = TIMELINE.setdefault(group_name, [])
-    items.append(point)
-    cutoff = float(point["t"]) - TIMELINE_WINDOW_SECONDS - 30
-    TIMELINE[group_name] = [item for item in items if float(item["t"]) >= cutoff][-TIMELINE_LIMIT:]
+    with TIMELINE_LOCK:
+        items = TIMELINE.setdefault(group_name, [])
+        items.append(point)
+        cutoff = float(point["t"]) - TIMELINE_WINDOW_SECONDS - 30
+        TIMELINE[group_name] = [item for item in items if float(item["t"]) >= cutoff][-TIMELINE_LIMIT:]
 
 
 def mark_manual_switch(group_name, node_name, now):
@@ -1603,9 +1707,22 @@ def mark_manual_switch(group_name, node_name, now):
     timeline_add(group_name, {"t": round(now, 1), "ms": None, "node": node_name, "kind": "switch", "reason": "manual"})
 
 
+def migrate_pause(node_state, now):
+    """v0.5.x quarantine (fixed 30 minutes) becomes a pause that ends with successes."""
+    if "quarantine_until" in node_state or "recent_failures" in node_state:
+        until = int(node_state.pop("quarantine_until", 0) or 0)
+        node_state.pop("quarantine_recovery_streak", None)
+        node_state.pop("recent_failures", None)
+        if until > now and not int(node_state.get("pause_need", 0)):
+            node_state["pause_need"] = PAUSE_SUCCESSES[0]
+            node_state["paused_at"] = int(now)
+            node_state["success_streak"] = 0
+
+
 def record_health_window(node_state, success, delay, observed_at, quarantine=True):
-    """quarantine=False: a failure the same cycle proved transient; it lowers availability
-    but never counts toward the 3-failures-in-10-minutes quarantine."""
+    """quarantine=False: a failure the same cycle proved transient (a retry answered); it
+    lowers availability but never pauses the node."""
+    migrate_pause(node_state, observed_at)
     short = list(node_state.get("short_results", []))
     short.append(1 if success else 0)
     node_state["short_results"] = short[-SHORT_WINDOW_SIZE:]
@@ -1623,19 +1740,44 @@ def record_health_window(node_state, success, delay, observed_at, quarantine=Tru
         item for item in buckets if hour - int(item.get("hour", hour)) < LONG_WINDOW_HOURS
     ][-LONG_WINDOW_HOURS:]
 
-    failures = [
-        int(timestamp) for timestamp in node_state.get("recent_failures", [])
-        if observed_at - int(timestamp) <= QUARANTINE_WINDOW_SECONDS
-    ]
+    need = int(node_state.get("pause_need", 0))
     if success:
-        if int(node_state.get("quarantine_until", 0)):
-            node_state["quarantine_recovery_streak"] = int(node_state.get("quarantine_recovery_streak", 0)) + 1
-    elif quarantine:
-        failures.append(int(observed_at))
-        node_state["quarantine_recovery_streak"] = 0
-        if len(failures) >= QUARANTINE_FAILURES:
-            node_state["quarantine_until"] = int(observed_at + QUARANTINE_SECONDS)
-    node_state["recent_failures"] = failures
+        if need and int(node_state.get("success_streak", 0)) >= need:
+            node_state["pause_need"] = 0
+            node_state["pause_released_at"] = int(observed_at)
+    elif quarantine and not need:
+        pauses = [int(t) for t in node_state.get("pauses", []) if observed_at - int(t) < PAUSE_HISTORY_SECONDS]
+        pauses.append(int(observed_at))
+        node_state["pauses"] = pauses[-50:]
+        node_state["pause_need"] = PAUSE_SUCCESSES[min(len(pauses), len(PAUSE_SUCCESSES)) - 1]
+        node_state["paused_at"] = int(observed_at)
+
+    window = [item for item in node_state.get("window", []) if observed_at - int(item[0]) < WINDOW_SECONDS]
+    window.append([int(observed_at), int(delay) if success else -1])
+    node_state["window"] = window
+    answers = sorted(int(item[1]) for item in window if int(item[1]) >= 0)
+    node_state["win_n"] = len(window)
+    node_state["win_success"] = round(float(len(answers)) / len(window), 4)
+    node_state["win_p50"] = answers[(len(answers) - 1) // 2] if answers else None
+    node_state["win_p90"] = answers[min(len(answers) - 1, int(math.ceil(len(answers) * 0.9)) - 1)] if answers else None
+
+
+def slow_answers(node_state, now=None):
+    """Answers over SLOW_ANSWER_MS in the 30-minute window."""
+    return sum(1 for item in node_state.get("window", []) if int(item[1]) >= SLOW_ANSWER_MS
+               and (now is None or now - int(item[0]) < WINDOW_SECONDS))
+
+
+def window_score(node_state):
+    """Lower is better. None until the window holds WINDOW_MIN_SAMPLES samples."""
+    if int(node_state.get("win_n", 0)) < WINDOW_MIN_SAMPLES:
+        return None
+    if node_state.get("win_p90") is None:
+        return 1000000.0
+    slow_share = float(slow_answers(node_state)) / max(1, int(node_state.get("win_n", 1)))
+    return (float(node_state["win_p90"])
+            + FAILURE_PENALTY_MS * 100.0 * (1.0 - float(node_state.get("win_success", 0.0)))
+            + SLOW_PENALTY_MS * 100.0 * slow_share)
 
 
 def short_availability(node_state):
@@ -1654,18 +1796,12 @@ def long_availability(node_state):
     return float(successes) / total
 
 
-def is_quarantined(node_state, now=None):
-    now = time.time() if now is None else now
-    until = int(node_state.get("quarantine_until", 0))
-    if not until:
-        return False
-    recovered = int(node_state.get("quarantine_recovery_streak", 0)) >= QUARANTINE_RECOVERY_SUCCESSES
-    if now >= until and recovered:
-        node_state["quarantine_until"] = 0
-        node_state["quarantine_recovery_streak"] = 0
-        node_state["recent_failures"] = []
-        return False
-    return True
+def is_paused(node_state, now=None):
+    migrate_pause(node_state, time.time() if now is None else now)
+    return int(node_state.get("pause_need", 0)) > 0
+
+
+is_quarantined = is_paused   # the name the rest of the code and the tests know
 
 
 def update_node_stats(node_state, delay, observed_at=None, quarantine=True):
@@ -1708,7 +1844,10 @@ def update_node_stats(node_state, delay, observed_at=None, quarantine=True):
     record_health_window(node_state, success, delay, observed_at, quarantine=quarantine)
 
     latency = node_state.get("latency_ewma")
-    if latency is None:
+    windowed = window_score(node_state)
+    if windowed is not None:
+        node_state["score"] = windowed
+    elif latency is None:
         node_state["score"] = 1000000.0
     else:
         node_state["score"] = (
@@ -1763,7 +1902,11 @@ def select_hot_standby(candidates, nodes, current):
     return best_failover(candidates, nodes, current)
 
 
-def choose_probe_targets(state, proxy_data):
+def choose_probe_targets(state, proxy_data, now=None):
+    """Every candidate of every line, each full cycle (5 s). Nodes under MIN_AVAILABILITY over
+    24 hours that are not paused are not switch targets anyway; they are measured every
+    LOW_TIER_PROBE_SECONDS. Paused nodes stay at 5 s so a recovery shows within half a minute."""
+    now = time.time() if now is None else now
     targets = set()
     for group_name, candidates in GROUPS.items():
         current = current_for_group(proxy_data, group_name, candidates)
@@ -1773,21 +1916,17 @@ def choose_probe_targets(state, proxy_data):
         group_state["hot_standby"] = hot
         if hot:
             targets.add(hot)
-        standbys = [name for name in candidates if name != current]
-        if int(state["nodes"].get(current, {}).get("effective_failure_streak", 0)):
-            targets.update(standbys)
-            continue
-        now = time.time()
-        rotation = [
-            name for name in standbys
-            if name != hot and int(state["nodes"].get(name, {}).get("quarantine_until", 0)) <= now
-        ]
-        if rotation:
-            cursor = int(group_state.get("standby_probe_cursor", 0))
-            for offset in range(min(STANDBY_PROBES_PER_GROUP, len(rotation))):
-                targets.add(rotation[(cursor + offset) % len(rotation)])
-            group_state["standby_probe_cursor"] = (cursor + STANDBY_PROBES_PER_GROUP) % len(rotation)
+        ranked = sorted(candidates, key=lambda name: float(state["nodes"].get(name, {}).get("score", 1000000.0)))
+        for name in candidates:
+            node_state = state["nodes"].get(name, {})
+            low = (name not in ranked[:TOP_PROBE_COUNT]
+                   and int(node_state.get("samples", 0)) >= WINDOW_MIN_SAMPLES
+                   and long_availability(node_state) < MIN_AVAILABILITY
+                   and not is_paused(node_state, now))
+            if not low or now - int(node_state.get("last_probe_at", 0)) >= LOW_TIER_PROBE_SECONDS - 1:
+                targets.add(name)
     targets.update(name for _policy, name in candidate_registry.warmup_probe_targets(POLICY_CONFIG, state))
+    targets.discard(None)
     return sorted(targets)
 
 
@@ -1837,12 +1976,14 @@ def active_connections(group_name, connections=None):
     ]
 
 
-def close_old_connections(group_name, old_node, connections=None):
+def close_old_connections(group_name, old_node, connections=None, keep_ids=None):
+    """Close the line's connections on old_node except keep_ids (still receiving data)."""
     closed = 0
+    keep = set(keep_ids or ())
     for connection in active_connections(group_name, connections):
         chains = connection.get("chains") or []
         connection_id = connection.get("id")
-        if connection_id and old_node in chains:
+        if connection_id and old_node in chains and connection_id not in keep:
             try:
                 api_request("DELETE", "/connections/%s" % quote(connection_id, safe=""), timeout=3)
                 closed += 1
@@ -1895,26 +2036,43 @@ def select_node(group_name, node_name, dry_run):
 
 
 def eligible_for_optimization(node_state):
+    """Can a line be switched to this node? Last 30 minutes >= 95% (once a minute of samples
+    exists), 24 hours >= 90%, answering now, not paused."""
+    windowed = int(node_state.get("win_n", 0)) >= WINDOW_MIN_CHECK_SAMPLES
     return (
         bool(node_state.get("last_success"))
         and int(node_state.get("samples", 0)) >= MIN_SAMPLES_FOR_OPTIMIZATION
         and int(node_state.get("success_streak", 0)) >= MIN_SUCCESS_STREAK
-        and float(node_state.get("availability_ewma", 0.0)) >= MIN_AVAILABILITY
-        and short_availability(node_state) >= SHORT_MIN_AVAILABILITY
+        and (float(node_state.get("win_success", 0.0)) >= WINDOW_MIN_SUCCESS if windowed
+             else float(node_state.get("availability_ewma", 0.0)) >= MIN_AVAILABILITY
+             and short_availability(node_state) >= SHORT_MIN_AVAILABILITY)
         and long_availability(node_state) >= MIN_AVAILABILITY
-        and not is_quarantined(node_state)
+        and not is_paused(node_state)
+    )
+
+
+def answering(node_state):
+    """Alive right now: measured, the last two probes answered, not paused."""
+    return (
+        bool(node_state.get("last_success"))
+        and int(node_state.get("success_streak", 0)) >= 2
+        and int(node_state.get("samples", 0)) >= MIN_SUCCESS_STREAK
+        and not is_paused(node_state)
     )
 
 
 def best_failover(candidates, nodes, current):
-    available = [
-        name for name in candidates
-        if name != current
-        and eligible_for_optimization(nodes.get(name, {}))
-    ]
+    """Where a line goes when its node is confirmed down: the best node that meets the target
+    thresholds (30 minutes >= 95%, 24 hours >= 90%); when none does, the best node that is
+    answering now. Staying on a dead node is never better than a weaker live one (10-20
+    diagnostics: every Taiwan candidate was under 90% over 24 hours, so v0.5 had no backup)."""
+    others = [name for name in candidates if name != current]
+    available = [name for name in others if eligible_for_optimization(nodes.get(name, {}))] or \
+        [name for name in others if answering(nodes.get(name, {}))]
     if not available:
         return None
     return min(available, key=lambda name: float(nodes[name].get("score", 1000000.0)))
+
 
 
 # How each kind of switch leaves the group. One table, so the three switch paths cannot
@@ -1924,6 +2082,8 @@ SWITCH_KINDS = {
     "removed": ("removal_switch_times", None, True, 300, 360, True),
     "failover": ("failover_times", True, False, 0, 60, True),
     "optimize": ("performance_switch_times", False, True, 300, 360, False),
+    # stability: left a node that keeps stalling, before its next stall (lossless).
+    "stability": ("stability_switch_times", False, True, 300, 360, False),
     # auto_lock: moved from a non-residential node of the locked country onto its residential line.
     "adopt": ("adopt_switch_times", None, True, 300, 360, True),
 }
@@ -1951,6 +2111,7 @@ def apply_switch(group_name, group_state, kind, old, new, now):
         "recovery_observe_until": int(now + observe),
         "better_candidate": None,
         "better_streak": 0,
+        "slow_window": [],
         "dynamic_no_candidate": False,
     })
     if recovery is not None:
@@ -1977,7 +2138,7 @@ def adopt_residential(group_name, candidates, current, state, group_state, now, 
     group_state["last_seen"] = current
     current_stats = state["nodes"].get(current, {})
     failing = (int(current_stats.get("effective_failure_streak", current_stats.get("failure_streak", 0)))
-               >= FAILURES_BEFORE_SWITCH or is_quarantined(current_stats, now))
+               >= FAILURES_BEFORE_SWITCH)
     if int(group_state.get("manual_hold_until", 0)) > now and not failing:
         return
     if failing and int(group_state.get("manual_hold_until", 0)) > now:
@@ -2000,7 +2161,7 @@ def adopt_residential(group_name, candidates, current, state, group_state, now, 
     logging_setup.write_event("auto_lock_adopt", group=group_name, **{"from": current}, to=target, reason=kind)
 
 
-def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run):
+def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run, keep_ids=None):
     group_info = proxy_data.get(group_name) or {}
     current = group_info.get("now")
     group_state = state["groups"].setdefault(group_name, {})
@@ -2043,11 +2204,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             )
         group_state["manual_hold_until"] = 0
         log("%s: current selection is unavailable: %r" % (group_name, current))
-        mature = [name for name in candidates if eligible_for_optimization(state["nodes"].get(name, {}))]
-        target = min(
-            mature,
-            key=lambda name: float(state["nodes"].get(name, {}).get("score", 1000000.0)),
-        ) if mature else None
+        target = best_failover(candidates, state["nodes"], current)
         if target and business_preflight(group_name, target, state, dry_run):
             select_node(group_name, target, dry_run)
             apply_switch(group_name, group_state, "removed", current, target, now)
@@ -2078,12 +2235,12 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
 
     current_stats = state["nodes"].get(current, {})
     current_failures = int(current_stats.get("effective_failure_streak", current_stats.get("failure_streak", 0)))
-    current_quarantined = is_quarantined(current_stats, now)
-    if current_failures >= FAILURES_BEFORE_SWITCH or current_quarantined:
+    # v0.6: only a confirmed failure moves a line. A paused current node that answers its
+    # probes again is not cut off (v0.5 switched it and closed its connections).
+    if current_failures >= FAILURES_BEFORE_SWITCH:
         if int(group_state.get("manual_hold_until", 0)) > now:
             record_manual_preference_event(
-                state, group_name, "MANUAL_PREFERENCE_INTERRUPTED",
-                "current_quarantined" if current_quarantined else "confirmed_current_failure", now,
+                state, group_name, "MANUAL_PREFERENCE_INTERRUPTED", "confirmed_current_failure", now,
             )
         group_state["manual_hold_until"] = 0
         group_state["better_candidate"] = None
@@ -2107,19 +2264,19 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             remaining.remove(candidate)
             log("%s: skip %s; business preflight failed" % (group_name, candidate))
         if target:
-            reason = "confirmed_failure" if current_failures >= FAILURES_BEFORE_SWITCH else "quarantined"
-            log("%s: FAILOVER %s -> %s (%s)" % (
-                group_name, current, target,
-                "%d consecutive failures" % current_failures if reason == "confirmed_failure"
-                else "quarantined: %d failures within %d minutes" % (
-                    len(current_stats.get("recent_failures", [])), QUARANTINE_WINDOW_SECONDS // 60),
-            ))
+            reason = "confirmed_failure"
+            below = not eligible_for_optimization(state["nodes"].get(target, {}))
+            log("%s: FAILOVER %s -> %s (%d consecutive failures)%s" % (
+                group_name, current, target, current_failures,
+                "; no backup meets 95%% / 90%%, using the best answering node" if below else ""))
             select_node(group_name, target, dry_run)
-            closed = 0 if dry_run else close_old_connections(group_name, current, connections)
-            log("%s: closed %d stale connections" % (group_name, closed))
+            closed = 0 if dry_run else close_old_connections(group_name, current, connections, keep_ids)
+            kept = len(keep_ids or ())
+            log("%s: closed %d stuck connections%s" % (group_name, closed, ", kept %d still receiving data" % kept if kept else ""))
             logging_setup.write_event(
                 "failover", group=group_name, **{"from": current}, to=target,
-                reason=reason, failures=current_failures, closed_connections=closed, storm=storm,
+                reason=reason, failures=current_failures, closed_connections=closed, storm=storm, below_target=below,
+                kept_connections=len(keep_ids or ()),
                 lane=(group_state.get("last_confirm") or {}).get("lane", "cycle"),
                 detect_seconds=max(0, int(now) - int(current_stats.get("first_failure_at", now))),
                 recent_probes=recent_points(group_name))
@@ -2134,10 +2291,18 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
 
     active = active_connections(group_name, connections)
 
-    # The AI line keeps its exit IP as long as the node works: no switch just for speed.
-    if (POLICY_BY_GROUP.get(group_name) or {}).get("failover_only"):
+    if stability_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
+        return
+
+    policy = POLICY_BY_GROUP.get(group_name) or {}
+    if policy.get("failover_only"):
+        if policy.get("slow_exit"):
+            slow_exit(group_name, candidates, current, state, group_state, active, now, dry_run)
+            return
+        # The AI line keeps its exit IP as long as the node works: no switch just for speed.
         group_state["better_candidate"] = None
         group_state["better_streak"] = 0
+        group_state["slow_window"] = []
         group_state["last_seen"] = current
         log_routine((group_name, "keep"), "fixed:%s" % current,
                     "%s: keep %s; the AI line switches only when the node fails" % (group_name, current))
@@ -2223,6 +2388,125 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         ))
 
 
+def stability_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
+    """Every line: leave a node whose answers are slow (over SLOW_ANSWER_MS) clearly more often
+    than the best other node's in the last 30 minutes: STABLE_EXIT_MARGIN more and at least twice
+    as many. The target meets the thresholds, has a full window and answered
+    STABLE_TARGET_SUCCESS of its probes. Not during a manual preference, not within
+    PERFORMANCE_COOLDOWN_SECONDS of any switch, at most STALL_EXIT_DAILY_MAX in 24 hours.
+    Old connections stay on the old node. Returns True when it switched."""
+    nodes = state["nodes"]
+    mine = slow_answers(nodes.get(current, {}), now)
+    if mine < STABLE_EXIT_MARGIN:
+        return False
+    if now < float(group_state.get("manual_hold_until", 0)):
+        return False
+    if now - float(group_state.get("last_switch_at", 0)) < PERFORMANCE_COOLDOWN_SECONDS:
+        return False
+    clean = [name for name in candidates if name != current
+             and eligible_for_optimization(nodes.get(name, {}))
+             and int(nodes.get(name, {}).get("win_n", 0)) >= WINDOW_MIN_SAMPLES
+             and float(nodes.get(name, {}).get("win_success", 0.0)) >= STABLE_TARGET_SUCCESS]
+    if not clean:
+        return False
+    target = min(clean, key=lambda name: (slow_answers(nodes[name], now), float(nodes[name].get("score", 1000000.0))))
+    theirs = slow_answers(nodes[target], now)
+    if mine - theirs < STABLE_EXIT_MARGIN or theirs * 2 > mine:
+        return False
+    if health_model.count_recent(group_state.get("stability_switch_times"), now, 24 * 3600) >= STALL_EXIT_DAILY_MAX:
+        log_routine((group_name, "stable_cap"), "capped:%s" % current,
+                    "%s: %s answered slowly %d times in 30 minutes (%s: %d); %d stability switches already in 24 hours" % (
+                        group_name, current, mine, target, theirs, STALL_EXIT_DAILY_MAX))
+        return False
+    if not business_preflight(group_name, target, state, dry_run):
+        log("%s: keep %s; %s failed business preflight" % (group_name, current, target))
+        return False
+    log("%s: STABILITY %s -> %s; slow answers in 30 minutes %d -> %d" % (group_name, current, target, mine, theirs))
+    select_node(group_name, target, dry_run)
+    apply_switch(group_name, group_state, "stability", current, target, now)
+    logging_setup.write_event(
+        "optimize", group=group_name, **{"from": current}, to=target, reason="slow_answers",
+        slow_from=mine, slow_to=theirs, score_from=round(float(nodes[current].get("score", 0)), 1),
+        score_to=round(float(nodes[target].get("score", 0)), 1), preserved_connections=len(active))
+    return True
+
+
+def slow_exit_state(group_state, now):
+    """Why the AI line may not leave a slow node right now, or None when it may."""
+    if now < float(group_state.get("manual_hold_until", 0)):
+        return "manual"
+    if now - float(group_state.get("last_switch_at", 0)) < PERFORMANCE_COOLDOWN_SECONDS:
+        return "cooldown"
+    if health_model.count_recent(group_state.get("performance_switch_times"), now, 24 * 3600) >= SLOW_EXIT_DAILY_MAX:
+        return "capped"
+    return None
+
+
+def slow_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
+    """AI line: the current node works. Leave it only when it has been clearly slower than a
+    mature same-country residential standby for 10 of the last 15 minutes.
+
+    Each full cycle is marked slow when the weighted-score gap reaches what an ordinary
+    performance switch asks for (MIN_ABSOLUTE_GAIN_MS and MIN_RELATIVE_GAIN). The line moves
+    once SLOW_EXIT_CYCLES of the last SLOW_EXIT_WINDOW cycles are marked (three cycles in a row
+    are enough elsewhere). Never during a manual preference or within
+    PERFORMANCE_COOLDOWN_SECONDS of any switch, and at most SLOW_EXIT_DAILY_MAX times in
+    24 hours. Old connections stay on the old node."""
+    group_state["better_candidate"] = None
+    group_state["better_streak"] = 0
+    group_state["last_seen"] = current
+    blocked = slow_exit_state(group_state, now)
+    if blocked in ("manual", "cooldown"):
+        group_state["slow_window"] = []
+        log_routine((group_name, "keep"), "%s:%s" % (blocked, current),
+                    "%s: keep %s; slow-node exit paused (%s)" % (group_name, current, blocked))
+        return
+    nodes = state["nodes"]
+    eligible = [name for name in candidates if eligible_for_optimization(nodes.get(name, {}))]
+    leader = min((name for name in eligible if name != current),
+                 key=lambda name: float(nodes[name]["score"]), default=None)
+    if current not in eligible or leader is None:
+        group_state["slow_window"] = []
+        log_routine((group_name, "keep"), "collecting:%s" % current,
+                    "%s: keep %s; no mature standby to compare against" % (group_name, current))
+        return
+    current_score = float(nodes[current]["score"])
+    leader_score = float(nodes[leader]["score"])
+    gain = current_score - leader_score
+    slower = gain >= MIN_ABSOLUTE_GAIN_MS and gain / max(current_score, 1.0) >= MIN_RELATIVE_GAIN
+    window = (list(group_state.get("slow_window") or []) + [1 if slower else 0])[-SLOW_EXIT_WINDOW:]
+    group_state["slow_window"] = window
+    marked = sum(window)
+    if not slower or marked < SLOW_EXIT_CYCLES:
+        log_routine((group_name, "keep"), "steady:%s:%d" % (current, marked // 5),
+                    "%s: keep %s; weighted score %.0f (best standby %s %.0f); slow in %d of the last %d cycles" % (
+                        group_name, current, current_score, leader, leader_score, marked, len(window)))
+        return
+    if blocked == "capped":
+        log_routine((group_name, "keep"), "capped:%s" % current,
+                    "%s: keep %s; slower than %s but %d slow-node exits already in 24 hours" % (
+                        group_name, current, leader, SLOW_EXIT_DAILY_MAX))
+        return
+    if not business_preflight(group_name, leader, state, dry_run):
+        # Ask again after a few more slow cycles rather than every cycle.
+        group_state["slow_window"] = [1] * (SLOW_EXIT_CYCLES - 5)
+        log("%s: keep %s; %s failed business preflight" % (group_name, current, leader))
+        return
+    log("%s: SLOW EXIT %s -> %s; weighted score %.0f -> %.0f, slow in %d of the last %d cycles" % (
+        group_name, current, leader, current_score, leader_score, marked, len(window)))
+    select_node(group_name, leader, dry_run)
+    apply_switch(group_name, group_state, "optimize", current, leader, now)
+    current_stats, leader_stats = nodes[current], nodes[leader]
+    logging_setup.write_event(
+        "optimize", group=group_name, **{"from": current}, to=leader, reason="sustained_slow",
+        score_from=round(current_score, 1), score_to=round(leader_score, 1),
+        latency_from=round(float(current_stats.get("latency_ewma") or 0)),
+        latency_to=round(float(leader_stats.get("latency_ewma") or 0)),
+        jitter_from=round(float(current_stats.get("jitter_ewma") or 0)),
+        jitter_to=round(float(leader_stats.get("jitter_ewma") or 0)),
+        slow_cycles=marked, window_cycles=len(window), preserved_connections=len(active))
+
+
 def detect_cycle_resume(state, cycle_started_at):
     """Detect a system sleep before any probe of this cycle is recorded."""
     wall_now, mono_now = time.time(), time.monotonic()
@@ -2231,7 +2515,7 @@ def detect_cycle_resume(state, cycle_started_at):
         # Fresh process: no clocks of our own to compare, so ask macOS what happened since the
         # last recorded cycle: a boot, a sleep, or just this service being stopped.
         kind, gap = health_model.classify_start(
-            previous_update, cycle_started_at, runtime_metrics.power_times(), PROBE_INTERVAL_SECONDS * 3)
+            previous_update, cycle_started_at, runtime_metrics.power_times(), RESUME_GAP_INTERVAL_SECONDS * 3)
         slept = kind == "sleep"
         if kind in ("boot", "restart"):
             RUNTIME["last_cycle_wall"], RUNTIME["last_cycle_mono"] = wall_now, mono_now
@@ -2248,7 +2532,7 @@ def detect_cycle_resume(state, cycle_started_at):
     else:
         slept, gap = health_model.detect_resume(
             RUNTIME["last_cycle_wall"], RUNTIME["last_cycle_mono"], wall_now, mono_now,
-            PROBE_INTERVAL_SECONDS, RUNTIME["last_duration_s"],
+            RESUME_GAP_INTERVAL_SECONDS, RUNTIME["last_duration_s"],
         )
     RUNTIME["last_cycle_wall"], RUNTIME["last_cycle_mono"] = wall_now, mono_now
     if previous_update:
@@ -2386,50 +2670,46 @@ def refresh_cached_snapshot(proxy_data=None, now=None):
     update_dashboard_cache(snapshots)
 
 
-def warmup_boost_targets(state, proxy_data):
-    """Immature candidates to measure this tick, for lines that have no mature backup yet."""
-    targets = []
-    nodes = state.get("nodes", {})
-    for policy in POLICIES:
+CONTROL_POOL = None
+
+
+def control_pool():
+    global CONTROL_POOL
+    with PROBE_POOL_LOCK:
+        if CONTROL_POOL is None:
+            CONTROL_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="steadyroute-control")
+        return CONTROL_POOL
+
+
+STATE_LOCK = threading.RLock()   # the full cycle and the fast lane both change state.json
+TIMELINE_LOCK = threading.Lock()
+
+
+def fast_plan():
+    """{group: (current, candidates, hot standby)} for the lines the fast lane watches."""
+    base_state = RUNTIME.get("last_state") or {}
+    plan = {}
+    for policy in list(POLICIES):
         group_name = policy["group_name"]
-        candidates = candidate_registry.routing_candidates(POLICY_CONFIG, policy, state)
-        current = (proxy_data.get(group_name) or {}).get("now")
-        others = [name for name in candidates if name != current]
-        if not others or any(eligible_for_optimization(nodes.get(name, {})) for name in others):
-            continue
-        immature = sorted(
-            (name for name in others if not is_quarantined(nodes.get(name, {})) and name not in targets),
-            key=lambda name: int(nodes.get(name, {}).get("samples", 0)),
-        )
-        targets.extend(immature[:WARMUP_BOOST_PER_GROUP])
-    return targets[:WARMUP_BOOST_MAX]
-
-
-def record_warmup_boost(results, targets, fast_results, now):
-    """Store warm-up samples. Failures only count when something else in the same batch got
-    through, so a local outage never marks every candidate down."""
-    reached = any(results.get(("warm", name)) is not None for name in targets) or any(
-        value is not None for value in fast_results.values())
-    state = load_state()
-    for name in targets:
-        delay = results.get(("warm", name))
-        if delay is None and not reached:
-            continue
-        node_state = state["nodes"].setdefault(name, {})
-        # Dense samples must not quarantine a node faster than normal probing would.
-        update_node_stats(node_state, delay, int(now), quarantine=False)
-        node_state["last_probe_at"] = int(now)
-    save_state(state)
-    RUNTIME["last_state"] = state
-    return state
+        candidates = candidate_registry.routing_candidates(POLICY_CONFIG, policy, base_state)
+        try:
+            current = (api_request("GET", "/proxies/%s" % quote(group_name, safe=""), timeout=2) or {}).get("now")
+        except Exception:
+            current = None
+        if candidates and current in candidates:
+            standby = (base_state.get("groups", {}).get(group_name) or {}).get("hot_standby")
+            plan[group_name] = (current, candidates, standby)
+    return plan
 
 
 def run_fast_tick(dry_run=False):
-    """Probe only the current node of each group between full cycles.
+    """Probe only the current node of each line, every FAST_PROBE_INTERVAL_SECONDS.
 
-    Returns 'skip' | 'resume' | 'controller_error' | 'ok' | 'transient' | 'local_offline' | 'failover'.
-    A confirmed failure fails over right away through the normal evaluate_group
-    path, so every same-region, fail-closed and preflight rule still applies.
+    An answer within SUSPECT_AFTER_SECONDS is the normal case. Without one, the confirmation
+    starts at once (confirm_current_failure); a confirmed failure fails over right away through
+    the normal evaluate_group path, so every same-country, fail-closed and preflight rule
+    still applies. Returns 'skip' | 'resume' | 'controller_error' | 'ok' | 'transient' |
+    'local_offline' | 'failover'.
     """
     if RUNTIME.get("last_state") is None:
         return "skip"
@@ -2438,67 +2718,122 @@ def run_fast_tick(dry_run=False):
     RUNTIME["last_tick_wall"], RUNTIME["last_tick_mono"] = wall, mono
     if previous_wall is not None and (wall - previous_wall) - (mono - previous_mono) > 15:
         return "resume"
-    try:
-        proxy_data = (api_request("GET", "/proxies") or {}).get("proxies") or {}
-    except Exception:
-        return "controller_error"
-    base_state = RUNTIME["last_state"]
-    plan = {}
-    for policy in POLICIES:
-        group_name = policy["group_name"]
-        candidates = candidate_registry.routing_candidates(POLICY_CONFIG, policy, base_state)
-        current = (proxy_data.get(group_name) or {}).get("now")
-        if candidates and current in candidates:
-            plan[group_name] = (current, candidates)
-    warm = warmup_boost_targets(base_state, proxy_data)
-    results = run_probe_jobs([
-        (group_name, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS)
-        for group_name, (current, _candidates) in plan.items()
-    ] + [(("warm", name), name, TEST_URL, PROBE_TIMEOUT_MS) for name in warm])
+    plan = fast_plan()
+    if not plan:
+        return "controller_error" if POLICIES else "skip"
+    pool = probe_pool()
+    started = time.monotonic()
+    futures = {group: pool.submit(probe_url, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS)
+               for group, (current, _candidates, _standby) in plan.items()}
+    concurrent.futures.wait(list(futures.values()), timeout=SUSPECT_AFTER_SECONDS)
     now = time.time()
     RUNTIME["last_probe_at"] = int(now)
-    if warm:
-        record_warmup_boost(results, warm, {g: results.get(g) for g in plan}, now)
-    for group_name, (current, _candidates) in plan.items():
-        timeline_add(group_name, {"t": round(now, 1), "ms": results.get(group_name), "node": current, "kind": "probe"})
-    failed = [group_name for group_name in plan if results.get(group_name) is None]
-    if not failed:
-        refresh_cached_snapshot(proxy_data)
+    suspicious = [group for group, future in futures.items()
+                  if not future.done() or future.result() is None]
+    verdicts, cycle_cache, before = {}, {}, {}
+    if suspicious:
+        try:
+            before = {item.get("id"): int(item.get("download", 0) or 0)
+                      for item in (api_request("GET", "/connections", timeout=2) or {}).get("connections") or []}
+        except Exception:
+            before = {}
+    for group in suspicious:
+        current, _candidates, standby = plan[group]
+        verdicts[group] = confirm_current_failure(current, cycle_cache, standby=standby, first=futures[group])
+
+    for group, future in futures.items():
+        delay = future.result() if future.done() else None
+        probe_trace.record("fast", plan[group][0], delay, now)
+        record_fast_point(group, plan[group][0], delay, now, suspicious=group in suspicious)
+        if group in verdicts:
+            probe_trace.record("confirm:" + verdicts[group], plan[group][0], None, time.time())
+    if not suspicious:
+        refresh_cached_snapshot()
         return "ok"
-    cycle_cache = {}
-    verdicts = {group_name: confirm_current_failure(plan[group_name][0], cycle_cache) for group_name in failed}
-    if cycle_cache.get("local_ok") is False:
-        state = load_state()
-        update_local_network_state(state, False, int(now))
-        publish_state(state, proxy_data, RUNTIME.get("last_connections") or [], time.time())
+    if cycle_cache.get("local_ok") is False and "confirmed" not in verdicts.values():
+        with STATE_LOCK:
+            state = load_state()
+            update_local_network_state(state, False, int(now))
+            publish_state(state, RUNTIME.get("last_proxy_data") or {}, RUNTIME.get("last_connections") or [],
+                          time.time())
         return "local_offline"
-    confirmed = [group_name for group_name in failed if verdicts[group_name] == "confirmed"]
+    confirmed = [group for group, verdict in verdicts.items() if verdict == "confirmed"]
     if not confirmed:
-        refresh_cached_snapshot(proxy_data)
+        for group in suspicious:
+            log_routine((group, "blip"), "blip", "%s: %s missed one probe and answered the confirmation; kept" % (
+                group, plan[group][0]))
+        refresh_cached_snapshot()
         return "transient"
-    state = load_state()
-    try:
-        connections = (api_request("GET", "/connections") or {}).get("connections") or []
-    except Exception:
-        connections = []
-    for group_name in confirmed:
-        current, candidates = plan[group_name]
-        node_state = state["nodes"].setdefault(current, {})
-        update_node_stats(node_state, None, int(now))
-        node_state["last_probe_at"] = int(now)
-        node_state["effective_failure_streak"] = max(
-            int(node_state.get("effective_failure_streak", 0)), FAILURES_BEFORE_SWITCH)
-        state["groups"].setdefault(group_name, {})["last_confirm"] = {
-            "verdict": "confirmed", "at": int(now), "lane": "fast",
-        }
-        log("%s: fast lane confirmed %s is down" % (group_name, current))
-        evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run)
-    update_local_network_state(state, True, int(now))
-    publish_state(state, proxy_data, connections, time.time())
+    with STATE_LOCK:
+        state = load_state()
+        try:
+            proxy_data = (api_request("GET", "/proxies") or {}).get("proxies") or {}
+            connections = (api_request("GET", "/connections") or {}).get("connections") or []
+        except Exception:
+            return "controller_error"
+        for group_name in confirmed:
+            current, candidates, _standby = plan[group_name]
+            if (proxy_data.get(group_name) or {}).get("now") != current:
+                continue   # the full cycle or the user moved the line meanwhile
+            node_state = state["nodes"].setdefault(current, {})
+            update_node_stats(node_state, None, int(now))
+            node_state["last_probe_at"] = int(now)
+            node_state["effective_failure_streak"] = max(
+                int(node_state.get("effective_failure_streak", 0)), FAILURES_BEFORE_SWITCH)
+            state["groups"].setdefault(group_name, {})["last_confirm"] = {
+                "verdict": "confirmed", "at": int(now), "lane": "fast",
+                "seconds": round(time.monotonic() - started, 2),
+            }
+            log("%s: fast lane confirmed %s is down (%.1f s after the probe)" % (
+                group_name, current, time.monotonic() - started))
+            # Connections that still received data while the node was being confirmed are not
+            # stuck: they stay. Every other connection on the node is closed so it reconnects.
+            receiving = {item.get("id") for item in connections
+                         if item.get("id") in before and int(item.get("download", 0) or 0) > before[item.get("id")]}
+            evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run, keep_ids=receiving)
+        update_local_network_state(state, True, int(now))
+        publish_state(state, proxy_data, connections, time.time())
     return "failover"
 
 
+def record_fast_point(group_name, node_name, delay, now, suspicious=False):
+    """The chart keeps one fast-lane point per FAST_TIMELINE_SECONDS, plus every miss."""
+    last = RUNTIME.setdefault("fast_point_at", {}).get(group_name, 0)
+    if delay is not None and not suspicious and now - last < FAST_TIMELINE_SECONDS:
+        return
+    RUNTIME["fast_point_at"][group_name] = now
+    timeline_add(group_name, {"t": round(now, 1), "ms": delay, "node": node_name, "kind": "probe"})
+
+
+def fast_lane_loop(dry_run=False):
+    """Own thread, so a slow full cycle (business probes can take 10 s) never delays it."""
+    deadline = time.monotonic()
+    while True:
+        deadline = health_model.next_deadline(deadline, FAST_PROBE_INTERVAL_SECONDS, time.monotonic())
+        time.sleep(max(0.0, deadline - time.monotonic()))
+        try:
+            outcome = run_fast_tick(dry_run=dry_run)
+        except Exception as error:
+            log_error("fast probe failed: %s" % error, exc_info=True)
+            outcome = None
+        if outcome == "resume":
+            WAKE_EVENT.set()
+
+
 def run_cycle(dry_run=False):
+    """One full cycle. Planning and recording hold STATE_LOCK; the probes in between do not,
+    so the fast lane can fail over while they run. State and the current nodes are read
+    again after the probes for the same reason."""
+    with STATE_LOCK:
+        plan = plan_cycle()
+    if plan is None:
+        return
+    results, retry = probe_cycle(plan)
+    with STATE_LOCK:
+        record_cycle(plan, results, retry, dry_run)
+
+
+def plan_cycle():
     cycle_clock = time.perf_counter()
     cycle_started_at = int(time.time())
     state = load_state()
@@ -2523,6 +2858,7 @@ def run_cycle(dry_run=False):
     except Exception:
         connections = []
     targets = choose_probe_targets(state, proxy_data)
+    RUNTIME["plan_proxy_data"] = proxy_data
 
     # 1) One parallel batch: base probes, due business probes (current + hot standby
     #    on the same URL) and warm-up business probes.
@@ -2567,10 +2903,48 @@ def run_cycle(dry_run=False):
         if urls and not node_state.get("business_successes") and (group_name, name) not in scheduled:
             jobs.append((("biz", group_name, name), name, urls[0], BUSINESS_PROBE_TIMEOUT_MS))
             scheduled.add((group_name, name))
-    results = run_probe_jobs(jobs)
+    RUNTIME["last_state"] = state
+    return dict(clock=cycle_clock, started=cycle_started_at, resume=resume_cycle, targets=targets, jobs=jobs,
+                state=state, generation=STATE_GENERATION[0],
+                business_plan=business_plan, connections=connections,
+                currents={group: current_for_group(proxy_data, group, candidates) for group, candidates in GROUPS.items()})
 
-    # 2) Retry every failed business probe once, all in parallel.
-    retry = run_probe_jobs([job for job in jobs if job[0][0] == "biz" and results.get(job[0]) is None])
+
+def probe_cycle(plan):
+    jobs = plan["jobs"]
+    results = run_probe_jobs(jobs)
+    currents = set(plan["currents"].values())
+    # 2) Retry every failed business probe once, and every failed base probe of a node that is
+    #    not current (the current node goes through confirm_current_failure instead), all in
+    #    parallel. A base retry that answers means the miss does not pause the node.
+    retry = run_probe_jobs([job for job in jobs if results.get(job[0]) is None and (
+        job[0][0] == "biz" or (job[0][0] == "base" and job[1] not in currents))])
+    return results, retry
+
+
+def record_cycle(plan, results, retry, dry_run):
+    cycle_clock, cycle_started_at, resume_cycle = plan["clock"], plan["started"], plan["resume"]
+    targets, jobs, business_plan = plan["targets"], plan["jobs"], plan["business_plan"]
+    state = plan["state"]
+    if STATE_GENERATION[0] != plan["generation"]:
+        # The fast lane saved (a failover) while the probes ran: start from what it wrote and
+        # keep this cycle's own bookkeeping.
+        planned = state
+        state = load_state()
+        for group_name, group_state in planned.get("groups", {}).items():
+            fresh = state["groups"].setdefault(group_name, {})
+            for key in ("hot_standby", "business_probe_cursor", "last_business_probe_at"):
+                if key in group_state:
+                    fresh[key] = group_state[key]
+    try:
+        proxy_data = (api_request("GET", "/proxies") or {}).get("proxies") or {}
+    except Exception:
+        proxy_data = RUNTIME.get("plan_proxy_data") or {}
+    connections = plan["connections"]
+    for group_name, candidates in GROUPS.items():
+        if current_for_group(proxy_data, group_name, candidates) != plan["currents"].get(group_name):
+            # The fast lane (or the user) moved this line while the probes ran.
+            business_plan.pop(group_name, None)
     business = {}
     for key, name, url, _timeout in jobs:
         if key[0] != "biz":
@@ -2578,13 +2952,13 @@ def run_cycle(dry_run=False):
         delay = results.get(key)
         business[key] = {"name": name, "url": url, "delay": delay if delay is not None else retry.get(key)}
     base_results = {name: results.get(("base", name)) for name in targets}
+    rescued = {name for name in targets if base_results.get(name) is None and retry.get(("base", name)) is not None}
     probed_at = time.time()
+    for name in targets:
+        probe_trace.record("cycle", name, base_results.get(name), probed_at)
     RUNTIME["last_probe_at"] = int(probed_at)
     for group_name, candidates in GROUPS.items():
-        timeline_add(group_name, {
-            "t": round(probed_at, 1), "ms": results.get(("fast", group_name)),
-            "node": current_for_group(proxy_data, group_name, candidates), "kind": "probe",
-        })
+        record_fast_point(group_name, plan["currents"].get(group_name), results.get(("fast", group_name)), probed_at)
         standby = state["groups"].get(group_name, {}).get("hot_standby")
         if ("fast_standby", group_name) in results:
             timeline_add(group_name, {
@@ -2629,7 +3003,8 @@ def run_cycle(dry_run=False):
         if cycle_cache.get("local_ok") is False:
             confirmations[group_name] = "local_offline"
             continue
-        confirmations[group_name] = confirm_current_failure(current, cycle_cache)
+        confirmations[group_name] = confirm_current_failure(
+            current, cycle_cache, standby=state["groups"].get(group_name, {}).get("hot_standby"))
         state["groups"].setdefault(group_name, {})["last_confirm"] = {
             "verdict": confirmations[group_name], "at": cycle_started_at,
         }
@@ -2642,8 +3017,9 @@ def run_cycle(dry_run=False):
         current_for_group(proxy_data, group_name, candidates)
         for group_name, candidates in GROUPS.items()
         if confirmations.get(group_name) == "transient" or group_name in alive_elsewhere
-    }
+    } | rescued
     record_probe_results(state, targets, base_results, cycle_started_at, record_failures, transient)
+
     for (kind, group_name, name), result in business.items():
         success = result["delay"] is not None
         if success or record_failures:
@@ -2762,6 +3138,11 @@ def main():
     else:
         logging_setup.configure(LOG_DIR, to_stdout=True)
     log("%s %s starting (pid %d)" % (SERVICE_NAME, read_service_version(), os.getpid()))
+    if args.daemon:
+        try:
+            probe_trace.configure(os.path.join(LOG_DIR, "trace"))
+        except OSError as error:
+            log_warning("detection record unavailable: %s" % error)
     try:
         sync_state_events(state_contract.migrate_state(load_state()), write=False)
     except Exception as error:
@@ -2776,6 +3157,9 @@ def main():
         if PROFILE == "auto_lock":
             threading.Thread(target=maintenance_loop, name="steadyroute-maintenance", daemon=True).start()
 
+    if args.daemon:
+        threading.Thread(target=fast_lane_loop, args=(args.dry_run,), name="steadyroute-fast-lane",
+                         daemon=True).start()
     deadline = time.monotonic()
     while True:
         try:
@@ -2784,26 +3168,13 @@ def main():
             log_error("cycle failed: %s" % error, exc_info=not isinstance(error, (OSError, RuntimeError)))
         if not args.daemon:
             break
-        # Fixed-rate full cycles every PROBE_INTERVAL_SECONDS; between them a fast
-        # lane probes only the current nodes every FAST_PROBE_INTERVAL_SECONDS.
+        # Full cycles every PROBE_INTERVAL_SECONDS; the fast lane runs in its own thread and
+        # asks for an immediate cycle (WAKE_EVENT) after a sleep.
         deadline = health_model.next_deadline(deadline, PROBE_INTERVAL_SECONDS, time.monotonic())
-        fast_deadline = time.monotonic() + FAST_PROBE_INTERVAL_SECONDS
-        while True:
-            WAKE_EVENT.wait(max(0.0, min(deadline, fast_deadline) - time.monotonic()))
+        WAKE_EVENT.wait(max(0.0, deadline - time.monotonic()))
+        if WAKE_EVENT.is_set():
             WAKE_EVENT.clear()
-            if time.monotonic() >= deadline:
-                break
-            if time.monotonic() >= fast_deadline:
-                try:
-                    outcome = run_fast_tick(dry_run=args.dry_run)
-                except Exception as error:
-                    log_error("fast probe failed: %s" % error, exc_info=True)
-                    outcome = None
-                if outcome == "resume":
-                    deadline = time.monotonic()
-                    break
-                fast_deadline = health_model.next_deadline(
-                    fast_deadline, FAST_PROBE_INTERVAL_SECONDS, time.monotonic())
+            deadline = time.monotonic()
     if dashboard_server is not None:
         dashboard_server.shutdown()
     return 0
