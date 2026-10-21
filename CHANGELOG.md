@@ -35,6 +35,15 @@
     15 分钟内 10 分钟（180 轮中 120 轮）。休眠判断的间隔回退规则固定按 20 秒（`RESUME_GAP_INTERVAL_SECONDS`），
     页面过期阈值固定 50 秒（`STALE_AFTER_SECONDS`）。
   - 曲线：快速通道每 5 秒保留一个点，未回应的每次都保留；`TIMELINE_LIMIT` 800。
+- 评分加入慢回应：窗口内超过 `SLOW_ANSWER_MS`（1000 ms）的回应每 1% 折算 `SLOW_PENALTY_MS`（100 ms）。
+- 稳定性回优 `stability_exit`（所有线路，含 AI 专线，在故障判定之后、其他回优之前）：当前节点 30 分钟窗口内的
+  慢回应比最好的备用节点多 `STABLE_EXIT_MARGIN`（4）次以上且至少一倍，目标达标、窗口满 60 个样本、成功率
+  ≥ `STABLE_TARGET_SUCCESS`（99%）时无损切换（`stability`，历史 `stability_switch_times`，事件 `optimize`，
+  `reason: slow_answers`）。手动选择保护期内、任何一次切换后 30 分钟内不切；每条线路 24 小时最多
+  `STALL_EXIT_DAILY_MAX`（6）次。看板计入“回优”。按卡顿次数（30 分钟卡 2 次、热备 0 次）切换的方案在模型中
+  没有减少等待（`sim/detection/stability.py`），未采用。
+- 故障切换只关闭确认期间没有收到数据的连接：快速通道起疑时读一次 `/connections`，确认故障时下载字节数
+  增加的连接保留（`close_old_connections(..., keep_ids)`，事件字段 `kept_connections`）。
 - AI 专线在当前节点持续偏慢时更换（`slow_exit`，原定 v0.5.5，未单独发布）。v0.5.1 起专线为 `failover_only`，
   节点慢但探测仍成功时不会离开。现在每轮完整检测比较当前节点与评分最好的成熟备用节点：评分差
   ≥ `MIN_ABSOLUTE_GAIN_MS`（180 ms）且 ≥ `MIN_RELATIVE_GAIN`（30%）的一轮记为偏慢。最近 `SLOW_EXIT_WINDOW`
