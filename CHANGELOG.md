@@ -63,6 +63,10 @@
 
 ### Added
 
+- GitHub Actions 工作流 `releases`：每次推送 `main` 或 `v*` 标签时，为所有还没有 Release 页面的标签
+  从标签代码重新构建发布包并发布（`scripts/publish-release.sh --missing`）。补发的页面开头注明原始
+  发布日期。用于补齐 v0.1.0、v0.5.0–v0.5.4 缺失的 Release，此后不再依赖手动发布。
+- `docs/releases/v0.1.0.md`。
 - 检测记录 `probe_trace.py`：快速通道、完整检测与确认结论逐条写入 `~/Library/Logs/SteadyRoute/trace/`
   （按本地日期分文件，旧的 gzip，保留 3 天）；`GET /api/trace` 返回 zip（含 `names.json`、对应日期的
   `events.jsonl` 与 `meta.json`）；设置页“高级信息”新增“下载检测记录”。
