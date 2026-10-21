@@ -26,6 +26,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.9'
+      - name: Tag the version on main
+        # A merge to main that raises VERSION gets its tag here, so nobody has to push it by hand.
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          tag="v$(tr -d '[:space:]' < VERSION)"
+          if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            git tag -a "$tag" -m "SteadyRoute $tag"
+            git push origin "$tag"
+          fi
       - name: Publish missing releases
         env:
           GH_TOKEN: ${{ github.token }}
