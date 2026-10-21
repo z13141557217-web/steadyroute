@@ -82,6 +82,15 @@ class RealTimeDetectionTests(unittest.TestCase):
         self.assertEqual(outcome, "failover")
         self.assertNotIn(self.net.puts[0][1], (TW_NODES[0],))
 
+    def test_only_stuck_connections_are_closed(self):
+        self.net.connections = [{"id": "stuck", "chains": [TW_NODES[0], TW_GROUP], "download": 500},
+                                {"id": "streaming", "chains": [TW_NODES[0], TW_GROUP], "download": 500}]
+        self.net.connection_growth = {"streaming": 4000}
+        self.net.down_nodes.add(TW_NODES[0])
+        outcome, _seconds = self.tick()
+        self.assertEqual(outcome, "failover")
+        self.assertEqual(self.net.deletes, ["/connections/stuck"], "a connection still receiving data is kept")
+
     def test_fast_lane_fails_over_while_a_slow_cycle_runs(self):
         urls = TW["business_test_urls"]
         for url in urls:

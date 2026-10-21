@@ -137,12 +137,16 @@ def _switch_line(record, wake_times):
                   "断开连接 %s 个" % record.get("closed_connections"), "切换前探测 %s" % _probes(record.get("recent_probes"))]
         if record.get("storm"):
             parts.append("多节点同时失败")
+        if record.get("kept_connections"):
+            parts.append("保留仍在收数据的连接 %s 个" % record.get("kept_connections"))
         if record.get("below_target"):
             parts.append("没有达标的备用节点，换到当前能连通的最好节点")
         near = [at - wake for wake in wake_times if 0 <= at - wake <= NEAR_WAKE_SECONDS]
         if near:
             parts.append("距唤醒或启动 %d 秒" % min(near))
     elif kind == "optimize":
+        if record.get("reason") == "slow_answers":
+            parts.append("30 分钟内慢回应（超过 1 秒）%s 次 → 目标 %s 次" % (record.get("slow_from"), record.get("slow_to")))
         if record.get("reason") == "sustained_slow":
             parts.append("持续偏慢（近 %s 轮中 %s 轮）· 延迟 %s → %s ms · 抖动 %s → %s ms" % (
                 record.get("window_cycles"), record.get("slow_cycles"), record.get("latency_from"), record.get("latency_to"),

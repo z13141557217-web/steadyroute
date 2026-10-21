@@ -74,7 +74,7 @@ class RoutingDecisionTests(unittest.TestCase):
         self.original_select = router.select_node
         self.original_close = router.close_old_connections
         router.select_node = lambda group, node, dry_run: self.selected.append((group, node))
-        router.close_old_connections = lambda group, node, connections=None: self.closed.append((group, node)) or 1
+        router.close_old_connections = lambda group, node, connections=None, keep_ids=None: self.closed.append((group, node)) or 1
 
     def tearDown(self):
         router.select_node = self.original_select
@@ -260,6 +260,69 @@ class RoutingDecisionTests(unittest.TestCase):
         with mock.patch.object(router, "business_preflight", return_value=True):
             router.evaluate_group(group, ["current", "weak", "good"], {group: {"now": "current"}}, [], state, False)
         self.assertEqual(self.selected, [(group, "good")])
+
+    def _stable_line(self, policy_extra=None, **group_state):
+        group = "stable-line"
+        now = time.time()
+        current = healthy(150)
+        current["window"] = [[now - 5 * k, 1400 if k % 50 == 0 else 120] for k in range(360)]   # 8 slow answers
+        target = healthy(180)
+        target.update({"win_n": 360, "win_success": 1.0,
+                       "window": [[now - 5 * k, 1200 if k == 100 else 130] for k in range(360)]})   # 1 slow answer
+        state = {"nodes": {"current": current, "target": target},
+                 "groups": {group: dict({"last_seen": "current", "last_switch_at": 0}, **group_state)}}
+        policy = dict({"group_name": group, "include_pattern": ".", "exclude_pattern": "(?!)"}, **(policy_extra or {}))
+        return group, state, policy, now
+
+    def _evaluate(self, group, state, policy, connections=()):
+        with mock.patch.dict(router.POLICY_BY_GROUP, {group: policy}), \
+                mock.patch.object(router, "business_preflight", return_value=True), \
+                mock.patch.object(router.logging_setup, "write_event") as event:
+            router.evaluate_group(group, ["current", "target"], {group: {"now": "current"}}, list(connections), state, False)
+        return event
+
+    def test_a_node_that_answers_slowly_more_often_is_left_without_cutting_connections(self):
+        group, state, policy, now = self._stable_line()
+        live = [{"id": "chat", "chains": ["current", group]}]
+        event = self._evaluate(group, state, policy, live)
+        self.assertEqual(self.selected, [(group, "target")], "8 slow answers against 1 in 30 minutes")
+        self.assertEqual(self.closed, [], "lossless: old connections stay")
+        self.assertEqual(len(state["groups"][group]["stability_switch_times"]), 1)
+        name, fields = event.call_args[0][0], event.call_args[1]
+        self.assertEqual((name, fields["reason"], fields["slow_from"], fields["slow_to"]), ("optimize", "slow_answers", 8, 1))
+
+    def test_the_ai_line_also_leaves_a_node_with_many_slow_answers(self):
+        group, state, policy, now = self._stable_line({"failover_only": True, "slow_exit": True})
+        self._evaluate(group, state, policy)
+        self.assertEqual(self.selected, [(group, "target")])
+
+    def test_stability_switch_needs_a_clear_gap_a_clean_target_and_respects_limits(self):
+        now = time.time()
+        few = [[now - 5 * k, 1400 if k % 120 == 0 else 120] for k in range(360)]           # 3 slow answers
+        cases = (
+            ("3 slow answers are under the margin", {}, lambda s: s["nodes"]["current"].update(window=few)),
+            ("the target answers slowly almost as often",
+             {}, lambda s: s["nodes"]["target"].update(window=[[now - 5 * k, 1300 if k % 80 == 0 else 120] for k in range(360)])),
+            ("the target missed probes", {}, lambda s: s["nodes"]["target"].update(win_success=0.97)),
+            ("the target is not observed long enough", {}, lambda s: s["nodes"]["target"].update(win_n=30)),
+            ("manual choice", {"manual_hold_until": now + 600}, lambda s: None),
+            ("within 30 minutes of a switch", {"last_switch_at": now - 600}, lambda s: None),
+            ("six already today", {"stability_switch_times": [now - 3600 * h for h in range(1, 7)]}, lambda s: None),
+        )
+        for label, group_state, change in cases:
+            group, state, policy, _now = self._stable_line(**group_state)
+            change(state)
+            self._evaluate(group, state, policy)
+            self.assertEqual(self.selected, [], label)
+
+    def test_slow_answers_raise_the_score(self):
+        steady, spiky = {}, {}
+        t = 1_000_000
+        for step in range(360):
+            router.update_node_stats(steady, 120, t + 5 * step)
+            router.update_node_stats(spiky, 1500 if step % 20 == 0 else 120, t + 5 * step)
+        self.assertEqual((steady["win_p90"], spiky["win_p90"]), (120, 120), "p90 alone cannot tell them apart")
+        self.assertAlmostEqual(spiky["score"] - steady["score"], router.SLOW_PENALTY_MS * 100 * 18 / 360.0, places=3)
 
     def test_real_failure_still_closes_only_stale_connections(self):
         group = "test-group"

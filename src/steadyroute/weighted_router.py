@@ -151,6 +151,16 @@ MANUAL_HOLD_SECONDS = 60 * 60
 SLOW_EXIT_WINDOW = 15 * 60 // PROBE_INTERVAL_SECONDS   # full cycles looked at: 15 minutes
 SLOW_EXIT_CYCLES = 10 * 60 // PROBE_INTERVAL_SECONDS   # of those, cycles the gap must be there: 10 minutes
 SLOW_EXIT_DAILY_MAX = 3               # per line, per 24 hours
+# Slow answers (over SLOW_ANSWER_MS) on a working node are most of what a page waits for
+# (sim/detection/stability.py). The score counts them, and every line leaves a node whose
+# answers are slow clearly more often than the best other node's: at least STABLE_EXIT_MARGIN
+# more slow answers in the 30-minute window and at least twice as many, to a target that meets
+# the thresholds and answered >= STABLE_TARGET_SUCCESS of its probes. Lossless.
+SLOW_ANSWER_MS = 1000
+SLOW_PENALTY_MS = 100                 # per percentage point of slow answers (failures: 200)
+STABLE_EXIT_MARGIN = 4
+STABLE_TARGET_SUCCESS = 0.99
+STALL_EXIT_DAILY_MAX = 6              # stability switches per line, per 24 hours
 LATENCY_ALPHA = 0.25
 AVAILABILITY_ALPHA = 0.20
 JITTER_ALPHA = 0.25
@@ -977,7 +987,10 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "metrics": {
                 "failovers_24h": health_model.count_recent(group_state.get("failover_times"), now, 86400),
                 "performance_switches_24h": health_model.count_recent(
-                    group_state.get("performance_switch_times"), now, 86400),
+                    group_state.get("performance_switch_times"), now, 86400) + health_model.count_recent(
+                    group_state.get("stability_switch_times"), now, 86400),
+                "stability_switches_24h": health_model.count_recent(
+                    group_state.get("stability_switch_times"), now, 86400),
                 "removal_switches_24h": health_model.count_recent(
                     group_state.get("removal_switch_times"), now, 86400),
                 "adopt_switches_24h": health_model.count_recent(
@@ -1749,13 +1762,22 @@ def record_health_window(node_state, success, delay, observed_at, quarantine=Tru
     node_state["win_p90"] = answers[min(len(answers) - 1, int(math.ceil(len(answers) * 0.9)) - 1)] if answers else None
 
 
+def slow_answers(node_state, now=None):
+    """Answers over SLOW_ANSWER_MS in the 30-minute window."""
+    return sum(1 for item in node_state.get("window", []) if int(item[1]) >= SLOW_ANSWER_MS
+               and (now is None or now - int(item[0]) < WINDOW_SECONDS))
+
+
 def window_score(node_state):
     """Lower is better. None until the window holds WINDOW_MIN_SAMPLES samples."""
     if int(node_state.get("win_n", 0)) < WINDOW_MIN_SAMPLES:
         return None
     if node_state.get("win_p90") is None:
         return 1000000.0
-    return float(node_state["win_p90"]) + FAILURE_PENALTY_MS * 100.0 * (1.0 - float(node_state.get("win_success", 0.0)))
+    slow_share = float(slow_answers(node_state)) / max(1, int(node_state.get("win_n", 1)))
+    return (float(node_state["win_p90"])
+            + FAILURE_PENALTY_MS * 100.0 * (1.0 - float(node_state.get("win_success", 0.0)))
+            + SLOW_PENALTY_MS * 100.0 * slow_share)
 
 
 def short_availability(node_state):
@@ -1954,12 +1976,14 @@ def active_connections(group_name, connections=None):
     ]
 
 
-def close_old_connections(group_name, old_node, connections=None):
+def close_old_connections(group_name, old_node, connections=None, keep_ids=None):
+    """Close the line's connections on old_node except keep_ids (still receiving data)."""
     closed = 0
+    keep = set(keep_ids or ())
     for connection in active_connections(group_name, connections):
         chains = connection.get("chains") or []
         connection_id = connection.get("id")
-        if connection_id and old_node in chains:
+        if connection_id and old_node in chains and connection_id not in keep:
             try:
                 api_request("DELETE", "/connections/%s" % quote(connection_id, safe=""), timeout=3)
                 closed += 1
@@ -2058,6 +2082,8 @@ SWITCH_KINDS = {
     "removed": ("removal_switch_times", None, True, 300, 360, True),
     "failover": ("failover_times", True, False, 0, 60, True),
     "optimize": ("performance_switch_times", False, True, 300, 360, False),
+    # stability: left a node that keeps stalling, before its next stall (lossless).
+    "stability": ("stability_switch_times", False, True, 300, 360, False),
     # auto_lock: moved from a non-residential node of the locked country onto its residential line.
     "adopt": ("adopt_switch_times", None, True, 300, 360, True),
 }
@@ -2135,7 +2161,7 @@ def adopt_residential(group_name, candidates, current, state, group_state, now, 
     logging_setup.write_event("auto_lock_adopt", group=group_name, **{"from": current}, to=target, reason=kind)
 
 
-def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run):
+def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run, keep_ids=None):
     group_info = proxy_data.get(group_name) or {}
     current = group_info.get("now")
     group_state = state["groups"].setdefault(group_name, {})
@@ -2244,11 +2270,13 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                 group_name, current, target, current_failures,
                 "; no backup meets 95%% / 90%%, using the best answering node" if below else ""))
             select_node(group_name, target, dry_run)
-            closed = 0 if dry_run else close_old_connections(group_name, current, connections)
-            log("%s: closed %d stale connections" % (group_name, closed))
+            closed = 0 if dry_run else close_old_connections(group_name, current, connections, keep_ids)
+            kept = len(keep_ids or ())
+            log("%s: closed %d stuck connections%s" % (group_name, closed, ", kept %d still receiving data" % kept if kept else ""))
             logging_setup.write_event(
                 "failover", group=group_name, **{"from": current}, to=target,
                 reason=reason, failures=current_failures, closed_connections=closed, storm=storm, below_target=below,
+                kept_connections=len(keep_ids or ()),
                 lane=(group_state.get("last_confirm") or {}).get("lane", "cycle"),
                 detect_seconds=max(0, int(now) - int(current_stats.get("first_failure_at", now))),
                 recent_probes=recent_points(group_name))
@@ -2262,6 +2290,9 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         return
 
     active = active_connections(group_name, connections)
+
+    if stability_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
+        return
 
     policy = POLICY_BY_GROUP.get(group_name) or {}
     if policy.get("failover_only"):
@@ -2355,6 +2386,49 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         log("%s: lossless recovery preserved %d existing connections on %s" % (
             group_name, len(active), current
         ))
+
+
+def stability_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
+    """Every line: leave a node whose answers are slow (over SLOW_ANSWER_MS) clearly more often
+    than the best other node's in the last 30 minutes: STABLE_EXIT_MARGIN more and at least twice
+    as many. The target meets the thresholds, has a full window and answered
+    STABLE_TARGET_SUCCESS of its probes. Not during a manual preference, not within
+    PERFORMANCE_COOLDOWN_SECONDS of any switch, at most STALL_EXIT_DAILY_MAX in 24 hours.
+    Old connections stay on the old node. Returns True when it switched."""
+    nodes = state["nodes"]
+    mine = slow_answers(nodes.get(current, {}), now)
+    if mine < STABLE_EXIT_MARGIN:
+        return False
+    if now < float(group_state.get("manual_hold_until", 0)):
+        return False
+    if now - float(group_state.get("last_switch_at", 0)) < PERFORMANCE_COOLDOWN_SECONDS:
+        return False
+    clean = [name for name in candidates if name != current
+             and eligible_for_optimization(nodes.get(name, {}))
+             and int(nodes.get(name, {}).get("win_n", 0)) >= WINDOW_MIN_SAMPLES
+             and float(nodes.get(name, {}).get("win_success", 0.0)) >= STABLE_TARGET_SUCCESS]
+    if not clean:
+        return False
+    target = min(clean, key=lambda name: (slow_answers(nodes[name], now), float(nodes[name].get("score", 1000000.0))))
+    theirs = slow_answers(nodes[target], now)
+    if mine - theirs < STABLE_EXIT_MARGIN or theirs * 2 > mine:
+        return False
+    if health_model.count_recent(group_state.get("stability_switch_times"), now, 24 * 3600) >= STALL_EXIT_DAILY_MAX:
+        log_routine((group_name, "stable_cap"), "capped:%s" % current,
+                    "%s: %s answered slowly %d times in 30 minutes (%s: %d); %d stability switches already in 24 hours" % (
+                        group_name, current, mine, target, theirs, STALL_EXIT_DAILY_MAX))
+        return False
+    if not business_preflight(group_name, target, state, dry_run):
+        log("%s: keep %s; %s failed business preflight" % (group_name, current, target))
+        return False
+    log("%s: STABILITY %s -> %s; slow answers in 30 minutes %d -> %d" % (group_name, current, target, mine, theirs))
+    select_node(group_name, target, dry_run)
+    apply_switch(group_name, group_state, "stability", current, target, now)
+    logging_setup.write_event(
+        "optimize", group=group_name, **{"from": current}, to=target, reason="slow_answers",
+        slow_from=mine, slow_to=theirs, score_from=round(float(nodes[current].get("score", 0)), 1),
+        score_to=round(float(nodes[target].get("score", 0)), 1), preserved_connections=len(active))
+    return True
 
 
 def slow_exit_state(group_state, now):
@@ -2656,10 +2730,17 @@ def run_fast_tick(dry_run=False):
     RUNTIME["last_probe_at"] = int(now)
     suspicious = [group for group, future in futures.items()
                   if not future.done() or future.result() is None]
-    verdicts, cycle_cache = {}, {}
+    verdicts, cycle_cache, before = {}, {}, {}
+    if suspicious:
+        try:
+            before = {item.get("id"): int(item.get("download", 0) or 0)
+                      for item in (api_request("GET", "/connections", timeout=2) or {}).get("connections") or []}
+        except Exception:
+            before = {}
     for group in suspicious:
         current, _candidates, standby = plan[group]
         verdicts[group] = confirm_current_failure(current, cycle_cache, standby=standby, first=futures[group])
+
     for group, future in futures.items():
         delay = future.result() if future.done() else None
         probe_trace.record("fast", plan[group][0], delay, now)
@@ -2705,7 +2786,11 @@ def run_fast_tick(dry_run=False):
             }
             log("%s: fast lane confirmed %s is down (%.1f s after the probe)" % (
                 group_name, current, time.monotonic() - started))
-            evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run)
+            # Connections that still received data while the node was being confirmed are not
+            # stuck: they stay. Every other connection on the node is closed so it reconnects.
+            receiving = {item.get("id") for item in connections
+                         if item.get("id") in before and int(item.get("download", 0) or 0) > before[item.get("id")]}
+            evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run, keep_ids=receiving)
         update_local_network_state(state, True, int(now))
         publish_state(state, proxy_data, connections, time.time())
     return "failover"
@@ -2934,6 +3019,7 @@ def record_cycle(plan, results, retry, dry_run):
         if confirmations.get(group_name) == "transient" or group_name in alive_elsewhere
     } | rescued
     record_probe_results(state, targets, base_results, cycle_started_at, record_failures, transient)
+
     for (kind, group_name, name), result in business.items():
         success = result["delay"] is not None
         if success or record_failures:

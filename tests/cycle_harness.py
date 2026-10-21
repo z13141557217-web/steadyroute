@@ -73,6 +73,7 @@ class FakeNetwork(object):
         self.realtime = False            # probes take real time (timeouts, stalls, latency)
         self.stall = {}                  # node -> time.monotonic() until which it does not answer
         self.slow_urls = {}              # url -> extra seconds (real time only)
+        self.connection_growth = {}      # connection id -> bytes added on every /connections read
         self.probe_calls = []
         self.puts = []
         self.deletes = []
@@ -134,7 +135,10 @@ class FakeNetwork(object):
                 raise RuntimeError("404 %s" % path)
             return item
         if method == "GET" and path == "/connections":
-            return {"connections": list(self.connections)}
+            with self.lock:
+                for item in self.connections:
+                    item["download"] = int(item.get("download", 0)) + int(self.connection_growth.get(item.get("id"), 0))
+                return {"connections": [dict(item) for item in self.connections]}
         if method == "PUT" and path.startswith("/proxies/"):
             from urllib.parse import unquote
             group = unquote(path[len("/proxies/"):])
