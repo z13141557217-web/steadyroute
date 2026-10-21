@@ -2396,7 +2396,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         if storm and now - int(group_state.get("failover_storm_event_at", 0)) >= FAILOVER_STORM_WINDOW_SECONDS:
             group_state["failover_storm_event_at"] = int(now)
             record_runtime_event(state, "FAILOVER_STORM", "repeated_failovers", now, group_name)
-            log("%s: failover storm; every failover target now requires a full business preflight" % group_name)
+            log("%s: failover storm; a silent node now has to stay silent %d s before the line moves" % (group_name, LONG_OUTAGE_SECONDS))
         # v0.6.1: in a failover storm a confirmed silence (fast lane or full cycle) moves the
         # line only after LONG_OUTAGE_SECONDS. Failures found by the business check keep the
         # old path.
