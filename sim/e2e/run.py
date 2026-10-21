@@ -384,6 +384,26 @@ mark("卡顿 %.1f 秒后切走：%s → %s" % (stall_seconds, cur, stall_moved))
 assert stall_moved != cur and stall_seconds < 4.0
 time.sleep(10)
 
+# ---- 4e. v0.6.1: a relay node pays 0.6 s of connection setup on every probe and reports only
+#          the request (10-21 record). The wait follows its real answer time: no switch.
+relay = CLASH.groups[AI]["now"]
+mark("当前节点每次检测多 0.6 秒建连：%s" % relay)
+selects_before = len([e for e in CLASH.log if e["kind"] == "select"])
+CLASH.setup[relay] = 0.6
+time.sleep(40)
+relay_selects = len([e for e in CLASH.log if e["kind"] == "select"]) - selects_before
+import io, zipfile  # noqa: E402,E401
+_trace = httpclient.HTTPConnection("127.0.0.1", PORT, timeout=60)
+_trace.request("GET", "/api/trace", headers={"Host": "127.0.0.1:%d" % PORT})
+trace_meta = json.loads(zipfile.ZipFile(io.BytesIO(_trace.getresponse().read())).read("meta.json"))
+relay_wait = trace_meta.get("answer_times_ms", {}).get(relay)
+step("relay setup", node=relay, kept=CLASH.groups[AI]["now"] == relay, selects=relay_selects, answer_time_ms=relay_wait)
+mark("中转节点保持不变，实际回应约 %s ms" % relay_wait)
+assert CLASH.groups[AI]["now"] == relay and relay_selects == 0, "a relay node's setup time moved the line"
+assert relay_wait and relay_wait >= 600
+CLASH.setup.pop(relay, None)
+time.sleep(5)
+
 # ---- 5. a Taiwan node fails: the replacement must be Taiwan residential
 current = CLASH.groups["AI 台湾家宽线路"]["now"]
 mark("台湾节点断开：%s" % current)
@@ -400,6 +420,39 @@ selects = [e for e in CLASH.log if e["kind"] == "select"]
 cross = [e for e in selects if (e["group"] in ("AI 台湾家宽线路",) and e["node"] not in world.TW)
          or (e["group"] == "香港家宽自动备援" and e["node"] not in world.HK)]
 step("cross-region selections", count=len(cross), selects=len(selects))
+
+# ---- 5a. v0.6.1: a failover storm (3 failovers in 10 minutes). A third failover first, then a
+#          three-second stall is waited out, and a real outage moves the line after about 5 s.
+third = CLASH.groups[AI]["now"]
+CLASH.down_nodes.add(third)
+t0 = time.time()
+while time.time() - t0 < 20 and CLASH.groups[AI]["now"] == third:
+    time.sleep(0.05)
+storm_from = CLASH.groups[AI]["now"]
+step("third failover", failed=third, now=storm_from, seconds=round(time.time() - t0, 1))
+time.sleep(15)
+CLASH.down_nodes.discard(third)
+mark("10 分钟内第 3 次切换后，当前节点卡顿 3 秒：%s" % storm_from)
+selects_before = len([e for e in CLASH.log if e["kind"] == "select"])
+CLASH.stall_until[storm_from] = time.time() + 3.0
+time.sleep(10)
+storm_blip = len([e for e in CLASH.log if e["kind"] == "select"]) - selects_before
+step("storm three-second stall", node=storm_from, kept=CLASH.groups[AI]["now"] == storm_from, selects=storm_blip,
+     holds=trace_verdicts().count("h"))
+assert CLASH.groups[AI]["now"] == storm_from, "a three-second stall in a storm moved the line"
+mark("频繁切换期间当前节点断开：%s" % storm_from)
+CLASH.down_nodes.add(storm_from)
+t0 = time.time()
+while time.time() - t0 < 30 and CLASH.groups[AI]["now"] == storm_from:
+    time.sleep(0.05)
+storm_seconds = round(time.time() - t0, 2)
+storm_to = CLASH.groups[AI]["now"]
+step("storm failover", failed=storm_from, now=storm_to, seconds=storm_seconds, same_country=storm_to in world.TW)
+mark("等待 %.1f 秒后切走：%s → %s" % (storm_seconds, storm_from, storm_to))
+assert storm_to != storm_from and 5.0 <= storm_seconds < 9.5 and storm_to in world.TW
+time.sleep(10)
+CLASH.down_nodes.discard(storm_from)
+time.sleep(20)
 
 # ---- 5-. after the failover the AI line is described as what it is: no "回优", no performance cooldown
 ai_group = [g for g in http("GET", "/api/status")[1]["groups"] if g.get("ai_line")][0]

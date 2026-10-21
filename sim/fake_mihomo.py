@@ -31,6 +31,7 @@ class World(object):
         self.local_offline = False
         self.blackout_until = 0.0     # every proxy probe fails (e.g. just after wake)
         self.stall_until = {}         # node -> time until which it does not answer (then it does)
+        self.setup = {}               # node -> seconds of connection setup per probe, not in the reported delay
         self.connections = {}         # id -> {"group", "node"}
         self.log = []                 # controller-side actions, for the report
         self.started = time.time()
@@ -141,12 +142,15 @@ def make_handler(world):
                 url = query.get("url", [""])[0]
                 started = time.time()
                 delay = world.delay(name, url, timeout_ms)
+                setup = float(world.setup.get(name, 0.0))
+                if delay is not None and delay + setup * 1000.0 >= timeout_ms:
+                    delay = None          # Mihomo's timeout covers the setup too
                 if delay is None:
                     time.sleep(timeout_ms / 1000.0)
                     world.record("probe", node=name, url=url, ok=False,
                                  started=round(started - world.started, 2))
                     return self.reply(504, {"message": "Timeout"})
-                time.sleep(delay / 1000.0)
+                time.sleep(delay / 1000.0 + setup)
                 world.record("probe", node=name, url=url, ok=True, delay=delay,
                              started=round(started - world.started, 2))
                 return self.reply(200, {"delay": delay})

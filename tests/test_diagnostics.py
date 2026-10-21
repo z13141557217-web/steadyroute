@@ -129,12 +129,12 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertIn("故障切换 · AI 台湾家宽线路: 台湾 家宽 01 → 台湾 家宽 02 · 连续失败 2 次 · 发现用时 3 秒 · 快速通道 · "
                       "断开连接 1 个 · 切换前探测 54 58 失败", records[1])
         self.assertNotIn("距唤醒或启动", records[1])
-        self.assertIn("多节点同时失败 · 距唤醒或启动 40 秒", records[2])
+        self.assertIn("10 分钟内已切换 3 次 · 距唤醒或启动 40 秒", records[2])
         self.assertIn("切换前探测 91 失败 失败", records[2])
         self.assertIn("台湾 家宽 05 → 台湾 家宽 03 · 节点已隔离", records[3])
         self.assertNotIn("很久以前的节点", text)
         summary = self.section(text, "近 7 天概况")
-        self.assertIn("故障切换共 3 次：唤醒或启动后 180 秒内 1 次 · 多节点同时失败 1 次 · 快速通道发现 1 次", summary)
+        self.assertIn("故障切换共 3 次：唤醒或启动后 180 秒内 1 次 · 频繁切换期间 1 次 · 快速通道发现 1 次", summary)
         self.assertIn("被切走的节点：", summary)
         self.assertEqual(len([line for line in summary.splitlines() if "故障切换 " in line and "·" in line and line[2] == "-"]), 2,
                          "one line per day that has records")

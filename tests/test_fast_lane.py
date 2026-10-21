@@ -15,6 +15,7 @@ TW_NODES, HK_NODES = list(TW["static_candidates"]), list(HK["static_candidates"]
 class FastLaneTests(unittest.TestCase):
     def setUp(self):
         router.RUNTIME.clear()
+        router.reset_detection_memory()
         router.RUNTIME.update({"last_cycle_wall": None, "last_cycle_mono": None, "last_duration_s": 0.0})
         router.TIMELINE.clear()
         self.now = time.time()
