@@ -117,8 +117,29 @@ CONFIRM_STAGGER_SECONDS = 0.15
 CONTROL_TIMEOUT_MS = 1000
 FAST_PROBE_INTERVAL_SECONDS = 1
 FAST_PROBE_URL = "http://cp.cloudflare.com/generate_204"
-FAST_PROBE_TIMEOUT_MS = 1500
+FAST_PROBE_TIMEOUT_MS = 2500
 SUSPECT_AFTER_SECONDS = 0.5
+# v0.6.1: the suspicion and confirmation waits follow each node's own time to answer.
+# Mihomo's reported delay leaves out setting up the connection (with unified delay it is the
+# second request only); relay nodes take 0.5-0.9 s of real time to report 150-450 ms
+# (10-21 detection record), so a flat 0.5 s suspected them on every probe.
+# Wait = the node's 75th-percentile real time to answer + SUSPECT_MARGIN_SECONDS, within
+# [SUSPECT_AFTER_SECONDS, SUSPECT_MAX_SECONDS]; each confirmation probe gets 0.2 s more.
+SUSPECT_MAX_SECONDS = 1.5
+SUSPECT_MARGIN_SECONDS = 0.3
+CONFIRM_EXTRA_SECONDS = 0.2
+ELAPSED_SAMPLES = 60                  # real answer times kept per node and URL (memory only)
+ELAPSED_MIN_FAST = 10                 # fast-URL answers needed before they set the wait
+ELAPSED_MIN_SEED = 5                  # otherwise the full-cycle HTTPS answers (slower) seed it
+# v0.6.1: after FAILOVER_STORM_THRESHOLD failovers in FAILOVER_STORM_WINDOW_SECONDS the whole
+# region is usually unsettled: the current node must stay silent this long before the line
+# moves again (10-21 record: failovers four to seven left nodes that answered again within
+# 0.7-3.9 s). Waiting whenever no backup meets the targets was modelled too and rejected: on a
+# line like the Taiwan one it adds about ten page loads over 3 s a day (sim/detection/regional.py).
+LONG_OUTAGE_SECONDS = 5
+CLEAN_CHECKS = 12                     # a failover target with no failure in its last 12 checks
+CLEAN_MIN_CHECKS = 6                  # ...out of at least 6 is preferred over a better score
+PRECHECK_FRESH_SECONDS = 30           # business check run while waiting, reused at the switch
 FAST_TIMELINE_SECONDS = 5             # the chart keeps one fast-lane point per 5 s, failures always
 TIMELINE_WINDOW_SECONDS = 30 * 60     # legacy API: dashboard chart offers 5 / 15 / 30 minutes
 V1_TIMELINE_WINDOW_SECONDS = 300      # v1 recent_probes keeps its original 5-minute contract
@@ -1208,7 +1229,11 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "window_min_success": WINDOW_MIN_SUCCESS,
             "failure_penalty_ms": FAILURE_PENALTY_MS,
             "suspect_after_ms": int(SUSPECT_AFTER_SECONDS * 1000),
+            "suspect_max_ms": int(SUSPECT_MAX_SECONDS * 1000),
+            "suspect_margin_ms": int(SUSPECT_MARGIN_SECONDS * 1000),
             "confirm_timeout_ms": CONFIRM_TIMEOUT_MS,
+            "long_outage_seconds": LONG_OUTAGE_SECONDS,
+            "clean_checks": CLEAN_CHECKS,
             "fast_probe_interval_seconds": FAST_PROBE_INTERVAL_SECONDS,
             "low_tier_probe_seconds": LOW_TIER_PROBE_SECONDS,
             "business_probe_interval_seconds": BUSINESS_PROBE_INTERVAL_SECONDS,
@@ -1486,6 +1511,11 @@ def trace_export():
             "fast_probe_interval_seconds": FAST_PROBE_INTERVAL_SECONDS,
             "suspect_after_ms": int(SUSPECT_AFTER_SECONDS * 1000), "confirm_probes": CONFIRM_PROBES,
             "confirm_timeout_ms": CONFIRM_TIMEOUT_MS, "fast_probe_url": FAST_PROBE_URL, "test_url": TEST_URL,
+            "suspect_max_ms": int(SUSPECT_MAX_SECONDS * 1000), "suspect_margin_ms": int(SUSPECT_MARGIN_SECONDS * 1000),
+            "long_outage_seconds": LONG_OUTAGE_SECONDS, "fast_probe_timeout_ms": FAST_PROBE_TIMEOUT_MS,
+            "answer_times_ms": {name: int(value * 1000) for name, value in
+                                ((name, answer_time(name)) for policy in POLICIES
+                                 for name in policy["static_candidates"]) if value is not None},
             "lines": {policy["group_name"]: list(policy["static_candidates"]) for policy in POLICIES}}
     return probe_trace.export(os.path.join(LOG_DIR, "events.jsonl"), meta)
 
@@ -1596,6 +1626,52 @@ def probe_url(name, url, timeout_ms):
         return None
 
 
+ELAPSED = {}
+ELAPSED_LOCK = threading.Lock()
+
+
+def timed_probe(name, url, timeout_ms):
+    """probe_url, remembering how long a successful answer really took (seconds)."""
+    started = time.monotonic()
+    delay = probe_url(name, url, timeout_ms)
+    if delay is not None:
+        elapsed = time.monotonic() - started
+        with ELAPSED_LOCK:
+            samples = ELAPSED.setdefault((name, url), collections.deque(maxlen=ELAPSED_SAMPLES))
+            samples.append(elapsed)
+    return delay
+
+
+def answer_time(name):
+    """75th percentile of the node's real time to answer, or None while unmeasured. The 75th,
+    not the 90th: late answers during a stall must not stretch the wait (connection setup is
+    paid on nearly every probe of a relay node, so it shows at the 75th already)."""
+    with ELAPSED_LOCK:
+        fast = list(ELAPSED.get((name, FAST_PROBE_URL), ()))
+        seed = list(ELAPSED.get((name, TEST_URL), ()))
+    samples = fast if len(fast) >= ELAPSED_MIN_FAST else seed if len(seed) >= ELAPSED_MIN_SEED else None
+    if not samples:
+        return None
+    ordered = sorted(samples)
+    return ordered[min(len(ordered) - 1, int(len(ordered) * 0.75))]
+
+
+def suspect_after(name):
+    """How long a probe of this node may go unanswered before the confirmation starts."""
+    typical = answer_time(name)
+    if typical is None:
+        return SUSPECT_AFTER_SECONDS
+    return min(SUSPECT_MAX_SECONDS, max(SUSPECT_AFTER_SECONDS, typical + SUSPECT_MARGIN_SECONDS))
+
+
+def confirm_timeout_ms(name):
+    return max(CONFIRM_TIMEOUT_MS, int(round((suspect_after(name) + CONFIRM_EXTRA_SECONDS) * 1000)))
+
+
+def control_timeout_ms(name):
+    return max(CONTROL_TIMEOUT_MS, int(round((suspect_after(name) + 0.5) * 1000)))
+
+
 def probe_node(name):
     return name, probe_url(name, TEST_URL, PROBE_TIMEOUT_MS)
 
@@ -1624,7 +1700,7 @@ def run_probe_jobs(jobs):
     results = {}
     executor = probe_pool()
     futures = {
-        executor.submit(probe_url, name, url, timeout_ms): key
+        executor.submit(timed_probe, name, url, timeout_ms): key
         for key, name, url, timeout_ms in jobs
     }
     for future in concurrent.futures.as_completed(futures):
@@ -1652,9 +1728,10 @@ def ensure_local_check(cycle_cache):
 def confirm_current_failure(current, cycle_cache, standby=None, first=None):
     """Return 'confirmed' | 'transient' | 'local_offline'.
 
-    Runs as soon as a probe of the current node has gone SUSPECT_AFTER_SECONDS without an
+    Runs as soon as a probe of the current node has gone suspect_after(current) without an
     answer. CONFIRM_PROBES probes, CONFIRM_STAGGER_SECONDS apart, each allowed
-    CONFIRM_TIMEOUT_MS; the hot standby and DIRECT are probed at the same time as controls.
+    confirm_timeout_ms(current) (at least CONFIRM_TIMEOUT_MS); the hot standby and DIRECT are
+    probed at the same time as controls.
     first: the still-running probe that raised the suspicion; its answer counts too.
     - any answer from the current node: 'transient' (a blip; never switches)
     - no answer, and neither the standby nor DIRECT answers: 'local_offline' (this Mac)
@@ -1664,8 +1741,9 @@ def confirm_current_failure(current, cycle_cache, standby=None, first=None):
     pool = probe_pool()
     pending = [first] if first is not None else []
     controls = {}
+    timeout_ms = confirm_timeout_ms(current)
     if standby and standby != current:
-        controls["standby"] = pool.submit(probe_url, standby, FAST_PROBE_URL, CONTROL_TIMEOUT_MS)
+        controls["standby"] = pool.submit(timed_probe, standby, FAST_PROBE_URL, control_timeout_ms(standby))
     if "local_ok" not in cycle_cache:
         # Own thread, not a probe worker: local_network_ok waits on probe workers itself.
         controls["local"] = control_pool().submit(local_network_ok)
@@ -1676,12 +1754,18 @@ def confirm_current_failure(current, cycle_cache, standby=None, first=None):
         if any(f.done() and f.result() is not None for f in pending):
             answered = True
             break
-        pending.append(pool.submit(probe_url, current, FAST_PROBE_URL, CONFIRM_TIMEOUT_MS))
+        pending.append(pool.submit(timed_probe, current, FAST_PROBE_URL, timeout_ms))
     if not answered:
-        for future in concurrent.futures.as_completed(pending):
-            if future.result() is not None:
-                answered = True
-                break
+        # The first probe may run longer than the confirmation probes; it counts only while
+        # they are still waiting.
+        deadline = time.monotonic() + timeout_ms / 1000.0
+        try:
+            for future in concurrent.futures.as_completed(pending, timeout=max(0.0, deadline - time.monotonic())):
+                if future.result() is not None:
+                    answered = True
+                    break
+        except concurrent.futures.TimeoutError:
+            pass
     if "local" in controls:
         cycle_cache["local_ok"] = bool(controls["local"].result())
     standby_ok = controls["standby"].result() is not None if "standby" in controls else None
@@ -1952,6 +2036,10 @@ def business_preflight(group_name, node_name, state, dry_run=False, now=None, al
     if dry_run or not urls:
         return True
     node_state = state["nodes"].setdefault(node_name, {})
+    checked = PRECHECKED.get((group_name, node_name))
+    if checked and checked[1] and now - checked[0] <= PRECHECK_FRESH_SECONDS:
+        record_business_result(node_state, True, checked[0])
+        return True
     if allow_fresh_skip and preflight_is_fresh(node_state, now):
         node_state["preflight_skipped_at"] = int(now)
         return True
@@ -2071,7 +2159,64 @@ def best_failover(candidates, nodes, current):
         [name for name in others if answering(nodes.get(name, {}))]
     if not available:
         return None
-    return min(available, key=lambda name: float(nodes[name].get("score", 1000000.0)))
+    # v0.6.1: a node with no failure in its last CLEAN_CHECKS checks comes first; the score
+    # orders within each group.
+    return min(available, key=lambda name: (not recently_clean(nodes[name]),
+                                            float(nodes[name].get("score", 1000000.0))))
+
+
+def recently_clean(node_state):
+    """No failure in the node's last CLEAN_CHECKS checks (at least CLEAN_MIN_CHECKS of them)."""
+    recent = list(node_state.get("window") or [])[-CLEAN_CHECKS:]
+    return len(recent) >= CLEAN_MIN_CHECKS and all(int(item[1]) >= 0 for item in recent)
+
+
+OUTAGES = {}   # group -> (node, wall time its silence was first confirmed); memory only
+
+
+def reset_detection_memory():
+    """Answer times, silences and prechecks live in memory only (tests and restarts)."""
+    with ELAPSED_LOCK:
+        ELAPSED.clear()
+    OUTAGES.clear()
+    PRECHECKED.clear()
+
+
+def note_outage(group_name, node_name, since):
+    entry = OUTAGES.get(group_name)
+    if not entry or entry[0] != node_name:
+        OUTAGES[group_name] = (node_name, since)
+        return True
+    return False
+
+
+def clear_outage(group_name):
+    OUTAGES.pop(group_name, None)
+
+
+def outage_seconds(group_name, node_name, now):
+    entry = OUTAGES.get(group_name)
+    return max(0.0, now - entry[1]) if entry and entry[0] == node_name else 0.0
+
+
+def failover_needs_long_outage(group_state, now):
+    """True when the line may only move after LONG_OUTAGE_SECONDS of silence: it is in a
+    failover storm (FAILOVER_STORM_THRESHOLD failovers in FAILOVER_STORM_WINDOW_SECONDS)."""
+    return health_model.count_recent(
+        group_state.get("failover_times"), now, FAILOVER_STORM_WINDOW_SECONDS) >= FAILOVER_STORM_THRESHOLD
+
+
+PRECHECKED = {}   # (group, node) -> (wall time, success): business check run while waiting
+
+
+def precheck_target(group_name, node_name, down_urls):
+    """Background business check of the probable failover target while the line waits out
+    LONG_OUTAGE_SECONDS, so the switch itself does not have to wait for it."""
+    urls = [url for url in BUSINESS_TEST_URLS.get(group_name, []) if url not in down_urls]
+    if not urls:
+        return
+    first = probe_many([(url, node_name, url) for url in urls], BUSINESS_PROBE_TIMEOUT_MS)
+    PRECHECKED[(group_name, node_name)] = (time.time(), all(first.get(url) is not None for url in urls))
 
 
 
@@ -2252,6 +2397,23 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             group_state["failover_storm_event_at"] = int(now)
             record_runtime_event(state, "FAILOVER_STORM", "repeated_failovers", now, group_name)
             log("%s: failover storm; every failover target now requires a full business preflight" % group_name)
+        # v0.6.1: in a failover storm a confirmed silence (fast lane or full cycle) moves the
+        # line only after LONG_OUTAGE_SECONDS. Failures found by the business check keep the
+        # old path.
+        waited = outage_seconds(group_name, current, now)
+        silent = group_name in OUTAGES and OUTAGES[group_name][0] == current
+        if silent and waited < LONG_OUTAGE_SECONDS and failover_needs_long_outage(group_state, now):
+            if int(group_state.get("failover_hold_since", 0)) != int(OUTAGES[group_name][1]):
+                group_state["failover_hold_since"] = int(OUTAGES[group_name][1])
+                likely = best_failover(candidates, state["nodes"], current)
+                if likely and not dry_run:
+                    control_pool().submit(precheck_target, group_name, likely,
+                                          target_down_urls(state, group_name, now))
+            group_state["failover_hold_at"] = now
+            log_routine((group_name, "hold"), "hold",
+                        "%s: %s silent for %.1f s; failover storm, waiting up to %d s" % (
+                            group_name, current, waited, LONG_OUTAGE_SECONDS), now)
+            return
         remaining = list(candidates)
         target = None
         while remaining:
@@ -2276,11 +2438,12 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             logging_setup.write_event(
                 "failover", group=group_name, **{"from": current}, to=target,
                 reason=reason, failures=current_failures, closed_connections=closed, storm=storm, below_target=below,
-                kept_connections=len(keep_ids or ()),
+                kept_connections=len(keep_ids or ()), waited_seconds=round(waited, 1),
                 lane=(group_state.get("last_confirm") or {}).get("lane", "cycle"),
                 detect_seconds=max(0, int(now) - int(current_stats.get("first_failure_at", now))),
                 recent_probes=recent_points(group_name))
             apply_switch(group_name, group_state, "failover", current, target, now)
+            clear_outage(group_name)
             group_state["last_failover_detect_seconds"] = max(
                 0, int(now) - int(current_stats.get("first_failure_at", now)))
             group_state["last_failover_at"] = int(now)
@@ -2723,13 +2886,24 @@ def run_fast_tick(dry_run=False):
         return "controller_error" if POLICIES else "skip"
     pool = probe_pool()
     started = time.monotonic()
-    futures = {group: pool.submit(probe_url, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS)
+    tick_wall = time.time()
+    futures = {group: pool.submit(timed_probe, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS)
                for group, (current, _candidates, _standby) in plan.items()}
-    concurrent.futures.wait(list(futures.values()), timeout=SUSPECT_AFTER_SECONDS)
+    for future in futures.values():
+        future.add_done_callback(_stamp_done)
+    limits = {group: suspect_after(current) for group, (current, _candidates, _standby) in plan.items()}
+    suspicious = []
+    for group in sorted(futures, key=lambda name: limits[name]):
+        remaining = limits[group] - (time.monotonic() - started)
+        if remaining > 0:
+            concurrent.futures.wait([futures[group]], timeout=remaining)
+        if not futures[group].done() or futures[group].result() is None:
+            suspicious.append(group)
     now = time.time()
     RUNTIME["last_probe_at"] = int(now)
-    suspicious = [group for group, future in futures.items()
-                  if not future.done() or future.result() is None]
+    for group in futures:
+        if group not in suspicious:
+            clear_outage(group)
     verdicts, cycle_cache, before = {}, {}, {}
     if suspicious:
         try:
@@ -2743,7 +2917,9 @@ def run_fast_tick(dry_run=False):
 
     for group, future in futures.items():
         delay = future.result() if future.done() else None
-        probe_trace.record("fast", plan[group][0], delay, now)
+        done_at = getattr(future, "done_at", None)
+        probe_trace.record("fast", plan[group][0], delay, now,
+                           elapsed=None if done_at is None else (done_at - started) * 1000)
         record_fast_point(group, plan[group][0], delay, now, suspicious=group in suspicious)
         if group in verdicts:
             probe_trace.record("confirm:" + verdicts[group], plan[group][0], None, time.time())
@@ -2758,6 +2934,9 @@ def run_fast_tick(dry_run=False):
                           time.time())
         return "local_offline"
     confirmed = [group for group, verdict in verdicts.items() if verdict == "confirmed"]
+    for group, verdict in verdicts.items():
+        if verdict != "confirmed":
+            clear_outage(group)
     if not confirmed:
         for group in suspicious:
             log_routine((group, "blip"), "blip", "%s: %s missed one probe and answered the confirmation; kept" % (
@@ -2774,9 +2953,11 @@ def run_fast_tick(dry_run=False):
         for group_name in confirmed:
             current, candidates, _standby = plan[group_name]
             if (proxy_data.get(group_name) or {}).get("now") != current:
+                clear_outage(group_name)
                 continue   # the full cycle or the user moved the line meanwhile
             node_state = state["nodes"].setdefault(current, {})
-            update_node_stats(node_state, None, int(now))
+            if note_outage(group_name, current, tick_wall):
+                update_node_stats(node_state, None, int(now))   # one failure per silence
             node_state["last_probe_at"] = int(now)
             node_state["effective_failure_streak"] = max(
                 int(node_state.get("effective_failure_streak", 0)), FAILURES_BEFORE_SWITCH)
@@ -2791,9 +2972,16 @@ def run_fast_tick(dry_run=False):
             receiving = {item.get("id") for item in connections
                          if item.get("id") in before and int(item.get("download", 0) or 0) > before[item.get("id")]}
             evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run, keep_ids=receiving)
+            if group_name in OUTAGES:
+                probe_trace.record("confirm:hold", current, None, time.time())
         update_local_network_state(state, True, int(now))
         publish_state(state, proxy_data, connections, time.time())
-    return "failover"
+    held = all(group_name in OUTAGES for group_name in confirmed)
+    return "hold" if held else "failover"
+
+
+def _stamp_done(future):
+    future.done_at = time.monotonic()
 
 
 def record_fast_point(group_name, node_name, delay, now, suspicious=False):
@@ -3008,6 +3196,13 @@ def record_cycle(plan, results, retry, dry_run):
         state["groups"].setdefault(group_name, {})["last_confirm"] = {
             "verdict": confirmations[group_name], "at": cycle_started_at,
         }
+        if confirmations[group_name] == "confirmed":
+            note_outage(group_name, current, time.time())
+    for group_name, candidates in GROUPS.items():
+        current = current_for_group(proxy_data, group_name, candidates)
+        if base_results.get(current) is not None or group_name in alive_elsewhere \
+                or confirmations.get(group_name) == "transient":
+            clear_outage(group_name)
     local_offline = cycle_cache.get("local_ok") is False
     record_failures = not (local_offline or resume_cycle or blackout)
     update_local_network_state(state, not local_offline, cycle_started_at)

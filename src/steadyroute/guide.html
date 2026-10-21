@@ -223,14 +223,14 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <span class="k">06</span>
         <h2>故障切换：什么时候判定坏了、怎么换</h2>
         <ol class="steps">
-          <li><b>起疑</b>当前节点的探测 <span class="live" data-live="suspect">0.5 秒</span>没有回应。</li>
-          <li><b>并发复测</b>立刻再测 <span class="live" data-live="confirm">4</span> 次（每次间隔 0.15 秒，各等 0.7 秒），同时测热备和本机网络。</li>
-          <li><b>确认故障</b>当前节点一次都没有回应，热备或本机网络正常，才认定当前节点坏了。从节点断开到这里约 2 秒。</li>
-          <li><b>换到热备</b>立刻切到同地区热备。热备最近没有验证过时，会先确认它能打开 AI 网站再换。热备优先选达标的节点（见下文“切换目标门槛”）；没有达标节点时，选当前能连通的最好节点，不会停在已经断开的节点上。</li>
+          <li><b>起疑</b>当前节点的探测超过它平时的回应时间仍没有回应。等多久按每个节点自己算：它最近 60 次回应里较慢的那一档（第 75 百分位）再加 0.3 秒，最少 <span class="live" data-live="suspect">0.5 秒</span>，最多 <span class="live" data-live="suspectmax">1.5 秒</span>。hy2 这类节点基本是 0.5 秒；中转节点每次检测都要先建立连接，通常是 1 秒左右。</li>
+          <li><b>并发复测</b>立刻再测 <span class="live" data-live="confirm">4</span> 次（每次间隔 0.15 秒，每次多等 0.2 秒，至少 0.7 秒），同时测热备和本机网络。</li>
+          <li><b>确认故障</b>当前节点一次都没有回应，热备或本机网络正常，才认定当前节点坏了。从节点断开到这里约 2 秒（中转节点约 3 秒）。</li>
+          <li><b>换到热备</b>立刻切到同地区热备。热备优先选达标的节点（见下文“切换目标门槛”），同等情况下先选最近 12 次检测一次都没失败的；没有达标节点时，选当前能连通的最好节点，不会停在已经断开的节点上。</li>
           <li><b>断开旧连接</b>只断开坏节点上卡住的连接（确认的这 2 秒里没有收到数据），浏览器和应用会马上在新节点重连，页面不会一直转圈；仍在收数据的连接保留。</li>
         </ol>
         <div class="callout">以下情况<b>不会</b>切换：复测中有任何一次回应（偶尔丢一个包、卡不到 1.5 秒）；热备和本机网络也都没有回应（是本机网络的问题）；Mac 刚从休眠醒来的那一轮；当前节点和热备都打不开同一个 AI 网站（是网站自己的问题）。</div>
-        <p>如果 10 分钟内已经故障切换了 3 次，说明整体环境不稳，之后每次切换前都会完整验证目标节点能打开 AI 网站，避免在一堆坏节点之间来回跳。</p>
+        <p>如果 10 分钟内已经故障切换了 3 次，说明整个地区的网络正在抖动，换到哪个节点都可能马上又失败。这时当前节点要持续约 <span class="live" data-live="longoutage">5 秒</span>没有回应才切换，这 5 秒里同时验证目标节点能打开 AI 网站。实测记录里，这种时候被切走的节点大多 1–4 秒就恢复了，多等几秒可以避免在一堆节点之间来回跳。</p>
       </section>
 
       <section class="card gsec" id="optimize">
@@ -407,6 +407,8 @@ function fillLive(d) {
     window: p.window_seconds && p.window_min_success != null && `${min(p.window_seconds)}成功率 ≥ ${Math.round(p.window_min_success * 100)}%`,
     penalty: p.failure_penalty_ms && `${p.failure_penalty_ms} ms`,
     suspect: p.suspect_after_ms && `${p.suspect_after_ms / 1000} 秒`,
+    suspectmax: p.suspect_max_ms && `${p.suspect_max_ms / 1000} 秒`,
+    longoutage: p.long_outage_seconds && `${p.long_outage_seconds} 秒`,
   };
   document.querySelectorAll('[data-live]').forEach(el => {
     const v = values[el.dataset.live];

@@ -4,6 +4,38 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-21
+
+### Fixed
+
+- **切换逻辑变化：网络抖动时的连续切换（10-21 检测记录：2 分钟内 7 次故障切换，断开 57 条连接）。**
+  - 起疑与确认的等待改为按节点计算：`suspect_after(node)` = 该节点最近 `ELAPSED_SAMPLES`（60）次成功回应的
+    实际耗时第 75 百分位 + `SUSPECT_MARGIN_SECONDS`（0.3 秒），限定在 `SUSPECT_AFTER_SECONDS`（0.5 秒）与
+    `SUSPECT_MAX_SECONDS`（1.5 秒）之间；补测每次等 `suspect_after + CONFIRM_EXTRA_SECONDS`（0.2 秒），至少
+    `CONFIRM_TIMEOUT_MS`；热备对照至少 `CONTROL_TIMEOUT_MS`。实际耗时由 `timed_probe` 记录（内存，按节点与
+    URL）；快速 URL 样本不足 `ELAPSED_MIN_FAST`（10）时用完整检测的 HTTPS 样本（≥ `ELAPSED_MIN_SEED` 5）。
+    Mihomo 报告的延迟不含建立连接（统一延迟时只计第二次请求），中转节点报告 140–470 ms 而实际 0.5–0.9 秒，
+    原统一 0.5 秒几乎每次起疑。快速通道超时由 1.5 秒改为 2.5 秒；补测不再等待超出自身期限的首次探测。
+  - 故障风暴（`FAILOVER_STORM_WINDOW_SECONDS` 10 分钟内 ≥ `FAILOVER_STORM_THRESHOLD` 3 次故障切换）时，
+    由快速通道或完整检测确认的无回应须持续 `LONG_OUTAGE_SECONDS`（5 秒）才切换（`OUTAGES` 记录无回应起点，
+    任何回应即清除）。等待期间在后台对最可能的目标做业务检测（`precheck_target`），30 秒内成功的结果在切换时
+    直接采用，风暴中不再在 `STATE_LOCK` 内同步等待业务检测。业务检测发现的故障仍按原路径处理。
+  - `best_failover` 在达标（或回退时的可连通）节点中，先选最近 `CLEAN_CHECKS`（12）次检测无失败（至少
+    `CLEAN_MIN_CHECKS` 6 次）的节点，再按评分；热备选择同此。
+  - 曾考虑“没有达标备用节点时也等 5 秒”，模型（`sim/detection/regional.py`）显示在台湾这类线路上每天多约
+    9 次超过 3 秒的页面等待，未采用。
+
+### Added
+
+- 检测记录：快速通道行增加第五列（发出到回应或失败的实际毫秒数）；新增确认结论 `h`（风暴中确认但继续等待）；
+  `meta.json` 增加 `suspect_max_ms`、`suspect_margin_ms`、`long_outage_seconds`、`fast_probe_timeout_ms` 与各节点
+  当前的 `answer_times_ms`。
+- 故障切换事件增加 `waited_seconds`；诊断信息显示“10 分钟内已切换 3 次”“无回应持续 N 秒后切换”（原“多节点同时
+  失败”的标注与含义不符）。
+- `/api/status` 的 `policy` 增加 `suspect_max_ms`、`suspect_margin_ms`、`long_outage_seconds`、`clean_checks`；
+  看板与使用说明的故障切换文字随之更新。
+- `sim/detection/regional.py`：按 10-21 检测记录校准的地区抖动模型，比较 v0.6.0 与 v0.6.1 的规则。
+
 ## [0.6.0] - 2026-10-21
 
 ### Changed

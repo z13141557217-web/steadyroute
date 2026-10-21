@@ -223,3 +223,10 @@ type, udp, residential, group, role, delay_ms, delay_at}`。`role` 为 `current`
 `suspect_after_ms`、`confirm_timeout_ms`、`fast_probe_interval_seconds`、`low_tier_probe_seconds`；
 移除 `quarantine_*` 与 `standby_probes_per_group`。`confirm_probes` 为 1 + 复测次数（5）。
 新增只读 `GET /api/trace`：检测记录 zip。
+
+## v0.6.1
+
+策略追加 `suspect_max_ms`（1500）、`suspect_margin_ms`（300）、`long_outage_seconds`（5）、`clean_checks`（12）；
+`suspect_after_ms` 改为起疑等待的下限（实际等待按节点计算）。故障切换事件追加 `waited_seconds`。
+检测记录：`f` 行可带第五列（实际毫秒），`k` 行新增结论 `h`；`meta.json` 追加 `suspect_max_ms`、
+`suspect_margin_ms`、`long_outage_seconds`、`fast_probe_timeout_ms`、`answer_times_ms`。状态文件格式不变。

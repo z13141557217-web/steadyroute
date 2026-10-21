@@ -136,7 +136,9 @@ def _switch_line(record, wake_times):
                   "快速通道" if record.get("lane") == "fast" else "完整周期",
                   "断开连接 %s 个" % record.get("closed_connections"), "切换前探测 %s" % _probes(record.get("recent_probes"))]
         if record.get("storm"):
-            parts.append("多节点同时失败")
+            parts.append("10 分钟内已切换 3 次")
+        if record.get("waited_seconds"):
+            parts.append("无回应持续 %s 秒后切换" % record.get("waited_seconds"))
         if record.get("kept_connections"):
             parts.append("保留仍在收数据的连接 %s 个" % record.get("kept_connections"))
         if record.get("below_target"):
@@ -291,7 +293,7 @@ def build(status, settings, core_version, log_dir, now=None, home=None, system=N
         near = [record for record in failovers if any(
             0 <= float(record.get("unix") or 0) - wake <= NEAR_WAKE_SECONDS for wake in wake_times)]
         storms = [record for record in failovers if record.get("storm")]
-        out.append("故障切换共 %d 次：唤醒或启动后 %d 秒内 %d 次 · 多节点同时失败 %d 次 · 快速通道发现 %d 次" % (
+        out.append("故障切换共 %d 次：唤醒或启动后 %d 秒内 %d 次 · 频繁切换期间 %d 次 · 快速通道发现 %d 次" % (
             len(failovers), NEAR_WAKE_SECONDS, len(near), len(storms),
             len([record for record in failovers if record.get("lane") == "fast"])))
         left = {}

@@ -797,7 +797,9 @@ const TIPS = {
       const p = (ctx && ctx.policy) || {};
       const extra = p.confirm_probes ? p.confirm_probes - 1 : 4;
       const wait = p.suspect_after_ms ? p.suspect_after_ms / 1000 : 0.5;
-      return `当前节点每秒测一次。${wait} 秒没有回应就立刻补测 ${extra} 次，同时测热备和直连；全部没有回应才判定故障并切到热备，从节点断开到切走约 2 秒。只要有一次回应就不切。它和当前节点在同一地区，图中虚线是它的实时延迟（每 5 秒测一次）。`;
+      const max = p.suspect_max_ms ? p.suspect_max_ms / 1000 : 1.5;
+      const long = p.long_outage_seconds || 5;
+      return `当前节点每秒测一次。超过该节点平时的回应时间（${wait}–${max} 秒）仍无回应，立刻补测 ${extra} 次，同时测热备和直连；全部没有回应才判定故障。确认后约 2 秒切走；10 分钟内已切换 3 次时，节点需持续约 ${long} 秒无回应才切换。只要有一次回应就不切。它和当前节点在同一地区，图中虚线是它的实时延迟（每 5 秒测一次）。`;
     })(),
     value: null,
     anchor: 'failover',

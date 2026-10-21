@@ -63,6 +63,7 @@ class FakeNetwork(object):
 
     def __init__(self, router):
         self.router = router
+        router.reset_detection_memory()
         self.lock = threading.Lock()
         self.down_nodes = set()          # base and business probes fail
         self.node_url_failures = set()   # (node, url) pairs that fail
@@ -73,6 +74,7 @@ class FakeNetwork(object):
         self.realtime = False            # probes take real time (timeouts, stalls, latency)
         self.stall = {}                  # node -> time.monotonic() until which it does not answer
         self.slow_urls = {}              # url -> extra seconds (real time only)
+        self.setup = {}                  # node -> seconds of connection setup Mihomo does not report
         self.connection_growth = {}      # connection id -> bytes added on every /connections read
         self.probe_calls = []
         self.puts = []
@@ -110,8 +112,9 @@ class FakeNetwork(object):
             time.sleep(timeout_ms / 1000.0)
             return None
         delay = self.slow_urls.get(url, 0) + outcome / 1000.0
-        time.sleep(min(delay, timeout_ms / 1000.0))
-        return int(delay * 1000) if delay * 1000 < timeout_ms else None
+        setup = self.setup.get(name, 0.0)
+        time.sleep(min(setup + delay, timeout_ms / 1000.0))
+        return int(delay * 1000) if (setup + delay) * 1000 < timeout_ms else None
 
     def _outcome(self, name, url):
         if self.local_offline:

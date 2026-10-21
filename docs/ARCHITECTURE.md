@@ -223,9 +223,11 @@ HTTP GET 只读取已编码字节，不连接 Mihomo、不扫描连接，也不�
   → 样本写入 30 分钟窗口、暂停 / 恢复 → 选路决策 → 完成时间写入 updated_at → 缓存快照
 
 快速通道：独立线程，每 1 秒
-  → 各线路当前节点 HTTP 204（1.5 秒超时）
-  → 0.5 秒无回应：confirm_current_failure（起疑的那次稍后回应也算）
-  → confirmed：持锁故障切换（同一套 evaluate_group），关闭旧连接
+  → 各线路当前节点 HTTP 204（2.5 秒超时），timed_probe 记录实际回应耗时
+  → 超过 suspect_after(节点)（实际耗时 p75 + 0.3 秒，0.5–1.5 秒）无回应：confirm_current_failure
+    （补测各等 suspect_after + 0.2 秒；起疑的那次在补测期限内回应也算）
+  → confirmed：记入 OUTAGES；故障风暴中无回应未满 5 秒则等待，并在后台预检最可能的目标
+  → 否则持锁故障切换（同一套 evaluate_group），目标先选最近 12 次检测无失败的节点，关闭卡住的连接
 ```
 
 探测共用一个常驻线程池（最多 32 线程）；DIRECT 检查在独立的小线程池中运行，避免在探测线程里

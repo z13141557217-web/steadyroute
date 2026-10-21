@@ -2,10 +2,13 @@
 
 One line per probe in LOG_DIR/trace/trace-YYYY-MM-DD.tsv (local date):
 
-    <tenths of a second since local midnight>\t<kind>\t<node id>\t<ms or empty>
+    <tenths of a second since local midnight>\t<kind>\t<node id>\t<ms or empty>[\t<real ms>]
 
 kind: f fast lane (current node, every second), c full cycle (every candidate, 5 s),
-k confirmation verdict (ms column holds t transient, c confirmed, l local offline).
+k confirmation verdict (ms column holds t transient, c confirmed, l local offline,
+h confirmed but waiting: no backup meets the targets, or a failover storm).
+Since v0.6.1 fast-lane lines carry a fifth column: the real time from sending the probe to its
+answer (or to its failure), which Mihomo's reported delay leaves out the connection setup of.
 Node ids map to names in names.json. Days older than today are gzipped; DAYS are kept.
 About 8 MB a day before compression, 2-3 MB after. Nothing leaves the Mac unless the user
 downloads the record from the settings page.
@@ -25,7 +28,8 @@ DAYS = 3
 FLUSH_SECONDS = 30
 FLUSH_LINES = 4000
 KINDS = {"fast": "f", "cycle": "c"}
-VERDICTS = {"confirm:transient": "t", "confirm:confirmed": "c", "confirm:local_offline": "l"}
+VERDICTS = {"confirm:transient": "t", "confirm:confirmed": "c", "confirm:local_offline": "l",
+            "confirm:hold": "h"}
 
 _lock = threading.Lock()
 _dir = None
@@ -63,17 +67,17 @@ def _write_names():
     os.replace(tmp, path)
 
 
-def record(kind, node, delay, at=None):
+def record(kind, node, delay, at=None, elapsed=None):
     """Never raises: the record must not be able to break detection."""
     if _dir is None or not node:
         return
     try:
-        _record(kind, node, delay, at)
+        _record(kind, node, delay, at, elapsed)
     except (OSError, ValueError):
         pass
 
 
-def _record(kind, node, delay, at):
+def _record(kind, node, delay, at, elapsed=None):
     at = time.time() if at is None else at
     local = datetime.datetime.fromtimestamp(at)
     day = local.strftime("%Y-%m-%d")
@@ -86,7 +90,8 @@ def _record(kind, node, delay, at):
         if _day is not None and day != _day:
             _flush_locked()
         _set_day(day)
-        _buffer.append("%d\t%s\t%d\t%s\n" % (tenths, code, _node_id(node), value))
+        extra = "" if elapsed is None else "\t%d" % int(elapsed)
+        _buffer.append("%d\t%s\t%d\t%s%s\n" % (tenths, code, _node_id(node), value, extra))
         if len(_buffer) >= FLUSH_LINES or time.monotonic() - _last_flush >= FLUSH_SECONDS:
             _flush_locked()
 
