@@ -107,6 +107,13 @@ class RealTimeTests(unittest.TestCase):
         self.assertLess(seconds, 2.5)
         event, = [call.kwargs for call in events.call_args_list if call.args == ("failover",)]
         timing = event["timing_ms"]
+        self.assertGreaterEqual(timing["fast_batch_start_to_suspicion_ms"], 0)
+        self.assertGreaterEqual(timing["suspicion_to_confirmation_ms"], 0)
+        self.assertLessEqual(
+            timing["fast_batch_start_to_suspicion_ms"] + timing["suspicion_to_confirmation_ms"]
+            + timing["confirmation_to_selection_ms"] + timing["selection_ack_ms"],
+            seconds * 1000 + 2,  # rounding across the four measurements
+        )
         self.assertGreaterEqual(timing["confirmation_to_selection_ms"], timing["candidate_decision_ms"])
         self.assertGreaterEqual(timing["candidate_decision_ms"], timing["synchronous_preflight_ms"])
         self.assertGreaterEqual(timing["selection_ack_ms"], 0)

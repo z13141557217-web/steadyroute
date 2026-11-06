@@ -2172,7 +2172,7 @@ def recently_clean(node_state):
     return len(recent) >= CLEAN_MIN_CHECKS and all(int(item[1]) >= 0 for item in recent)
 
 
-OUTAGES = {}   # group -> (node, existing silence clock, monotonic first confirmation, event ID)
+OUTAGES = {}   # group -> (node, silence clock, monotonic confirmation, event ID, detection timings)
 FAILOVER_READBACKS = {}  # group -> (event ID, target, request time, acknowledgment time)
 FAILOVER_READBACK_LOCK = threading.Lock()
 
@@ -2187,10 +2187,10 @@ def reset_detection_memory():
     PRECHECKED.clear()
 
 
-def note_outage(group_name, node_name, since):
+def note_outage(group_name, node_name, since, confirmed_at, detection_timing):
     entry = OUTAGES.get(group_name)
     if not entry or entry[0] != node_name:
-        OUTAGES[group_name] = (node_name, since, time.monotonic(), uuid.uuid4().hex)
+        OUTAGES[group_name] = (node_name, since, confirmed_at, uuid.uuid4().hex, detection_timing)
         return True
     return False
 
@@ -2474,6 +2474,8 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                     "selection_ack_ms": round((selection_acknowledged - selection_started) * 1000),
                     "connection_cleanup_ms": round((time.monotonic() - selection_acknowledged) * 1000),
                 }
+                if outage and outage[0] == current:
+                    timing.update(outage[4])
             kept = len(keep_ids or ())
             log("%s: closed %d stuck connections%s" % (group_name, closed, ", kept %d still receiving data" % kept if kept else ""))
             logging_setup.write_event(
@@ -2953,13 +2955,13 @@ def run_fast_tick(dry_run=False):
     for future in futures.values():
         future.add_done_callback(_stamp_done)
     limits = {group: suspect_after(current) for group, (current, _candidates, _standby) in plan.items()}
-    suspicious = []
+    suspicious = {}
     for group in sorted(futures, key=lambda name: limits[name]):
         remaining = limits[group] - (time.monotonic() - started)
         if remaining > 0:
             concurrent.futures.wait([futures[group]], timeout=remaining)
         if not futures[group].done() or futures[group].result() is None:
-            suspicious.append(group)
+            suspicious[group] = time.monotonic()
     now = time.time()
     RUNTIME["last_probe_at"] = int(now)
     for group in futures:
@@ -2972,9 +2974,11 @@ def run_fast_tick(dry_run=False):
                       for item in (api_request("GET", "/connections", timeout=2) or {}).get("connections") or []}
         except Exception:
             before = {}
+    confirmation_times = {}
     for group in suspicious:
         current, _candidates, standby = plan[group]
         verdicts[group] = confirm_current_failure(current, cycle_cache, standby=standby, first=futures[group])
+        confirmation_times[group] = time.monotonic()
 
     for group, future in futures.items():
         delay = future.result() if future.done() else None
@@ -3017,7 +3021,11 @@ def run_fast_tick(dry_run=False):
                 clear_outage(group_name)
                 continue   # the full cycle or the user moved the line meanwhile
             node_state = state["nodes"].setdefault(current, {})
-            if note_outage(group_name, current, tick_wall):
+            confirmed_at = confirmation_times[group_name]
+            if note_outage(group_name, current, tick_wall, confirmed_at, {
+                "fast_batch_start_to_suspicion_ms": round((suspicious[group_name] - started) * 1000),
+                "suspicion_to_confirmation_ms": round((confirmed_at - suspicious[group_name]) * 1000),
+            }):
                 update_node_stats(node_state, None, int(now))   # one failure per silence
             node_state["last_probe_at"] = int(now)
             node_state["effective_failure_streak"] = max(
@@ -3252,13 +3260,17 @@ def record_cycle(plan, results, retry, dry_run):
         if cycle_cache.get("local_ok") is False:
             confirmations[group_name] = "local_offline"
             continue
+        confirmation_started = time.monotonic()
         confirmations[group_name] = confirm_current_failure(
             current, cycle_cache, standby=state["groups"].get(group_name, {}).get("hot_standby"))
+        confirmed_at = time.monotonic()
         state["groups"].setdefault(group_name, {})["last_confirm"] = {
             "verdict": confirmations[group_name], "at": cycle_started_at,
         }
         if confirmations[group_name] == "confirmed":
-            note_outage(group_name, current, time.time())
+            note_outage(group_name, current, time.time(), confirmed_at, {
+                "cycle_confirmation_call_ms": round((confirmed_at - confirmation_started) * 1000),
+            })
     for group_name, candidates in GROUPS.items():
         current = current_for_group(proxy_data, group_name, candidates)
         if base_results.get(current) is not None or group_name in alive_elsewhere \
