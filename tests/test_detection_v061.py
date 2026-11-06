@@ -63,6 +63,37 @@ class RealTimeTests(unittest.TestCase):
             time.sleep(max(0.0, 1.0 - (time.monotonic() - tick_at)))
         return outcomes, None
 
+    def test_two_detection_paths_share_first_confirmation_until_resume(self):
+        self.seed()
+        now = time.monotonic()
+        self.assertTrue(router.note_outage(TW_GROUP, TW_NODES[0], self.now, now, {"fast": 1}))
+        original = router.OUTAGES[TW_GROUP]
+        self.assertFalse(router.note_outage(TW_GROUP, TW_NODES[0], self.now + 1, now + 1, {"cycle": 1}))
+        self.assertEqual(router.OUTAGES[TW_GROUP], original)
+        router.FAILOVER_READBACKS[TW_GROUP] = (original[3], TW_NODES[1], now, now)
+        router.RUNTIME.update(last_tick_wall=time.time() - 60, last_tick_mono=time.monotonic())
+        with mock.patch.object(router.logging_setup, "write_event") as events:
+            self.assertEqual(self.tick()[0], "resume")
+        self.assertNotIn(TW_GROUP, router.FAILOVER_READBACKS)
+        self.assertEqual(events.call_args.kwargs["outcome"], "interrupted_by_resume")
+        self.assertFalse(router.note_outage(TW_GROUP, TW_NODES[0], self.now + 2, now + 2, {"cycle": 2}))
+        self.assertNotEqual(router.OUTAGES[TW_GROUP][3], original[3])
+        self.assertEqual(router.OUTAGES[TW_GROUP][1], original[1])
+
+    def test_manual_selection_interrupts_old_incident_and_pending_readback(self):
+        self.seed()
+        now = time.monotonic()
+        router.note_outage(TW_GROUP, TW_NODES[0], self.now, now, {})
+        router.FAILOVER_READBACKS[TW_GROUP] = ("pending", TW_NODES[1], now, now)
+        self.state["groups"][TW_GROUP]["last_seen"] = TW_NODES[0]
+        self.net.proxy_data[TW_GROUP]["now"] = TW_NODES[2]
+        with mock.patch.object(router.logging_setup, "write_event") as events:
+            router.evaluate_group(TW_GROUP, TW_NODES, self.net.proxy_data, [], self.state, True)
+        self.assertNotIn(TW_GROUP, router.OUTAGES)
+        self.assertNotIn(TW_GROUP, router.FAILOVER_READBACKS)
+        self.assertTrue(any(call.kwargs.get("outcome") == "interrupted_by_manual_selection"
+                            for call in events.call_args_list))
+
     # 1) Waits follow the node's own answer time.
     def test_a_relay_node_is_not_suspected_once_its_answer_time_is_known(self):
         self.seed()

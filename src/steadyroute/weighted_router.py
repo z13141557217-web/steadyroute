@@ -2189,10 +2189,31 @@ def reset_detection_memory():
 
 def note_outage(group_name, node_name, since, confirmed_at, detection_timing):
     entry = OUTAGES.get(group_name)
-    if not entry or entry[0] != node_name:
-        OUTAGES[group_name] = (node_name, since, confirmed_at, uuid.uuid4().hex, detection_timing)
-        return True
-    return False
+    new_silence = not entry or entry[0] != node_name
+    if new_silence or entry[2] is None:
+        OUTAGES[group_name] = (node_name, since if new_silence else entry[1],
+                               confirmed_at, uuid.uuid4().hex, detection_timing)
+    return new_silence
+
+
+def cancel_failover_readback(group_name, outcome):
+    with FAILOVER_READBACK_LOCK:
+        pending = FAILOVER_READBACKS.pop(group_name, None)
+    if pending:
+        logging_setup.write_event("failover_readback", group=group_name,
+                                  incident_id=pending[0], outcome=outcome)
+
+
+def invalidate_failover_timing_after_resume():
+    # Preserve the routing hold clock, but never measure one incident across sleep.
+    for group_name, entry in list(OUTAGES.items()):
+        OUTAGES[group_name] = (entry[0], entry[1], None, None, {})
+    with FAILOVER_READBACK_LOCK:
+        readbacks = list(FAILOVER_READBACKS.items())
+        FAILOVER_READBACKS.clear()
+    for group_name, pending in readbacks:
+        logging_setup.write_event("failover_readback", group=group_name,
+                                  incident_id=pending[0], outcome="interrupted_by_resume")
 
 
 def clear_outage(group_name):
@@ -2315,6 +2336,12 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
     group_info = proxy_data.get(group_name) or {}
     current = group_info.get("now")
     group_state = state["groups"].setdefault(group_name, {})
+    previous_seen = group_state.get("last_seen")
+    if current and previous_seen and current != previous_seen and current != group_state.get("last_router_selection"):
+        outage = OUTAGES.get(group_name)
+        if outage and outage[0] != current:
+            clear_outage(group_name)
+        cancel_failover_readback(group_name, "interrupted_by_manual_selection")
     if group_name in POLICY_BY_GROUP:
         # Iron rule: only this region's residential nodes are ever considered.
         candidates = [name for name in candidates if selection_allowed(group_name, name)]
@@ -2443,7 +2470,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                 "; no backup meets 95%% / 90%%, using the best answering node" if below else ""))
             selection_started = time.monotonic()
             outage = OUTAGES.get(group_name)
-            incident_id = outage[3] if outage and outage[0] == current else uuid.uuid4().hex
+            incident_id = (outage[3] if outage and outage[0] == current else None) or uuid.uuid4().hex
             timing = None
             try:
                 select_node(group_name, target, dry_run)
@@ -2467,7 +2494,8 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                 timing = {
                     "confirmation_to_selection_ms": (
                         round((selection_started - outage[2]) * 1000)
-                        if outage and outage[0] == current and outage[2] <= selection_started else None
+                        if outage and outage[0] == current and outage[2] is not None
+                        and outage[2] <= selection_started else None
                     ),
                     "candidate_decision_ms": round((selection_started - decision_started) * 1000),
                     "synchronous_preflight_ms": round(preflight_elapsed * 1000),
@@ -2943,6 +2971,8 @@ def run_fast_tick(dry_run=False):
     previous_wall, previous_mono = RUNTIME.get("last_tick_wall"), RUNTIME.get("last_tick_mono")
     RUNTIME["last_tick_wall"], RUNTIME["last_tick_mono"] = wall, mono
     if previous_wall is not None and (wall - previous_wall) - (mono - previous_mono) > 15:
+        with STATE_LOCK:
+            invalidate_failover_timing_after_resume()
         return "resume"
     plan = fast_plan()
     if not plan:
@@ -3096,6 +3126,8 @@ def plan_cycle():
     state = load_state()
     merge_legacy_cycle_count(state)
     resume_cycle = detect_cycle_resume(state, cycle_started_at)
+    if resume_cycle:
+        invalidate_failover_timing_after_resume()
     try:
         proxy_response = api_request("GET", "/proxies") or {}
     except Exception:
