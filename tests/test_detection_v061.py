@@ -101,9 +101,27 @@ class RealTimeTests(unittest.TestCase):
     def test_with_a_qualified_backup_the_line_moves_in_about_two_seconds(self):
         self.seed()
         self.net.down_nodes.add(TW_NODES[0])
-        outcomes, seconds = self.until_switch()
+        with mock.patch.object(router.logging_setup, "write_event") as events:
+            outcomes, seconds = self.until_switch()
         self.assertEqual(outcomes, ["failover"])
         self.assertLess(seconds, 2.5)
+        event, = [call.kwargs for call in events.call_args_list if call.args == ("failover",)]
+        timing = event["timing_ms"]
+        self.assertGreaterEqual(timing["confirmation_to_selection_ms"], timing["candidate_decision_ms"])
+        self.assertGreaterEqual(timing["candidate_decision_ms"], timing["synchronous_preflight_ms"])
+        self.assertGreaterEqual(timing["selection_ack_ms"], 0)
+        self.assertGreaterEqual(timing["connection_cleanup_ms"], 0)
+        with mock.patch.object(router, "api_request", side_effect=self.net.api) as api, \
+                mock.patch.object(router.logging_setup, "write_event") as readbacks:
+            router.fast_plan()
+            observed_gets = api.call_count
+            api.reset_mock()
+            router.fast_plan()
+        self.assertEqual(observed_gets, api.call_count)
+        readback, = [call.kwargs for call in readbacks.call_args_list if call.args == ("failover_readback",)]
+        self.assertEqual(readback["incident_id"], event["incident_id"])
+        self.assertEqual(readback["outcome"], "observed")
+        self.assertGreaterEqual(readback["selection_to_observed_ms"], timing["selection_ack_ms"])
 
     def test_without_a_qualified_backup_the_line_still_moves_in_about_two_seconds(self):
         for name in TW_NODES[1:]:

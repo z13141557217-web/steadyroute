@@ -18,6 +18,7 @@ import tempfile
 import sys
 import threading
 import time
+import uuid
 from urllib.parse import quote, urlsplit
 
 try:
@@ -2171,7 +2172,9 @@ def recently_clean(node_state):
     return len(recent) >= CLEAN_MIN_CHECKS and all(int(item[1]) >= 0 for item in recent)
 
 
-OUTAGES = {}   # group -> (node, wall time its silence was first confirmed); memory only
+OUTAGES = {}   # group -> (node, existing silence clock, monotonic first confirmation, event ID)
+FAILOVER_READBACKS = {}  # group -> (event ID, target, request time, acknowledgment time)
+FAILOVER_READBACK_LOCK = threading.Lock()
 
 
 def reset_detection_memory():
@@ -2179,13 +2182,15 @@ def reset_detection_memory():
     with ELAPSED_LOCK:
         ELAPSED.clear()
     OUTAGES.clear()
+    with FAILOVER_READBACK_LOCK:
+        FAILOVER_READBACKS.clear()
     PRECHECKED.clear()
 
 
 def note_outage(group_name, node_name, since):
     entry = OUTAGES.get(group_name)
     if not entry or entry[0] != node_name:
-        OUTAGES[group_name] = (node_name, since)
+        OUTAGES[group_name] = (node_name, since, time.monotonic(), uuid.uuid4().hex)
         return True
     return False
 
@@ -2414,13 +2419,18 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                         "%s: %s silent for %.1f s; failover storm, waiting up to %d s" % (
                             group_name, current, waited, LONG_OUTAGE_SECONDS), now)
             return
+        decision_started = time.monotonic()
+        preflight_elapsed = 0.0
         remaining = list(candidates)
         target = None
         while remaining:
             candidate = best_failover(remaining, state["nodes"], current)
             if not candidate:
                 break
-            if business_preflight(group_name, candidate, state, dry_run, now=now, allow_fresh_skip=not storm):
+            preflight_started = time.monotonic()
+            passed = business_preflight(group_name, candidate, state, dry_run, now=now, allow_fresh_skip=not storm)
+            preflight_elapsed += time.monotonic() - preflight_started
+            if passed:
                 target = candidate
                 break
             remaining.remove(candidate)
@@ -2431,8 +2441,39 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             log("%s: FAILOVER %s -> %s (%d consecutive failures)%s" % (
                 group_name, current, target, current_failures,
                 "; no backup meets 95%% / 90%%, using the best answering node" if below else ""))
-            select_node(group_name, target, dry_run)
+            selection_started = time.monotonic()
+            outage = OUTAGES.get(group_name)
+            incident_id = outage[3] if outage and outage[0] == current else uuid.uuid4().hex
+            timing = None
+            try:
+                select_node(group_name, target, dry_run)
+            except Exception:
+                if not dry_run:
+                    logging_setup.write_event(
+                        "failover_selection_failed", group=group_name,
+                        incident_id=incident_id,
+                        selection_attempt_ms=round((time.monotonic() - selection_started) * 1000))
+                raise
+            selection_acknowledged = time.monotonic()
+            if not dry_run:
+                with FAILOVER_READBACK_LOCK:
+                    previous = FAILOVER_READBACKS.get(group_name)
+                    FAILOVER_READBACKS[group_name] = (incident_id, target, selection_started, selection_acknowledged)
+                if previous:
+                    logging_setup.write_event("failover_readback", group=group_name,
+                                              incident_id=previous[0], outcome="superseded")
             closed = 0 if dry_run else close_old_connections(group_name, current, connections, keep_ids)
+            if not dry_run:
+                timing = {
+                    "confirmation_to_selection_ms": (
+                        round((selection_started - outage[2]) * 1000)
+                        if outage and outage[0] == current and outage[2] <= selection_started else None
+                    ),
+                    "candidate_decision_ms": round((selection_started - decision_started) * 1000),
+                    "synchronous_preflight_ms": round(preflight_elapsed * 1000),
+                    "selection_ack_ms": round((selection_acknowledged - selection_started) * 1000),
+                    "connection_cleanup_ms": round((time.monotonic() - selection_acknowledged) * 1000),
+                }
             kept = len(keep_ids or ())
             log("%s: closed %d stuck connections%s" % (group_name, closed, ", kept %d still receiving data" % kept if kept else ""))
             logging_setup.write_event(
@@ -2440,6 +2481,8 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
                 reason=reason, failures=current_failures, closed_connections=closed, storm=storm, below_target=below,
                 kept_connections=len(keep_ids or ()), waited_seconds=round(waited, 1),
                 lane=(group_state.get("last_confirm") or {}).get("lane", "cycle"),
+                timing_ms=timing,
+                incident_id=incident_id if not dry_run else None,
                 detect_seconds=max(0, int(now) - int(current_stats.get("first_failure_at", now))),
                 recent_probes=recent_points(group_name))
             apply_switch(group_name, group_state, "failover", current, target, now)
@@ -2852,6 +2895,14 @@ def fast_plan():
     """{group: (current, candidates, hot standby)} for the lines the fast lane watches."""
     base_state = RUNTIME.get("last_state") or {}
     plan = {}
+    with FAILOVER_READBACK_LOCK:
+        readbacks = dict(FAILOVER_READBACKS)
+        now = time.monotonic()
+        for group_name, pending in readbacks.items():
+            if now - pending[3] >= 10:
+                del FAILOVER_READBACKS[group_name]
+                logging_setup.write_event("failover_readback", group=group_name,
+                                          incident_id=pending[0], outcome="unobserved")
     for policy in list(POLICIES):
         group_name = policy["group_name"]
         candidates = candidate_registry.routing_candidates(POLICY_CONFIG, policy, base_state)
@@ -2859,6 +2910,16 @@ def fast_plan():
             current = (api_request("GET", "/proxies/%s" % quote(group_name, safe=""), timeout=2) or {}).get("now")
         except Exception:
             current = None
+        pending = readbacks.get(group_name)
+        if pending and current == pending[1]:
+            observed = time.monotonic()
+            with FAILOVER_READBACK_LOCK:
+                if FAILOVER_READBACKS.get(group_name) == pending and observed - pending[3] < 10:
+                    del FAILOVER_READBACKS[group_name]
+                    logging_setup.write_event(
+                        "failover_readback", group=group_name, incident_id=pending[0],
+                        outcome="observed", selection_to_observed_ms=round((observed - pending[2]) * 1000),
+                        ack_to_observed_ms=round((observed - pending[3]) * 1000))
         if candidates and current in candidates:
             standby = (base_state.get("groups", {}).get(group_name) or {}).get("hot_standby")
             plan[group_name] = (current, candidates, standby)

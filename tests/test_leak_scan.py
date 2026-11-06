@@ -13,8 +13,16 @@ SCANNER = PROJECT_DIR / "scripts" / "leak-scan.py"
 KEY = "to" + "ken"
 
 
-def run(root, path=None):
+def fixture_env():
     env = dict(os.environ)
+    # A worktree's commit hook exports these for its own checkout, not our fixtures.
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        env.pop(key, None)
+    return env
+
+
+def run(root, path=None):
+    env = fixture_env()
     if path is not None:
         env["PATH"] = path
     return subprocess.run([sys.executable, str(SCANNER), str(root)], stdout=subprocess.PIPE,
@@ -25,7 +33,7 @@ class ScanSecretsTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.tmp.name)
-        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True, env=fixture_env())
         (self.root / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
         (self.root / "clean.py").write_text("VALUE = 1\n", encoding="utf-8")
 
