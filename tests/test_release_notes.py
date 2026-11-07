@@ -14,10 +14,13 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertTrue(notes.is_file(), "missing %s" % notes.relative_to(PROJECT_DIR))
         text = notes.read_text(encoding="utf-8")
         self.assertIn("SteadyRoute-v%s.zip" % version, text)
-        self.assertIn("/blob/v%s/CHANGELOG.md" % version, text)
+        if "-" in version:
+            self.assertIn("候选", text)
+        else:
+            self.assertIn("/blob/v%s/CHANGELOG.md" % version, text)
 
     def test_notes_only_for_released_versions(self):
-        released = set(re.findall(r"^## \[(\d+\.\d+\.\d+)\]", (PROJECT_DIR / "CHANGELOG.md").read_text(encoding="utf-8"), re.M))
+        released = set(re.findall(r"^## \[(\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?)\]", (PROJECT_DIR / "CHANGELOG.md").read_text(encoding="utf-8"), re.M))
         for notes in (PROJECT_DIR / "docs" / "releases").glob("v*.md"):
             with self.subTest(notes=notes.name):
                 self.assertIn(notes.stem[1:], released)
