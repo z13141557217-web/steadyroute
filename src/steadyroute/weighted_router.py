@@ -794,7 +794,8 @@ def public_timeline(group_name, now, window=None):
     """
     cutoff = float(now) - (TIMELINE_WINDOW_SECONDS if window is None else window) - 30
     return [
-        [item["t"], item.get("ms"), item.get("kind", "probe"), item.get("node"), item.get("reason")]
+        [item["t"], item.get("ms"), item.get("kind", "probe"), item.get("node"), item.get("reason"),
+         item.get("probe_status"), item.get("confirmation"), item.get("elapsed_ms"), item.get("request_id")]
         for item in TIMELINE.get(group_name, []) if float(item["t"]) >= cutoff
     ]
 
@@ -2185,6 +2186,8 @@ def reset_detection_memory():
     with FAILOVER_READBACK_LOCK:
         FAILOVER_READBACKS.clear()
     PRECHECKED.clear()
+    with PROBE_COMPLETION_LOCK:
+        PROBE_COMPLETIONS.clear()
 
 
 def note_outage(group_name, node_name, since, confirmed_at, detection_timing):
@@ -2965,6 +2968,7 @@ def run_fast_tick(dry_run=False):
     still applies. Returns 'skip' | 'resume' | 'controller_error' | 'ok' | 'transient' |
     'local_offline' | 'failover'.
     """
+    drain_probe_completions()
     if RUNTIME.get("last_state") is None:
         return "skip"
     wall, mono = time.time(), time.monotonic()
@@ -3011,13 +3015,25 @@ def run_fast_tick(dry_run=False):
         confirmation_times[group] = time.monotonic()
 
     for group, future in futures.items():
-        delay = future.result() if future.done() else None
-        done_at = getattr(future, "done_at", None)
-        probe_trace.record("fast", plan[group][0], delay, now,
-                           elapsed=None if done_at is None else (done_at - started) * 1000)
-        record_fast_point(group, plan[group][0], delay, now, suspicious=group in suspicious)
+        request_id = uuid.uuid4().hex
+        node = plan[group][0]
+        if future.done():
+            delay, status, elapsed = completed_probe_result(future, started)
+            probe_trace.record("fast" if status != "cancelled" else "cancelled", node, delay, time.time(),
+                               elapsed=elapsed, request_id=request_id)
+        else:
+            delay, status, elapsed = None, "pending", None
+            probe_trace.record("pending", node, None, time.time(), request_id=request_id)
+        record_fast_point(group, node, delay, tick_wall, suspicious=group in suspicious,
+                          request_id=request_id, probe_status=status,
+                          confirmation=verdicts.get(group), elapsed_ms=elapsed)
+        if status == "pending":
+            future.add_done_callback(
+                lambda done, g=group, n=node, r=request_id, at=tick_wall, clock=started:
+                enqueue_probe_completion(done, g, n, r, at, clock))
         if group in verdicts:
             probe_trace.record("confirm:" + verdicts[group], plan[group][0], None, time.time())
+    drain_probe_completions()
     if not suspicious:
         refresh_cached_snapshot()
         return "ok"
@@ -3083,13 +3099,50 @@ def _stamp_done(future):
     future.done_at = time.monotonic()
 
 
-def record_fast_point(group_name, node_name, delay, now, suspicious=False):
+PROBE_COMPLETIONS = collections.deque(maxlen=128)
+PROBE_COMPLETION_LOCK = threading.Lock()
+
+
+def completed_probe_result(future, started):
+    try:
+        delay = future.result()
+        status = "success" if delay is not None else "failed"
+    except Exception:
+        delay, status = None, "cancelled"
+    done = getattr(future, "done_at", None)
+    elapsed = round((done - started) * 1000) if done is not None else None
+    return delay, status, elapsed
+
+
+def enqueue_probe_completion(future, group, node, request_id, at, started):
+    result = completed_probe_result(future, started)
+    with PROBE_COMPLETION_LOCK:
+        if len(PROBE_COMPLETIONS) == PROBE_COMPLETIONS.maxlen:
+            log_warning("probe completion buffer full; oldest result omitted")
+        PROBE_COMPLETIONS.append((group, node, request_id, at, result))
+
+
+def drain_probe_completions():
+    with PROBE_COMPLETION_LOCK:
+        pending = list(PROBE_COMPLETIONS)
+        PROBE_COMPLETIONS.clear()
+    for group, node, request_id, at, (delay, status, elapsed) in pending:
+        probe_trace.record("fast" if status != "cancelled" else "cancelled", node, delay, time.time(),
+                           elapsed=elapsed, request_id=request_id)
+        with TIMELINE_LOCK:
+            for point in TIMELINE.get(group, []):
+                if point.get("request_id") == request_id and point.get("probe_status") == "pending":
+                    point.update(ms=delay, probe_status=status, elapsed_ms=elapsed)
+                    break
+
+
+def record_fast_point(group_name, node_name, delay, now, suspicious=False, **result):
     """The chart keeps one fast-lane point per FAST_TIMELINE_SECONDS, plus every miss."""
     last = RUNTIME.setdefault("fast_point_at", {}).get(group_name, 0)
     if delay is not None and not suspicious and now - last < FAST_TIMELINE_SECONDS:
         return
     RUNTIME["fast_point_at"][group_name] = now
-    timeline_add(group_name, {"t": round(now, 1), "ms": delay, "node": node_name, "kind": "probe"})
+    timeline_add(group_name, {"t": round(now, 1), "ms": delay, "node": node_name, "kind": "probe", **result})
 
 
 def fast_lane_loop(dry_run=False):
