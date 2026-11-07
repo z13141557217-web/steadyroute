@@ -5,6 +5,9 @@ One line per probe in LOG_DIR/trace/trace-YYYY-MM-DD.tsv (local date):
     <tenths of a second since local midnight>\t<kind>\t<node id>\t<ms or empty>[\t<real ms>]
 
 kind: f fast lane (current node, every second), c full cycle (every candidate, 5 s),
+p pending original request, x cancelled or unavailable result. New fast requests
+append a sixth column with request ID. A p row and its final f/x row share that ID.
+Their timestamps describe recording/completion observation, not the chart's send time.
 k confirmation verdict (ms column holds t transient, c confirmed, l local offline,
 h confirmed but waiting: no backup meets the targets, or a failover storm).
 Since v0.6.1 fast-lane lines carry a fifth column: the real time from sending the probe to its
@@ -27,7 +30,7 @@ import zipfile
 DAYS = 3
 FLUSH_SECONDS = 30
 FLUSH_LINES = 4000
-KINDS = {"fast": "f", "cycle": "c"}
+KINDS = {"fast": "f", "cycle": "c", "pending": "p", "cancelled": "x"}
 VERDICTS = {"confirm:transient": "t", "confirm:confirmed": "c", "confirm:local_offline": "l",
             "confirm:hold": "h"}
 
@@ -67,17 +70,17 @@ def _write_names():
     os.replace(tmp, path)
 
 
-def record(kind, node, delay, at=None, elapsed=None):
+def record(kind, node, delay, at=None, elapsed=None, request_id=None):
     """Never raises: the record must not be able to break detection."""
     if _dir is None or not node:
         return
     try:
-        _record(kind, node, delay, at, elapsed)
+        _record(kind, node, delay, at, elapsed, request_id)
     except (OSError, ValueError):
         pass
 
 
-def _record(kind, node, delay, at, elapsed=None):
+def _record(kind, node, delay, at, elapsed=None, request_id=None):
     at = time.time() if at is None else at
     local = datetime.datetime.fromtimestamp(at)
     day = local.strftime("%Y-%m-%d")
@@ -91,6 +94,10 @@ def _record(kind, node, delay, at, elapsed=None):
             _flush_locked()
         _set_day(day)
         extra = "" if elapsed is None else "\t%d" % int(elapsed)
+        if request_id is not None:
+            if elapsed is None:
+                extra = "\t"
+            extra += "\t" + request_id
         _buffer.append("%d\t%s\t%d\t%s%s\n" % (tenths, code, _node_id(node), value, extra))
         if len(_buffer) >= FLUSH_LINES or time.monotonic() - _last_flush >= FLUSH_SECONDS:
             _flush_locked()

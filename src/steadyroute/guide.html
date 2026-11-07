@@ -313,14 +313,15 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
         <span class="k">11</span>
         <h2>延迟曲线怎么看</h2>
         <div class="legend">
-          <div><i class="lg-cur"></i>实线：当前节点，每秒测一次，每 5 秒画一个点，没有回应的每一次都画出</div>
+          <div><i class="lg-cur"></i>实线：当前节点，每秒测一次，每 5 秒画一个点，已完成的失败探测单独标出</div>
           <div><i class="lg-sb"></i>虚线：热备节点，每 5 秒一个点</div>
-          <div><i class="lg-fail"></i>红块：当前节点这次探测失败</div>
+          <div><i class="lg-fail"></i>红块：单次探测已失败，是否换线由本轮复测与对照结果决定</div>
+          <div>橙块：单次失败、复测成功。等待中的请求显示“探测等待中”，取得结果后更新原点。</div>
           <div><i class="lg-miss"></i>空心圈：热备这次探测失败</div>
           <div><i class="lg-fo"></i>红色实线：故障切换</div>
           <div><i class="lg-op"></i>绿色虚线：无损回优</div>
         </div>
-        <p>曲线用的是一种很轻的探测（不含加密握手），所以数值通常比“平均延迟”低，适合看<b>变化趋势</b>和<b>两条线的对比</b>。右上角可以切换 5 / 15 / 30 分钟；鼠标移到曲线上（手机上点一下）能看到具体时间和数值。</p>
+        <p>曲线显示 Mihomo 报告的探测延迟，悬浮提示另列请求实际耗时。等待、单次失败和线路确认故障分别记录。右上角可以切换 5 / 15 / 30 分钟，鼠标移到曲线上或点按可查看本次结果与复测结论。</p>
       </section>
 
       <section class="card gsec" id="connections">

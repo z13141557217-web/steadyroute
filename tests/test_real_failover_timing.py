@@ -36,6 +36,9 @@ class Endpoint(http.server.BaseHTTPRequestHandler):
             return
         if mode == "stall":
             time.sleep(0.6)
+        else:
+            # Loopback can finish in 0 ms on CI; the router rejects a zero delay.
+            time.sleep(0.01)
         self.send_response(200)
         self.end_headers()
         try:

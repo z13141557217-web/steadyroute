@@ -5,6 +5,22 @@
 
 ## 版本边界
 
+### 0.6.2-rc.2 快检请求结果
+
+timeline/recent_probes 的前五列保持原格式。后面依次追加 probe_status、confirmation、
+elapsed_ms、request_id。旧五列数据仍可读取，缺少状态时按原有结果展示。
+probe_status 为 pending、success、failed 或 cancelled。confirmation 为该轮复测结论，
+其含义与单次请求结果分别解释。elapsed_ms 是请求实际耗时，第二列仍是 Mihomo 报告的延迟。
+
+尚未完成的快检写入有界曲线等待点。完成回调只入队，检测线程消费完成结果，
+按 request_id 更新原节点的原点，最终结果只写一次，不增加健康样本或发起额外探测。
+完成队列最多128条，曲线继续遵守既有点数与时间上限。结果已被淘汰时仅保留检测记录。
+若队列达到上限会记录警告，超出的原点保持未知，不能归为已失败。
+
+trace 新增 p 等待与 x 取消记录，新快检的第六列为 request_id。
+p 与其最终 f/x 用相同 ID 关联。trace 时间为记录/完成观测时刻，曲线时间为发出时刻。
+跨日完成的结果在完成观测日记录，避免日志轮换倒退到前一天。
+
 - `state.json` 当前 `schema_version` 为 `2`。
 - `/api/v1/status` 当前响应 `schema_version` 为 `2`；URL 版本与响应 schema 独立。
 - 缺少 `schema_version` 或旧 `version: 1` 的状态视为 v1，确定性迁移到 v2。

@@ -806,7 +806,7 @@ const TIPS = {
   }),
   chart: () => ({
     title: '实时延迟曲线',
-    text: '实线是当前节点（每秒测一次，图上每 5 秒一个点，没有回应的每一次都画出来）；虚线是热备，每 5 秒测一次。两者用同一种轻量探测（不含加密握手），所以数值通常比“平均延迟”低，适合看变化和对比两条线。红块是当前节点探测失败，空心圈是热备探测失败。红色实线是故障切换（会断开旧节点上的连接），绿色虚线是无损回优（旧连接保留）。鼠标移上去（手机上点一下）看具体数值。',
+    text: '实线显示当前节点的探测延迟，虚线显示热备。等待中的请求取得结果后更新原点。红块表示单次探测已失败，橙块表示单次失败后复测成功，线路是否故障以卡片判断为准。空心圈表示热备单次探测失败。悬浮提示分别显示 Mihomo 延迟和请求实际耗时。红色竖线是故障切换，绿色虚线是无损回优。',
     value: null,
     anchor: 'chart',
   }),
@@ -964,7 +964,8 @@ function routeSkeleton(g) {
         <div class="legend">
           <span><i class="lg-cur"></i>当前</span>
           <span><i class="lg-sb"></i>热备</span>
-          <span><i class="lg-fail"></i>失败</span>
+          <span><i class="lg-fail"></i>单次探测失败</span>
+          <span><i class="lg-fail" style="background:var(--warn)"></i>单次失败后复测成功</span>
           <span><i class="lg-fo"></i>故障切换</span>
           <span><i class="lg-op"></i>回优</span>
         </div>
@@ -1253,6 +1254,18 @@ function monotone(pts) {
 }
 
 let chartSeq = 0;
+function probeStatus(point) {
+  return point[5] || (point[1] == null ? 'failed' : 'success');
+}
+function probeDescription(point) {
+  const status = probeStatus(point);
+  if (status === 'pending') return '探测等待中';
+  if (status === 'cancelled') return '结果未取得';
+  if (status === 'failed') {
+    return point[6] === 'transient' ? '单次失败，复测成功' : '单次探测失败';
+  }
+  return point[1] + ' ms';
+}
 function makeChart(plot) {
   const L = 44, R = 18, T = 22, B = 22;
   const id = `c${++chartSeq}`;
@@ -1318,7 +1331,7 @@ function makeChart(plot) {
     for (let t = Math.ceil((base - rangeSeconds - 120) / tickEvery) * tickEvery; t <= base + 120; t += tickEvery) {
       ticks += `<text class="axis" x="${X(t).toFixed(1)}" y="${T + ih + 16}" text-anchor="middle">${clock(t)}</text>`;
     }
-    const fails = probes.filter(p => p[1] == null).map(p => `<rect x="${(X(p[0]) - 2).toFixed(1)}" y="${(T + ih - 10).toFixed(1)}" width="4" height="10" rx="1.5" style="fill:var(--bad)"></rect>`).join('');
+    const fails = probes.filter(p => probeStatus(p) === 'failed').map(p => `<rect x="${(X(p[0]) - 2).toFixed(1)}" y="${(T + ih - 10).toFixed(1)}" width="4" height="10" rx="1.5" style="fill:${p[6] === 'transient' ? 'var(--warn)' : 'var(--bad)'}"></rect>`).join('');
     const sbFails = standby.filter(p => p[1] == null).map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${(T + ih - 4).toFixed(1)}" r="2.8" fill="none" style="stroke:var(--standby)" stroke-width="1.4"></circle>`).join('');
     const sw = switches.map(p => {
       const x = X(p[0]), k = SWITCH_KINDS[p[4]] || SWITCH_KINDS.optimize;
@@ -1361,7 +1374,9 @@ function makeChart(plot) {
     const sb = nearest(st.standby, p[0], 25), sw = nearest(st.switches, p[0], 8);
     const k = sw ? SWITCH_KINDS[sw[4]] || SWITCH_KINDS.optimize : null;
     const html = `<div class="t">${clock(p[0], true)}</div>
-      <div class="row"><span>当前</span><b>${p[1] == null ? '<span style="color:var(--bad)">失败</span>' : p[1] + ' ms'}</b></div>
+      <div class="row"><span>本次探测</span><b>${esc(probeDescription(p))}</b></div>
+      ${p[7] != null ? `<div class="row"><span>实际耗时</span><b>${p[7]} ms</b></div>` : ''}
+      ${p[6] === 'transient' && p[5] !== 'failed' ? '<div class="t">本轮复测成功，继续使用当前线路</div>' : ''}
       ${sb ? `<div class="row"><span>热备</span><b>${sb[1] == null ? '失败' : sb[1] + ' ms'}</b></div>` : ''}
       <div class="t" style="margin-top:3px">${esc(p[3] || '')}</div>
       ${k ? `<div class="row" style="margin-top:4px;color:${k.color}"><span>${k.label}</span><b>${clock(sw[0], true)}</b></div><div class="t">→ ${esc(sw[3] || '')}</div>` : ''}`;
@@ -1402,7 +1417,7 @@ function makeChart(plot) {
     setData(g, card) {
       const from = nowSeconds() - rangeSeconds - 30;
       const pts = (g.timeline || []).filter(p => p[0] >= from);
-      const key = pts.length ? `${pts.length}:${pts[pts.length - 1][0]}:${pts[0][0]}` : 'none';
+      const key = JSON.stringify(pts);
       if (key === st.dataKey) return;
       st.dataKey = key;
       st.points = pts;
@@ -1410,7 +1425,7 @@ function makeChart(plot) {
       st.targetTop = niceMax(Math.max(40, ...values) * 1.15);
       if (st.base == null) st.top = st.targetTop;
       const last = pts.filter(p => p[2] === 'probe').pop();
-      patch(card.querySelector('[data-f="last"]'), !last ? '' : last[1] == null ? '实时 <b style="color:var(--bad)">失败</b>' : `实时 <b>${last[1]}</b> ms`);
+      patch(card.querySelector('[data-f="last"]'), !last ? '' : `实时 <b>${esc(probeDescription(last))}</b>`);
     },
   };
 }
