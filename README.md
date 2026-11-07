@@ -5,6 +5,8 @@
 可选的 **AI 家宽专线**：在设置页选一个国家，稳航在 Clash 里建立只含该国家家宽节点的专线，ChatGPT、Claude 等 AI 服务的规则（以 [ip.net.coffee](https://ip.net.coffee/) 为第一优先级，每周自动同步）排在所有规则之前，节点全部不可用时拒绝连接，不会回落到直连。
 
 - 当前版本：**v0.6.1**（2026-10-21）。各版本的安装包见 [Releases](https://github.com/z13141557217-web/steadyroute/releases)。
+- 预发布观察版本已有 v0.6.2-rc.1（分段计时）、v0.6.2-rc.2（等待与失败显示修复）；
+  v0.6.2-rc.3 为图表与节点状态改进候选，真实环境验收结果单独记录。预发布不替换 Latest 正式版。
 - 需要：macOS、系统自带的 Python 3.9 或更新、[Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev)（内核 mihomo；AI 专线需要 v1.19.27 或更新）。
 - 只用 Python 标准库，没有第三方依赖。单进程，由 LaunchAgent 开机自启、异常自动拉起。
 - 不改订阅，不上传任何数据。只有在设置页确认后才会往 Clash 写入专线，关闭即完整撤销。所有页面只监听 `127.0.0.1:17654`。

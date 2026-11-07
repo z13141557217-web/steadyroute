@@ -104,16 +104,20 @@ else
   fi
 fi
 
-NEWEST=$(git -C "$PROJECT_DIR" tag -l 'v[0-9]*' --sort=-v:refname | head -n 1)
+NEWEST=$(git -C "$PROJECT_DIR" tag -l 'v[0-9]*' --sort=-v:refname | grep -v '-' | head -n 1)
 if [ "$NEWEST" = "$TAG" ]; then LATEST=--latest; else LATEST=--latest=false; fi
+PRERELEASE=''
+case "$VERSION" in
+  *-*) PRERELEASE=--prerelease; LATEST=--latest=false ;;
+esac
 
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  gh release edit "$TAG" --repo "$REPO" --title "SteadyRoute $TAG" --notes-file "$NOTES" "$LATEST"
+  gh release edit "$TAG" --repo "$REPO" --title "SteadyRoute $TAG" --notes-file "$NOTES" "$LATEST" ${PRERELEASE:+$PRERELEASE}
   # shellcheck disable=SC2086  # asset paths have no spaces (mktemp dir)
   gh release upload "$TAG" --repo "$REPO" --clobber $ASSETS
   echo "已更新 GitHub Release $TAG"
 else
   gh release create "$TAG" --repo "$REPO" --verify-tag --title "SteadyRoute $TAG" \
-    --notes-file "$NOTES" "$LATEST" $ASSETS
+    --notes-file "$NOTES" "$LATEST" ${PRERELEASE:+$PRERELEASE} $ASSETS
   echo "已发布 GitHub Release $TAG"
 fi

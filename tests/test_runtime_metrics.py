@@ -74,14 +74,25 @@ class FreshnessTests(unittest.TestCase):
 
     def test_fixed_rate_main_loop_does_not_add_cycle_time(self):
         starts = []
+        clock = [100.0]
+        waits = []
 
         def fake_cycle(dry_run=False):
-            starts.append(time.monotonic())
-            time.sleep(0.3)
+            starts.append(clock[0])
+            clock[0] += 0.3
             if len(starts) == 3:
                 raise KeyboardInterrupt
 
+        def fake_wait(timeout):
+            waits.append(timeout)
+            # A scheduler may wake late. The next cycle catches up to the original
+            # deadline, so an individual gap can legitimately be shorter than 0.5 s.
+            clock[0] += timeout + (0.15 if len(waits) == 1 else 0)
+
         with mock.patch.object(router, "run_cycle", side_effect=fake_cycle), \
+                mock.patch.object(router.time, "monotonic", side_effect=lambda: clock[0]), \
+                mock.patch.object(router.WAKE_EVENT, "wait", side_effect=fake_wait), \
+                mock.patch.object(router.WAKE_EVENT, "is_set", return_value=False), \
                 mock.patch.object(router, "PROBE_INTERVAL_SECONDS", 0.6), \
                 mock.patch.object(router, "start_dashboard", return_value=None), \
                 mock.patch.object(router, "fast_lane_loop"), \
@@ -95,11 +106,11 @@ class FreshnessTests(unittest.TestCase):
                 mock.patch.object(sys, "argv", ["weighted_router.py", "--daemon"]):
             with self.assertRaises(KeyboardInterrupt):
                 router.main()
-        gaps = [later - earlier for earlier, later in zip(starts, starts[1:])]
-        # Fixed rate: ~0.6 s between starts. The old sleep-after-cycle loop gave ~0.9 s.
-        for gap in gaps:
-            self.assertGreater(gap, 0.5)
-            self.assertLess(gap, 0.8)
+        # Still anchored at 101.2 after a late first wake. Sleeping a full interval
+        # after each cycle would accumulate cycle time and reach 101.95 instead.
+        for actual, expected in zip(starts, [100.0, 100.75, 101.2]):
+            self.assertAlmostEqual(actual, expected)
+        self.assertEqual(len(waits), 2)
 
 
 class DashboardFreshnessTests(unittest.TestCase):
