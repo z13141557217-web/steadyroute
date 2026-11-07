@@ -30,7 +30,7 @@ import zipfile
 DAYS = 3
 FLUSH_SECONDS = 30
 FLUSH_LINES = 4000
-KINDS = {"fast": "f", "cycle": "c", "pending": "p", "cancelled": "x"}
+KINDS = {"fast": "f", "cycle": "c", "pending": "p", "cancelled": "x", "unavailable": "u"}
 VERDICTS = {"confirm:transient": "t", "confirm:confirmed": "c", "confirm:local_offline": "l",
             "confirm:hold": "h"}
 

@@ -48,7 +48,7 @@ CLASH_APPS = ("/Applications/Clash Verge.app", "~/Applications/Clash Verge.app")
 APP_FILES = (
     "weighted_router.py", "state_contract.py", "route_policy.py", "candidate_registry.py",
     "health_model.py", "runtime_metrics.py", "logging_setup.py", "node_catalog.py",
-    "regions.py", "auto_lock.py", "ai_rules.py", "ai_line.py", "ai_check.py",
+    "regions.py", "auto_lock.py", "ai_rules.py", "ai_line.py", "ai_check.py", "probe_display.py",
     "clash_profile.py", "settings_service.py", "diagnostics.py", "probe_trace.py",
     "dashboard.html", "settings.html", "nodes.html", "guide.html", "changelog.html", "pages.css",
 )

@@ -34,6 +34,7 @@ try:
     import ai_line
     import diagnostics
     import probe_trace
+    import probe_display
     import settings_service
 except ModuleNotFoundError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -49,6 +50,7 @@ except ModuleNotFoundError:
     import ai_line
     import diagnostics
     import probe_trace
+    import probe_display
     import settings_service
 
 
@@ -419,6 +421,12 @@ def decode_chunked(data):
     return bytes(output)
 
 
+class ControllerHTTPError(RuntimeError):
+    def __init__(self, status, body):
+        self.status = status
+        super().__init__("controller HTTP %d: %s" % (status, body))
+
+
 def api_request(method, path, payload=None, timeout=10):
     body = b""
     if payload is not None:
@@ -464,7 +472,7 @@ def api_request(method, path, payload=None, timeout=10):
     if headers.get(b"transfer-encoding") == b"chunked":
         response_body = decode_chunked(response_body)
     if status >= 400:
-        raise RuntimeError("controller HTTP %d: %s" % (status, response_body[:600].decode("utf-8", "replace")))
+        raise ControllerHTTPError(status, response_body[:600].decode("utf-8", "replace"))
     if not response_body:
         return None
     return json.loads(response_body.decode("utf-8"))
@@ -675,6 +683,23 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
     }
 
 
+def public_probe_result(value, now, gap):
+    if not isinstance(value, dict) or value.get("status") not in (
+            "success", "timeout", "error", "unavailable"):
+        return None
+    reasons = ("probe_timeout", "invalid_delay", "controller_reported_error",
+               "controller_timeout", "controller_unreachable", "invalid_response", "unknown")
+    result = {"status": value["status"], "reason_code": (
+        value.get("reason_code") if value.get("reason_code") in reasons else None), "source": "base"}
+    for field in ("delay_ms", "elapsed_ms", "timeout_ms", "observed_at"):
+        number = value.get(field)
+        result[field] = number if isinstance(number, (int, float)) and not isinstance(number, bool) else None
+    result["stale_at"] = (result["observed_at"] + max(50, 3 * gap)
+                          if result["observed_at"] is not None else None)
+    result["stale"] = result["stale_at"] is None or now >= result["stale_at"]
+    return result
+
+
 def node_contract(group_name, node_name, node_state, now, current_names):
     lifecycle = state_contract.resolve_node_lifecycle(node_state, now)
     latency = node_state.get("latency_ewma")
@@ -718,6 +743,9 @@ def node_contract(group_name, node_name, node_state, now, current_names):
         "window_samples": int(node_state.get("win_n", 0)),
         "window_p50_ms": node_state.get("win_p50"),
         "window_p90_ms": node_state.get("win_p90"),
+        "last_success_delay_ms": node_state.get("last_success_delay"),
+        "last_success_at": node_state.get("last_success_at"),
+        "latest_probe": public_probe_result(node_state.get("last_probe_result"), now, probe_gap),
         "warmup_progress": round(min(1.0, float(samples) / MIN_SAMPLES_FOR_OPTIMIZATION), 3)
         if lifecycle["code"] == "warming" else None,
     }
@@ -795,7 +823,8 @@ def public_timeline(group_name, now, window=None):
     cutoff = float(now) - (TIMELINE_WINDOW_SECONDS if window is None else window) - 30
     return [
         [item["t"], item.get("ms"), item.get("kind", "probe"), item.get("node"), item.get("reason"),
-         item.get("probe_status"), item.get("confirmation"), item.get("elapsed_ms"), item.get("request_id")]
+         item.get("probe_status"), item.get("confirmation"), item.get("elapsed_ms"), item.get("request_id"),
+         item.get("probe_result")]
         for item in TIMELINE.get(group_name, []) if float(item["t"]) >= cutoff
     ]
 
@@ -1141,6 +1170,10 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "pause_progress": node["pause_progress"],
             "window_success": node["window_success"],
             "window_samples": node["window_samples"],
+            "window_p90_ms": node["window_p90_ms"],
+            "latest_probe": node["latest_probe"],
+            "last_success_delay_ms": node["last_success_delay_ms"],
+            "last_success_at": node["last_success_at"],
             "window_p50": node["window_p50_ms"],
             "window_p90": node["window_p90_ms"],
             "business_last_success": state["nodes"][node["name"]].get("business_last_success"),
@@ -1178,6 +1211,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "metrics": group["metrics"],
             "connections": connection_summary(group["name"], connections, now),
             "timeline": public_timeline(group["name"], now),
+            "chart_buckets": probe_display.snapshot(group["name"], now),
         })
     legacy = {
         "snapshot_id": snapshot_id,
@@ -1612,30 +1646,66 @@ def start_dashboard():
     return server
 
 
+PROBE_CONTEXT = threading.local()
+
+
 def probe_url(name, url, timeout_ms):
     path = "/proxies/%s/delay?timeout=%d&url=%s" % (
         quote(name, safe=""),
         timeout_ms,
         quote(url, safe=""),
     )
+    result = {"status": "error", "reason_code": "unknown", "timeout_ms": timeout_ms}
     try:
         response = api_request("GET", path, timeout=(timeout_ms / 1000.0) + 3)
         delay = int(response.get("delay", 0))
-        if delay <= 0 or delay >= timeout_ms:
+        if delay >= timeout_ms:
+            result.update(status="timeout", reason_code="probe_timeout")
             return None
+        if delay <= 0:
+            result.update(reason_code="invalid_delay")
+            return None
+        result.update(status="success", reason_code=None)
         return delay
-    except Exception:
+    except ControllerHTTPError as error:
+        message = str(error).lower()
+        if any(marker in message for marker in ("timeout", "timed out", "deadline exceeded")):
+            result.update(status="timeout", reason_code="probe_timeout")
+        else:
+            result.update(reason_code="controller_reported_error")
         return None
+    except (socket.timeout, TimeoutError):
+        result.update(status="unavailable", reason_code="controller_timeout")
+        return None
+    except OSError:
+        result.update(status="unavailable", reason_code="controller_unreachable")
+        return None
+    except (ValueError, TypeError, AttributeError):
+        result.update(status="unavailable", reason_code="invalid_response")
+        return None
+    except Exception:
+        result.update(status="unavailable", reason_code="unknown")
+        return None
+    finally:
+        PROBE_CONTEXT.result = result
 
 
 ELAPSED = {}
 ELAPSED_LOCK = threading.Lock()
 
 
-def timed_probe(name, url, timeout_ms):
+def timed_probe(name, url, timeout_ms, observation=None):
     """probe_url, remembering how long a successful answer really took (seconds)."""
     started = time.monotonic()
+    PROBE_CONTEXT.result = None
     delay = probe_url(name, url, timeout_ms)
+    if observation is not None:
+        observation.update(PROBE_CONTEXT.result or {
+            "status": "success" if delay is not None else "error",
+            "reason_code": None if delay is not None else "unknown", "timeout_ms": timeout_ms,
+        })
+        observation.update(delay_ms=delay, elapsed_ms=round((time.monotonic() - started) * 1000),
+                           observed_at=time.time())
     if delay is not None:
         elapsed = time.monotonic() - started
         with ELAPSED_LOCK:
@@ -1692,7 +1762,7 @@ def probe_pool():
         return PROBE_POOL
 
 
-def run_probe_jobs(jobs):
+def run_probe_jobs(jobs, observations=None):
     """jobs: list of (key, node_name, url, timeout_ms). Returns {key: delay_or_None}.
 
     All jobs run concurrently (up to PROBE_WORKERS), so a batch takes as long as its slowest probe.
@@ -1701,10 +1771,12 @@ def run_probe_jobs(jobs):
         return {}
     results = {}
     executor = probe_pool()
-    futures = {
-        executor.submit(timed_probe, name, url, timeout_ms): key
-        for key, name, url, timeout_ms in jobs
-    }
+    futures = {}
+    for key, name, url, timeout_ms in jobs:
+        observation = {} if observations is not None else None
+        if observations is not None:
+            observations[key] = observation
+        futures[executor.submit(timed_probe, name, url, timeout_ms, observation)] = key
     for future in concurrent.futures.as_completed(futures):
         results[futures[future]] = future.result()
     return results
@@ -1918,6 +1990,7 @@ def update_node_stats(node_state, delay, observed_at=None, quarantine=True):
         node_state["success_streak"] = int(node_state.get("success_streak", 0)) + 1
         node_state["failure_streak"] = 0
         node_state["last_delay"] = delay
+        node_state["last_success_delay"] = delay
         node_state["last_success_at"] = int(observed_at)
         node_state.pop("first_failure_at", None)
     else:
@@ -2186,6 +2259,7 @@ def reset_detection_memory():
     with FAILOVER_READBACK_LOCK:
         FAILOVER_READBACKS.clear()
     PRECHECKED.clear()
+    probe_display.reset()
     with PROBE_COMPLETION_LOCK:
         PROBE_COMPLETIONS.clear()
 
@@ -2906,6 +2980,7 @@ def refresh_cached_snapshot(proxy_data=None, now=None):
         group["recent_probes"] = public_timeline(group["name"], now, V1_TIMELINE_WINDOW_SECONDS)
     for group in legacy["groups"]:
         group["timeline"] = public_timeline(group["name"], now)
+        group["chart_buckets"] = probe_display.snapshot(group["name"], now)
     update_dashboard_cache(snapshots)
 
 
@@ -2984,7 +3059,8 @@ def run_fast_tick(dry_run=False):
     pool = probe_pool()
     started = time.monotonic()
     tick_wall = time.time()
-    futures = {group: pool.submit(timed_probe, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS)
+    observations = {group: {} for group in plan}
+    futures = {group: pool.submit(timed_probe, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS, observations[group])
                for group, (current, _candidates, _standby) in plan.items()}
     for future in futures.values():
         future.add_done_callback(_stamp_done)
@@ -3019,18 +3095,22 @@ def run_fast_tick(dry_run=False):
         node = plan[group][0]
         if future.done():
             delay, status, elapsed = completed_probe_result(future, started)
-            probe_trace.record("fast" if status != "cancelled" else "cancelled", node, delay, time.time(),
+            if status == "failed" and observations[group].get("status") == "unavailable":
+                status = "unavailable"
+            trace_kind = status if status in ("cancelled", "unavailable") else "fast"
+            probe_trace.record(trace_kind, node, delay, time.time(),
                                elapsed=elapsed, request_id=request_id)
         else:
             delay, status, elapsed = None, "pending", None
             probe_trace.record("pending", node, None, time.time(), request_id=request_id)
         record_fast_point(group, node, delay, tick_wall, suspicious=group in suspicious,
                           request_id=request_id, probe_status=status,
-                          confirmation=verdicts.get(group), elapsed_ms=elapsed)
+                          confirmation=verdicts.get(group), elapsed_ms=elapsed,
+                          probe_result=dict(observations[group]) if status != "pending" else None)
         if status == "pending":
             future.add_done_callback(
-                lambda done, g=group, n=node, r=request_id, at=tick_wall, clock=started:
-                enqueue_probe_completion(done, g, n, r, at, clock))
+                lambda done, g=group, n=node, r=request_id, at=tick_wall, clock=started, details=observations[group]:
+                enqueue_probe_completion(done, g, n, r, at, clock, details))
         if group in verdicts:
             probe_trace.record("confirm:" + verdicts[group], plan[group][0], None, time.time())
     drain_probe_completions()
@@ -3114,31 +3194,38 @@ def completed_probe_result(future, started):
     return delay, status, elapsed
 
 
-def enqueue_probe_completion(future, group, node, request_id, at, started):
+def enqueue_probe_completion(future, group, node, request_id, at, started, observation=None):
     result = completed_probe_result(future, started)
+    if result[1] == "failed" and (observation or {}).get("status") == "unavailable":
+        result = (result[0], "unavailable", result[2])
     with PROBE_COMPLETION_LOCK:
         if len(PROBE_COMPLETIONS) == PROBE_COMPLETIONS.maxlen:
             log_warning("probe completion buffer full; oldest result omitted")
-        PROBE_COMPLETIONS.append((group, node, request_id, at, result))
+        PROBE_COMPLETIONS.append((group, node, request_id, at, result, dict(observation or {})))
 
 
 def drain_probe_completions():
     with PROBE_COMPLETION_LOCK:
         pending = list(PROBE_COMPLETIONS)
         PROBE_COMPLETIONS.clear()
-    for group, node, request_id, at, (delay, status, elapsed) in pending:
-        probe_trace.record("fast" if status != "cancelled" else "cancelled", node, delay, time.time(),
+    for group, node, request_id, at, (delay, status, elapsed), observation in pending:
+        trace_kind = status if status in ("cancelled", "unavailable") else "fast"
+        probe_trace.record(trace_kind, node, delay, time.time(),
                            elapsed=elapsed, request_id=request_id)
+        probe_display.complete(group, node, at, request_id, delay, status, elapsed, observation)
         with TIMELINE_LOCK:
             for point in TIMELINE.get(group, []):
                 if point.get("request_id") == request_id and point.get("probe_status") == "pending":
-                    point.update(ms=delay, probe_status=status, elapsed_ms=elapsed)
+                    point.update(ms=delay, probe_status=status, elapsed_ms=elapsed, probe_result=observation)
                     break
 
 
 def record_fast_point(group_name, node_name, delay, now, suspicious=False, **result):
     """The chart keeps one fast-lane point per FAST_TIMELINE_SECONDS, plus every miss."""
     last = RUNTIME.setdefault("fast_point_at", {}).get(group_name, 0)
+    probe_display.record(group_name, node_name, now, delay, result.get("request_id"),
+                         result.get("probe_status", "success" if delay is not None else "failed"),
+                         result.get("confirmation"), result.get("elapsed_ms"), result.get("probe_result"))
     if delay is not None and not suspicious and now - last < FAST_TIMELINE_SECONDS:
         return
     RUNTIME["fast_point_at"][group_name] = now
@@ -3254,13 +3341,14 @@ def plan_cycle():
 
 def probe_cycle(plan):
     jobs = plan["jobs"]
-    results = run_probe_jobs(jobs)
+    observations = plan["probe_observations"] = {}
+    results = run_probe_jobs(jobs, observations)
     currents = set(plan["currents"].values())
     # 2) Retry every failed business probe once, and every failed base probe of a node that is
     #    not current (the current node goes through confirm_current_failure instead), all in
     #    parallel. A base retry that answers means the miss does not pause the node.
     retry = run_probe_jobs([job for job in jobs if results.get(job[0]) is None and (
-        job[0][0] == "biz" or (job[0][0] == "base" and job[1] not in currents))])
+        job[0][0] == "biz" or (job[0][0] == "base" and job[1] not in currents))], observations)
     return results, retry
 
 
@@ -3300,7 +3388,6 @@ def record_cycle(plan, results, retry, dry_run):
         probe_trace.record("cycle", name, base_results.get(name), probed_at)
     RUNTIME["last_probe_at"] = int(probed_at)
     for group_name, candidates in GROUPS.items():
-        record_fast_point(group_name, plan["currents"].get(group_name), results.get(("fast", group_name)), probed_at)
         standby = state["groups"].get(group_name, {}).get("hot_standby")
         if ("fast_standby", group_name) in results:
             timeline_add(group_name, {
@@ -3372,6 +3459,10 @@ def record_cycle(plan, results, retry, dry_run):
         if confirmations.get(group_name) == "transient" or group_name in alive_elsewhere
     } | rescued
     record_probe_results(state, targets, base_results, cycle_started_at, record_failures, transient)
+    for name in targets:
+        observation = plan.get("probe_observations", {}).get(("base", name))
+        if observation:
+            state["nodes"].setdefault(name, {})["last_probe_result"] = dict(observation, source="base")
 
     for (kind, group_name, name), result in business.items():
         success = result["delay"] is not None

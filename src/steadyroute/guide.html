@@ -312,6 +312,9 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
       <section class="card gsec" id="chart">
         <span class="k">11</span>
         <h2>延迟曲线怎么看</h2>
+        <p>当前折线使用快检的5秒时间桶，显示最近成功延迟，细线标出桶内范围。下方状态条独立显示结果，
+        悬浮可读到成功、失败、等待及未知次数。失败、长空档或换节点处断线，热备曲线同样处理。
+        纵轴可自动调整或固定范围，超出范围的尖峰带上箭头。</p>
         <div class="legend">
           <div><i class="lg-cur"></i>实线：当前节点，每秒测一次，每 5 秒画一个点，已完成的失败探测单独标出</div>
           <div><i class="lg-sb"></i>虚线：热备节点，每 5 秒一个点</div>
@@ -321,7 +324,9 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <div><i class="lg-fo"></i>红色实线：故障切换</div>
           <div><i class="lg-op"></i>绿色虚线：无损回优</div>
         </div>
-        <p>曲线显示 Mihomo 报告的探测延迟，悬浮提示另列请求实际耗时。等待、单次失败和线路确认故障分别记录。右上角可以切换 5 / 15 / 30 分钟，鼠标移到曲线上或点按可查看本次结果与复测结论。</p>
+        <p>曲线显示 Mihomo 报告的探测延迟，悬浮另列桶内最近完成请求的实际耗时。等待、单次失败和线路确认故障分别记录。
+        节点表默认按近30分钟可用率排序，满12个样本才参与这个排序；不足的显示预热。可切换24小时可用率、最近有效延迟及角色排序。
+        最近完整检测中的Timeout表示明确超时，Error表示普通错误，控制器或响应不可用另列；暂停与恢复进度继续独立显示。</p>
       </section>
 
       <section class="card gsec" id="connections">

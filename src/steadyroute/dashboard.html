@@ -313,6 +313,8 @@ main.wrap { padding-block: 18px 40px; display: grid; grid-template-columns: minm
 
 .r-chart { padding: 12px 22px 2px; display: grid; gap: 6px; }
 .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chart-head select, #node-sort { color:var(--ink); background:var(--surface); border:1px solid var(--hair); border-radius:6px; padding:4px 6px; font:inherit; }
+.table-wrap td > small { display:block; color:var(--ink-3); font-size:11px; margin-top:3px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { display: inline-block; }
@@ -652,8 +654,14 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
     <div class="nodes-head">
       <div>
         <h2>节点状态</h2>
-        <p id="node-summary">按地区分组，当前线路和热备排在最前</p>
+        <p id="node-summary">按地区分组，近期可用率从高到低</p>
       </div>
+      <label>排序 <select id="node-sort" aria-label="节点排序">
+        <option value="recent">近30分钟可用率</option>
+        <option value="long">近24小时可用率</option>
+        <option value="latency">最近有效延迟</option>
+        <option value="role">当前与热备优先</option>
+      </select></label>
       <div class="seg filters" role="group" aria-label="节点筛选">
         <button class="filter active" data-filter="focus" type="button" aria-pressed="true" title="当前线路、热备和异常节点">需关注<span class="count" data-count="focus"></span></button>
         <button class="filter" data-filter="all" type="button" aria-pressed="false">全部<span class="count" data-count="all"></span></button>
@@ -665,8 +673,8 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
         <thead>
           <tr>
             <th>节点</th>
-            <th><span class="th">近 24 小时可用率 <button class="tip" type="button" data-tip="availability" aria-label="说明：近 24 小时可用率">?</button></span></th>
-            <th><span class="th">平均延迟 <button class="tip" type="button" data-tip="latency" aria-label="说明：平均延迟">?</button></span></th>
+            <th>可用率 · 30分钟 / 24小时</th>
+            <th>最近完整检测</th>
             <th><span class="th">抖动 <button class="tip" type="button" data-tip="jitter" aria-label="说明：抖动">?</button></span></th>
             <th><span class="th">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span></th>
             <th><span class="th">状态 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span></th>
@@ -742,6 +750,7 @@ function setText(el, text) {
 let snapshot = null;
 let activeFilter = 'focus';
 let rangeSeconds = 300;
+let nodeSort = 'recent';
 const drawer = { group: null, trigger: null };
 const charts = new Map();      // group name -> chart
 const readouts = new Map();    // group name -> {el, shown, target}
@@ -806,7 +815,7 @@ const TIPS = {
   }),
   chart: () => ({
     title: '实时延迟曲线',
-    text: '实线显示当前节点的探测延迟，虚线显示热备。等待中的请求取得结果后更新原点。红块表示单次探测已失败，橙块表示单次失败后复测成功，线路是否故障以卡片判断为准。空心圈表示热备单次探测失败。悬浮提示分别显示 Mihomo 延迟和请求实际耗时。红色竖线是故障切换，绿色虚线是无损回优。',
+    text: '实线显示当前节点的快检延迟，每5秒汇总，细线保留桶内成功延迟范围；虚线显示热备。失败、等待、取消、检测不可用、换节点和较长数据空档会断开线段。下方色带中，红色表示单次探测失败，橙色表示首次失败后复测成功，灰色表示等待或未知，线路是否故障以卡片判断为准。等待结果完成后更新原时间桶。悬浮提示分别显示 Mihomo 延迟和请求实际耗时。固定纵轴时，三角形标出超出范围的峰值。红色竖线是故障切换，绿色虚线是无损回优。',
     value: null,
     anchor: 'chart',
   }),
@@ -969,8 +978,13 @@ function routeSkeleton(g) {
           <span><i class="lg-fo"></i>故障切换</span>
           <span><i class="lg-op"></i>回优</span>
         </div>
+        <label>纵轴 <select data-chart-scale aria-label="延迟纵轴范围">
+          <option value="0">自动</option><option value="300">0–300 ms</option>
+          <option value="1000">0–1000 ms</option><option value="3000">0–3000 ms</option>
+        </select></label>
         <span class="live"><span data-f="last"></span><button class="tip" type="button" data-tip="chart" aria-label="说明：实时延迟曲线">?</button></span>
       </div>
+      <p style="font-size:11px;color:var(--ink-3);margin-top:6px">5秒汇总 · 细线为延迟范围 · 下方色带为探测结果</p>
       <div class="plot" data-f="plot"></div>
     </div>
     <p class="r-reason" data-f="reason"></p>
@@ -1231,28 +1245,6 @@ function nearest(points, t, within) {
   return best;
 }
 
-/* Fritsch–Carlson monotone cubic through screen points [[x, y], ...]. */
-function monotone(pts) {
-  const n = pts.length;
-  if (n === 0) return '';
-  if (n === 1) return `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
-  const dx = [], dy = [], m = [], t = [];
-  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; dy[i] = pts[i + 1][1] - pts[i][1]; m[i] = dx[i] ? dy[i] / dx[i] : 0; }
-  t[0] = m[0]; t[n - 1] = m[n - 2];
-  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
-  for (let i = 0; i < n - 1; i++) {
-    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
-    const a = t[i] / m[i], b = t[i + 1] / m[i], h = a * a + b * b;
-    if (h > 9) { const k = 3 / Math.sqrt(h); t[i] = k * a * m[i]; t[i + 1] = k * b * m[i]; }
-  }
-  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
-  for (let i = 0; i < n - 1; i++) {
-    const h = dx[i] / 3;
-    d += `C${(pts[i][0] + h).toFixed(1)},${(pts[i][1] + h * t[i]).toFixed(1)} ${(pts[i + 1][0] - h).toFixed(1)},${(pts[i + 1][1] - h * t[i + 1]).toFixed(1)} ${pts[i + 1][0].toFixed(1)},${pts[i + 1][1].toFixed(1)}`;
-  }
-  return d;
-}
-
 let chartSeq = 0;
 function probeStatus(point) {
   return point[5] || (point[1] == null ? 'failed' : 'success');
@@ -1261,15 +1253,41 @@ function probeDescription(point) {
   const status = probeStatus(point);
   if (status === 'pending') return '探测等待中';
   if (status === 'cancelled') return '结果未取得';
+  if (status === 'unavailable') return '检测不可用';
   if (status === 'failed') {
-    return point[6] === 'transient' ? '单次失败，复测成功' : '单次探测失败';
+    const reason = point[9]?.status === 'timeout' ? '超时' : point[9]?.status === 'unavailable' ? '检测不可用' : '探测错误';
+    return point[6] === 'transient' ? reason + '，复测成功' : reason;
   }
   return point[1] + ' ms';
 }
+
+function chartSegments(points) {
+  const segments = [];
+  let segment = [], previous = null;
+  for (const point of points) {
+    const boundary = previous && (point[3] !== previous[3] || point[0]-previous[0] > 15);
+    if (boundary || point[1] == null) {
+      if (segment.length) segments.push(segment);
+      segment = [];
+    }
+    if (point[1] != null) segment.push(point);
+    previous = point;
+  }
+  if (segment.length) segments.push(segment);
+  return segments;
+}
+
 function makeChart(plot) {
-  const L = 44, R = 18, T = 22, B = 22;
+  const L = 44, R = 18, T = 22, B = 38;
   const id = `c${++chartSeq}`;
   const st = { points: null, dataKey: '', top: 100, targetTop: 100, w: 0, h: 0, drawnKey: '', base: null, hoverX: null, pinned: false };
+  let fixedTop = 0, autoTop = 100, holdUntil = 0;
+  const scaleSelect = plot.closest('.route').querySelector('[data-chart-scale]');
+  scaleSelect.addEventListener('change', event => {
+    fixedTop = Number(event.target.value);
+    st.targetTop = fixedTop || autoTop;
+    st.drawnKey = '';
+  });
   plot.innerHTML = `<svg role="img" aria-label="实时延迟曲线"><defs>
       <clipPath id="clip-${id}"><rect></rect></clipPath>
       <linearGradient id="grad-${id}" x1="0" x2="0" y1="0" y2="1">
@@ -1314,24 +1332,25 @@ function makeChart(plot) {
     yhtml += `<text class="axis" x="${L - 8}" y="${T - 9}" text-anchor="end">ms</text>`;
     yaxis.innerHTML = yhtml;
 
-    const runs = (points, bridge) => {
-      const out = []; let run = [];
-      (bridge ? points.filter(p => p[1] != null) : points).forEach(p => {
-        if (p[1] == null) { if (run.length) out.push(run); run = []; return; }
-        run.push([X(p[0]), Y(p[1])]);
-      });
-      if (run.length) out.push(run);
-      return out;
-    };
-    const curRuns = runs(probes), sbRuns = runs(standby, true);
-    const lineD = curRuns.map(monotone).join('');
-    const areaD = curRuns.filter(r => r.length > 1).map(r => monotone(r) + `L${r[r.length - 1][0].toFixed(1)},${(T + ih).toFixed(1)}L${r[0][0].toFixed(1)},${(T + ih).toFixed(1)}Z`).join('');
+    const linear = run => run.map(([x,y], index) => (index ? 'L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1)).join('');
+    const project = points => chartSegments(points).map(segment => segment.map(p => [X(p[0]),Y(p[1])]));
+    const curRuns = project(probes), sbRuns = project(standby);
+    const lineD = curRuns.map(linear).join('');
     const tickEvery = rangeSeconds <= 300 ? 60 : rangeSeconds <= 900 ? 180 : 300;
     let ticks = '';
     for (let t = Math.ceil((base - rangeSeconds - 120) / tickEvery) * tickEvery; t <= base + 120; t += tickEvery) {
-      ticks += `<text class="axis" x="${X(t).toFixed(1)}" y="${T + ih + 16}" text-anchor="middle">${clock(t)}</text>`;
+      ticks += `<text class="axis" x="${X(t).toFixed(1)}" y="${T + ih + 28}" text-anchor="middle">${clock(t)}</text>`;
     }
-    const fails = probes.filter(p => probeStatus(p) === 'failed').map(p => `<rect x="${(X(p[0]) - 2).toFixed(1)}" y="${(T + ih - 10).toFixed(1)}" width="4" height="10" rx="1.5" style="fill:${p[6] === 'transient' ? 'var(--warn)' : 'var(--bad)'}"></rect>`).join('');
+    const fails = probes.filter(p => !p[10] && probeStatus(p) === 'failed').map(p => `<rect x="${(X(p[0]) - 2).toFixed(1)}" y="${(T + ih + 3).toFixed(1)}" width="4" height="8" rx="1.5" style="fill:${p[6] === 'transient' ? 'var(--warn)' : 'var(--bad)'}"></rect>`).join('');
+    const stateBand = probes.filter(p => p[10]).map(p => {
+      const counts = p[10].counts;
+      const color = counts.pending ? 'var(--ink-3)' : counts.failed
+        ? p[6] === 'transient' ? 'var(--warn)' : 'var(--bad)' : counts.cancelled || counts.unavailable ? 'var(--ink-3)' : 'var(--accent)';
+      return `<rect x="${X(p[0]).toFixed(1)}" y="${T+ih+4}" width="${Math.max(1,5*pps-1).toFixed(1)}" height="6" rx="1" style="fill:${color};opacity:.7"></rect>`;
+    }).join('');
+    const ranges = probes.filter(p => p[10]?.min_ms != null).map(p => `<line x1="${X(p[0]).toFixed(1)}" x2="${X(p[0]).toFixed(1)}" y1="${Y(p[10].min_ms).toFixed(1)}" y2="${Y(p[10].max_ms).toFixed(1)}" style="stroke:var(--accent);opacity:.4"></line>`).join('');
+    const clipped = probes.filter(p => (p[10]?.max_ms ?? p[1] ?? 0) > top).map(p => `<text x="${X(p[0]).toFixed(1)}" y="${T+6}" style="fill:var(--warn)" text-anchor="middle">▲</text>`).join('');
+    const dots = curRuns.filter(run => run.length === 1).map(run => `<circle cx="${run[0][0]}" cy="${run[0][1]}" r="2" style="fill:var(--accent)"></circle>`).join('');
     const sbFails = standby.filter(p => p[1] == null).map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${(T + ih - 4).toFixed(1)}" r="2.8" fill="none" style="stroke:var(--standby)" stroke-width="1.4"></circle>`).join('');
     const sw = switches.map(p => {
       const x = X(p[0]), k = SWITCH_KINDS[p[4]] || SWITCH_KINDS.optimize;
@@ -1351,10 +1370,9 @@ function makeChart(plot) {
       ? `<circle class="pulse" cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="4" style="fill:var(--accent)"></circle><circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="4" stroke-width="2" style="fill:var(--accent);stroke:var(--surface)"></circle>`
       : '';
     slide.innerHTML = `${ticks}
-      <path d="${areaD}" fill="url(#grad-${id})"></path>
-      <path d="${sbRuns.map(monotone).join('')}" fill="none" style="stroke:var(--standby)" stroke-width="1.5" stroke-dasharray="5 4" stroke-linecap="round"></path>
+      <path d="${sbRuns.map(linear).join('')}" fill="none" style="stroke:var(--standby)" stroke-width="1.5" stroke-dasharray="5 4" stroke-linecap="round"></path>
       <path d="${lineD}" fill="none" style="stroke:var(--accent)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"></path>
-      ${fails}${sbFails}${sw}${lastDot}`;
+      ${ranges}${clipped}${dots}${stateBand}${fails}${sbFails}${sw}${lastDot}`;
     Object.assign(st, { pps, X, Y, probes, standby, switches });
     empty.hidden = probes.length > 0;
   }
@@ -1374,8 +1392,10 @@ function makeChart(plot) {
     const sb = nearest(st.standby, p[0], 25), sw = nearest(st.switches, p[0], 8);
     const k = sw ? SWITCH_KINDS[sw[4]] || SWITCH_KINDS.optimize : null;
     const html = `<div class="t">${clock(p[0], true)}</div>
-      <div class="row"><span>本次探测</span><b>${esc(probeDescription(p))}</b></div>
-      ${p[7] != null ? `<div class="row"><span>实际耗时</span><b>${p[7]} ms</b></div>` : ''}
+      <div class="row"><span>${p[10] ? '时间桶结果' : '本次探测'}</span><b>${esc(probeDescription(p))}</b></div>
+      ${p[10] ? `<div class="t">5秒汇总 · 成功 ${p[10].counts.success || 0} · 失败 ${p[10].counts.failed || 0} · 等待 ${p[10].counts.pending || 0} · 未知 ${(p[10].counts.cancelled || 0)+(p[10].counts.unavailable || 0)}</div>` : ''}
+      ${p[10]?.latest_success_ms != null ? `<div class="t">桶内最近成功 ${p[10].latest_success_ms} ms · 范围 ${p[10].min_ms}–${p[10].max_ms} ms</div>` : ''}
+      ${p[7] != null ? `<div class="row"><span>${p[10] ? '桶内最近完成耗时' : '实际耗时'}</span><b>${p[7]} ms</b></div>` : ''}
       ${p[6] === 'transient' && p[5] !== 'failed' ? '<div class="t">本轮复测成功，继续使用当前线路</div>' : ''}
       ${sb ? `<div class="row"><span>热备</span><b>${sb[1] == null ? '失败' : sb[1] + ' ms'}</b></div>` : ''}
       <div class="t" style="margin-top:3px">${esc(p[3] || '')}</div>
@@ -1416,15 +1436,22 @@ function makeChart(plot) {
     clearPinned() { if (st.pinned) { st.hoverX = null; st.pinned = false; } },
     setData(g, card) {
       const from = nowSeconds() - rangeSeconds - 30;
-      const pts = (g.timeline || []).filter(p => p[0] >= from);
+      const supporting = (g.timeline || []).filter(p => p[2] !== 'probe');
+      const pts = (g.chart_buckets ? [...g.chart_buckets, ...supporting] : g.timeline || [])
+        .filter(p => p[0] >= from).sort((a,b) => a[0]-b[0]);
       const key = JSON.stringify(pts);
       if (key === st.dataKey) return;
       st.dataKey = key;
       st.points = pts;
-      const values = pts.filter(p => p[2] !== 'switch').map(p => p[1]).filter(v => v != null);
-      st.targetTop = niceMax(Math.max(40, ...values) * 1.15);
+      const values = pts.filter(p => p[2] !== 'switch').flatMap(p => [p[1], p[10]?.max_ms]).filter(v => v != null);
+      const nextTop = niceMax(Math.max(40, ...values) * 1.15);
+      if (nextTop >= autoTop || nowSeconds() >= holdUntil) {
+        if (nextTop > autoTop) holdUntil = nowSeconds()+30;
+        autoTop = nextTop;
+      }
+      st.targetTop = fixedTop || autoTop;
       if (st.base == null) st.top = st.targetTop;
-      const last = pts.filter(p => p[2] === 'probe').pop();
+      const last = (g.timeline || []).filter(p => p[2] === 'probe').pop();
       patch(card.querySelector('[data-f="last"]'), !last ? '' : `实时 <b>${esc(probeDescription(last))}</b>`);
     },
   };
@@ -1444,12 +1471,25 @@ function allRows(d) {
   const standby = new Set(d.groups.map(g => g.hot_standby).filter(Boolean));
   const regions = new Map();
   d.groups.forEach(g => (g.candidates || []).forEach(n => regions.set(n, groupRegion(g))));
-  const rank = r => r.current ? 0 : r.standby ? 1 : r.cls === 'bad' ? 2 : r.cls === 'warn' ? 3 : 4;
+  const value = (r, key) => {
+    const n = r.node;
+    if (key === 'latency') return n.latest_probe?.status === 'success' && !n.latest_probe.stale ? -n.latest_probe.delay_ms : null;
+    if (key === 'long') return n.long_availability ?? n.availability;
+    return n.window_samples >= 12 ? n.window_success : null;
+  };
+  const compare = (a, b) => {
+    if (nodeSort === 'role') return (a.current ? 0 : a.standby ? 1 : 2) - (b.current ? 0 : b.standby ? 1 : 2);
+    const av = value(a, nodeSort), bv = value(b, nodeSort);
+    if (av == null || bv == null) return (av == null) - (bv == null) || a.name.localeCompare(b.name);
+    return bv-av || (value(b,'long') ?? -1)-(value(a,'long') ?? -1)
+      || (a.node.window_p90_ms ?? Infinity)-(b.node.window_p90_ms ?? Infinity)
+      || a.name.localeCompare(b.name);
+  };
   const order = regionOrder(d);
   const regionRank = name => { const i = order.indexOf(name); return i < 0 ? order.length : i; };
   return Object.entries(d.nodes)
     .map(([name, node]) => ({ name, node, region: regions.get(name) || node.region_label || '其他', current: current.has(name), standby: standby.has(name), cls: sevClass(node.lifecycle_severity) }))
-    .sort((a, b) => regionRank(a.region) - regionRank(b.region) || rank(a) - rank(b) || (b.node.quality ?? -1) - (a.node.quality ?? -1));
+    .sort((a, b) => regionRank(a.region) - regionRank(b.region) || compare(a,b));
 }
 
 /* Region order follows the route cards, so the node table reads in the same order. */
@@ -1474,9 +1514,21 @@ function renderFilters(d) {
 }
 
 
+function latestProbeCell(n) {
+  const p = n.latest_probe;
+  const history = n.last_success_delay_ms != null
+    ? '上次成功 ' + ms(n.last_success_delay_ms) + (n.last_success_at ? ' · '+age(Math.round(nowSeconds()-n.last_success_at)) : '')
+    : '历史均值 ' + ms(n.latency);
+  if (!p) return `—<small>旧记录未保留原因 · ${history}</small>`;
+  if (p.stale || (p.stale_at != null && nowSeconds() >= p.stale_at)) return `已过期<small>${history}</small>`;
+  const labels = {success: '成功', timeout: 'Timeout 超时', error: 'Error 错误', unavailable: '检测不可用'};
+  const text = p.status === 'success' ? ms(p.delay_ms) : labels[p.status] || '原因未确认';
+  return `${esc(text)}<small>最近完整检测 · ${p.observed_at == null ? '时间未知' : age(Math.round(nowSeconds()-p.observed_at))}${p.status === 'success' ? '' : ' · '+history}</small>`;
+}
+
 function rowHtml(r, d) {
   const n = r.node;
-  const a = n.long_availability ?? n.availability;
+  const a = n.window_samples >= 12 ? n.window_success : null;
   const aw = a == null ? 0 : Math.round(a * 100);
   const barCls = a == null ? '' : a >= 0.95 ? '' : a >= 0.8 ? 'warn' : 'bad';
   const q = n.quality;
@@ -1486,8 +1538,8 @@ function rowHtml(r, d) {
   const sampling = n.lifecycle === 'warming' ? ` · 采样 ${n.samples}/${d.policy.min_samples}` : '';
   const tags = (r.current ? '<span class="tag cur">当前</span>' : '') + (r.standby ? '<span class="tag hot">热备</span>' : '');
   return `<td><div class="nm"><span class="dot ${r.cls === 'good' ? '' : r.cls}"></span><span class="nm-copy"><b>${esc(r.name)}${tags}</b><small>${esc(n.lifecycle_title || '')}${sampling}</small></span></div></td>
-    <td data-label="可用率"><span class="avail"><span class="pctv">${pct(a)}</span><span class="bar"><i class="${barCls}" style="width:${aw}%"></i></span></span></td>
-    <td data-label="平均延迟">${ms(n.latency)}</td>
+    <td data-label="可用率"><span class="avail"><span class="pctv">${pct(a)}</span><span class="bar"><i class="${barCls}" style="width:${aw}%"></i></span></span><small>30分钟 · ${n.window_samples || 0} 次${n.window_samples < 12 ? ' · 预热中' : ''}</small><small>24小时 ${pct(n.long_availability ?? n.availability)}</small></td>
+    <td data-label="最近检测">${latestProbeCell(n)}</td>
     <td data-label="抖动">${ms(n.jitter)}</td>
     <td data-label="综合评分"><span class="q">${q == null ? '—' : `${q}/100`}</span></td>
     <td data-label="状态"><span class="state ${r.cls === 'good' ? '' : r.cls}" title="${esc(n.lifecycle_detail || '')}">${esc(n.lifecycle_title || '未知')}</span></td>
@@ -1500,8 +1552,16 @@ function renderNodes(d) {
   const saved = activeFilter;
   $$('.filter').forEach(b => { activeFilter = b.dataset.filter; setText(b.querySelector('.count'), String(all.filter(matches).length)); });
   activeFilter = saved;
-  const rows = all.filter(matches);
+  let rows = all.filter(matches);
   const body = $('#node-rows');
+  const interacting = body.matches(':hover') || body.contains(document.activeElement);
+  if (interacting && body.__order) {
+    const positions = new Map(body.__order.map((name,index) => [name,index]));
+    const regions = regionOrder(d);
+    rows.sort((a,b) => regions.indexOf(a.region)-regions.indexOf(b.region)
+      || (positions.get(a.name) ?? Infinity)-(positions.get(b.name) ?? Infinity));
+  }
+  body.__order = rows.map(r => r.name);
   if (!body.__rows) body.__rows = new Map();
   const map = body.__rows;
   const ordered = [];
@@ -1528,8 +1588,13 @@ function renderNodes(d) {
     patch(tr, html);
     if (body.children[index] !== tr) body.insertBefore(tr, body.children[index] || null);
   });
-  setText($('#node-summary'), `累计检测 ${(d.service.cycle_count || 0).toLocaleString('zh-CN')} 轮 · 显示 ${rows.length}/${all.length} 个节点 · 当前和热备排在前面`);
+  setText($('#node-summary'), `累计检测 ${(d.service.cycle_count || 0).toLocaleString('zh-CN')} 轮 · 显示 ${rows.length}/${all.length} 个节点 · 排序以所选指标为准${interacting ? ' · 阅读期间暂缓重排' : ''}`);
 }
+
+$('#node-sort').addEventListener('change', event => {
+  nodeSort = event.target.value;
+  if (snapshot) renderNodes(snapshot);
+});
 
 /* ====================================================================
    Tooltip popover: hover on a mouse, tap on touch, focus on keyboard

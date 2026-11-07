@@ -147,6 +147,8 @@ class SwitchReasonTests(StandbyLineTests):
 
     def test_probe_points_have_no_reason(self):
         self.net.run_cycle(self.state)
+        self.assertFalse([p for p in router.public_timeline(TW_GROUP, time.time()) if p[2] == "probe"])
+        self.net.run_fast_tick(self.state)
         probes = [point for point in router.public_timeline(TW_GROUP, time.time()) if point[2] == "probe"]
         self.assertTrue(probes)
         self.assertIsNone(probes[0][4])

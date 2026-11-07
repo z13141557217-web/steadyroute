@@ -5,6 +5,23 @@
 
 ## 版本边界
 
+### 0.6.2-rc.3 图表与最近完整检测
+
+legacy groups[].chart_buckets 是与选路无关的5秒汇总视图，列顺序沿用timeline，
+追加第11列counts/min_ms/max_ms/latest_success_ms/interval_seconds/failure_reasons。
+每条线路最多800个桶，保留30分钟及30秒边界余量。等待结果按请求ID只更新一次。
+混合失败、未知或等待的桶断开延迟线，成功范围仍供查看。当前曲线只从快检取得数据，
+完整检测保留自身判断用途及热备探测，不重复写入当前曲线。
+
+nodes[].latest_probe 的status为success、timeout、error或unavailable，包含白名单原因码、
+delay_ms、elapsed_ms、timeout_ms、observed_at、stale_at、stale和source=base。
+它表示最近完成的一次完整检测或其同轮重试，不替代节点生命周期。
+未知旧记录为null。last_success_delay_ms及last_success_at是最近成功样本，
+旧数据没有原始成功值时页面仅可将EWMA标为历史均值。
+
+快检控制器检测不可用使用probe_status=unavailable及trace的u记录，不作为图表红色节点失败。
+延迟函数仍保留数值/None的返回约定，错误分类只用于事实记录与展示。
+
 ### 0.6.2-rc.2 快检请求结果
 
 timeline/recent_probes 的前五列保持原格式。后面依次追加 probe_status、confirmation、
