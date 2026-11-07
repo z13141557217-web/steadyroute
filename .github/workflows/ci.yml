@@ -14,7 +14,7 @@ jobs:
         include:
           - os: macos-latest
             python: '3.9'
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             python: '3.9'
           - os: ubuntu-latest
             python: '3.13'
@@ -31,7 +31,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/steadyroute-core
-          key: mihomo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-core.sh') }}
+          key: mihomo-${{ matrix.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-core.sh') }}
       - if: steps.core.outputs.cache-hit != 'true'
         uses: actions/setup-go@v5
         with:
