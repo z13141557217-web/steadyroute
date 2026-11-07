@@ -2,6 +2,21 @@
 
 ## 分支模型
 
+### 分支与工作树命名约定
+
+用户确认后，后续所有新建分支与工作树统一遵循以下约定。
+
+- 分支使用 `<type>/<short-description>`，工作树目录使用 `steadyroute-<type>-<short-description>`。
+- type 使用 `feat`、`fix`、`refactor`、`docs`、`test` 或 `chore`。
+- 描述使用简洁的小写英文，以连字符分词，表达变更目的。
+- 有明确 Issue 时可使用 `<type>/<issue-number>-<short-description>`，目录同步加入编号。
+- 版本号只用于专门的发布分支，例如 `release/0.7.0`，目录为 `steadyroute-release-0.7.0`。
+- 禁止使用中文、空格、模糊的临时名称和 `new`、`final`、`test1` 等后缀。
+- 已有历史分支保留原名，当前工作经核对后可改名，生产安装目录保持固定路径。
+
+当前 P0 故障计时工作的分支为 `feat/failover-observability`，工作树目录为
+`steadyroute-feat-failover-observability`。命名更改应同步检查预览服务、自动任务和文档中的路径引用。
+
 采用轻量主干开发：
 
 - `main` 始终表示可发布状态。
