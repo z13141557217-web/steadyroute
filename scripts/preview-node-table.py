@@ -6,6 +6,7 @@ import json
 import pathlib
 import sys
 import time
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
@@ -49,7 +50,8 @@ def payload():
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        path = self.path.split("?")[0]
+        location = urlsplit(self.path)
+        path = location.path
         if path == "/api/status":
             body = json.dumps(payload(),ensure_ascii=False).encode()
             mime = "application/json"
@@ -62,7 +64,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             body = (ROOT/"src/steadyroute"/names[path]).read_bytes()
             mime = "text/css" if path.endswith(".css") else "text/html"
             if path == "/":
-                body = body.replace(b"<body>", '<body><div style="text-align:center;padding:8px;color:#b56812">节点表候选预览 · 模拟数据 · 不代表生产线路</div>'.encode())
+                query = parse_qs(location.query)
+                design = "comfortable" if query.get("design") == ["comfortable"] else "compact"
+                theme = "dark" if query.get("theme") == ["dark"] else "light"
+                body = body.replace(b'<html lang="zh-CN">', ('<html lang="zh-CN" data-theme="%s" data-node-design="%s">' % (theme, design)).encode())
+                choices = [
+                    ("compact", theme, "A 紧凑监控"), ("comfortable", theme, "B 舒适清单"),
+                    (design, "light", "浅色"), (design, "dark", "深色"),
+                ]
+                links = ''.join('<a href="/?design=%s&amp;theme=%s#node-panel" style="color:var(--accent);padding:6px 8px;border-radius:5px;%s">%s</a>' % (
+                    d, t, 'background:var(--accent-soft);font-weight:600;' if d==design and t==theme else '', label)
+                    for d,t,label in choices)
+                controls = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 24px;border-bottom:1px solid var(--hair);font-size:12px;color:var(--ink-2)"><span>设计对比 · 模拟数据</span>%s</div>' % links
+                body = body.replace(b'<div class="nodes-head">', controls.encode()+b'<div class="nodes-head">', 1)
+                # Focus the review on the requested component, without hiding anything in production.
+                body = body.replace(b"</head>", b"<style>main.wrap > .head,main.wrap > .routes,main.wrap > .idle{display:none}</style></head>")
         self.send_response(200)
         self.send_header("Content-Type",mime+"; charset=utf-8")
         self.send_header("Content-Length",str(len(body)))

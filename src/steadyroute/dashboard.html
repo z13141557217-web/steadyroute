@@ -443,67 +443,84 @@ tr.group-row td span { color: var(--ink-3); font-weight: 500; margin-left: 10px;
 tr.is-current td { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .nm { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: 0 0 auto; box-shadow: 0 0 0 3px var(--good-soft); }
-.dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
-.dot.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
-.dot.info { background: var(--standby); box-shadow: 0 0 0 3px var(--sunken); }
 .nm-copy { display: grid; min-width: 0; gap: 1px; }
 .nm-copy b { font-family: var(--sans); font-weight: 560; color: var(--ink); overflow-wrap: anywhere; }
 .nm-copy small { font-family: var(--sans); color: var(--ink-3); font-size: 12px; }
 .tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px; margin-left: 6px; vertical-align: 1px; letter-spacing: .02em; }
 .tag.cur { background: var(--accent); color: var(--surface); }
 .tag.hot { color: var(--ink-2); border: 1px dashed var(--hair-2); }
-.avail { display: inline-flex; align-items: center; gap: 10px; }
-.avail .pctv { min-width: 38px; text-align: right; }
-.bar { width: 64px; height: 4px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--good); border-radius: 999px; }
-.bar i.warn { background: var(--warn); }
-.bar i.bad { background: var(--bad); }
-.q { font-weight: 600; color: var(--ink); }
-.state { display: inline-flex; align-items: center; font-family: var(--sans); font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: var(--good-soft); color: var(--good); font-weight: 600; }
-.state.warn { background: var(--warn-soft); color: var(--warn); }
-.state.bad { background: var(--bad-soft); color: var(--bad); }
-.state.info { background: var(--sunken); color: var(--ink-2); }
-.streak.fail { color: var(--bad); font-weight: 600; }
 .empty-row { padding: 30px; text-align: center; color: var(--ink-3); }
 
 
 footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
-/* Node names and detail text cannot compete for intrinsic table width. */
-.node-panel { container-type: inline-size; }
-.node-panel .nodes-head { padding:20px 24px 12px; }
-.node-tools { display:flex; align-items:center; flex-wrap:wrap; gap:12px 20px; padding:0 24px 16px; }
-.node-tools label { display:flex; align-items:center; gap:8px; color:var(--ink-3); font-size:12px; }
-.node-tools select { max-width:100%; padding:7px 10px; border:1px solid var(--hair-2); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; }
-#node-order-note { font-size:11px; color:var(--ink-3); margin-left:auto; }
-.node-table { table-layout:fixed; min-width:1040px; }
-.node-table th, .node-table td { width:auto; padding:12px 14px; white-space:normal; font-variant-numeric:tabular-nums; }
-.node-table th { font-size:12px; }
-.node-table .node-row { height:84px; }
-.node-table .nm { gap:10px; }
-.node-table .nm-copy { gap:5px; overflow:hidden; }
-.node-table .nm-copy b { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:break-word; line-height:20px; font-size:14px; }
-.node-role { display:flex; gap:5px; min-height:0; }
+/* Node list: measured typography, restrained status and compact scan lines. */
+.node-panel { container-type:inline-size; border-radius:12px; box-shadow:none; --node-muted:color-mix(in srgb,var(--ink-2) 70%,var(--ink-3)); scroll-margin-top:88px; }
+.node-panel .nodes-head { padding:20px 24px 14px; align-items:baseline; }
+.node-panel .nodes-head > div { display:flex; align-items:baseline; gap:12px; }
+.node-panel .nodes-head h2 { font-family:var(--sans); font-size:16px; font-weight:650; }
+.node-panel .nodes-head p { margin:0; font-size:12px; color:var(--node-muted); }
+.node-tools { display:flex; align-items:center; flex-wrap:wrap; gap:10px 20px; padding:0 24px 18px; }
+.node-tools label { display:flex; align-items:center; gap:8px; color:var(--node-muted); font-size:12px; }
+.node-tools select { height:32px; max-width:100%; padding:0 28px 0 10px; border:1px solid var(--hair-2); border-radius:6px; background-color:var(--surface); color:var(--ink-2); font:inherit; }
+.node-tools .seg { background:transparent; padding:0; border:0; border-radius:0; gap:4px; }
+.node-tools .filter { height:32px; padding:0 10px; border-radius:6px; color:var(--node-muted); }
+.node-tools .filter[aria-pressed="true"] { box-shadow:none; background:var(--accent-soft); color:var(--accent); }
+.node-tools .filter:hover { background:var(--sunken); color:var(--ink); }
+.node-tools .count { background:transparent!important; padding:0; min-width:14px; font-weight:500; font-variant-numeric:tabular-nums; }
+#node-order-note { font-size:12px; color:var(--node-muted); margin-left:auto; }
+.node-table { table-layout:fixed; min-width:960px; }
+.node-table th, .node-table td { width:auto; padding:10px 16px; white-space:normal; font-variant-numeric:tabular-nums; text-align:left; font-family:var(--sans); }
+.node-table th { color:var(--node-muted); font-size:12px; background:var(--surface-2); height:40px; font-weight:500; }
+.node-table th:nth-child(2), .node-table th:nth-child(3), .node-table td:nth-child(2), .node-table td:nth-child(3) { text-align:right; }
+.node-table th:first-child, .node-table td:first-child { padding-left:24px; }
+.node-table .node-row { height:64px; }
+.node-table .node-row > td { font-size:13px; }
+.node-table .group-row td { padding:12px 24px 8px; font-size:12px; font-weight:600; color:var(--ink-2); background:var(--surface-2)!important; }
+.node-table .group-row td span { font-size:12px; color:var(--node-muted); font-weight:400; }
+.node-table tr.is-current td { background:color-mix(in srgb,var(--accent-soft) 35%,var(--surface)); }
+.node-table tr.is-current td:first-child { box-shadow:none; }
+.node-table .nm { gap:0; }
+.node-table .nm-copy { display:flex; flex-direction:row; align-items:center; gap:8px; overflow:hidden; width:100%; }
+.node-table .nm-copy b { min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:break-word; line-height:20px; font-size:13px; font-weight:550; }
+.node-role { display:flex; flex:0 0 auto; gap:4px; }
 .node-role:empty { display:none; }
-.node-role .tag { margin-left:0; }
-.node-table .avail { display:grid; justify-content:center; gap:6px; }
-.node-table .pctv { font-weight:600; color:var(--ink); text-align:center; }
-.node-table .bar { width:56px; justify-self:center; }
-.node-table td > small { line-height:17px; }
-.probe-value { font-weight:600; color:var(--ink); }
+.node-role .tag { margin:0; font-size:11px; padding:1px 4px; border-radius:3px; font-weight:500; }
+.node-role .tag.cur { color:var(--accent); background:var(--accent-soft); }
+.node-role .tag.hot { color:var(--node-muted); border:1px solid var(--hair-2); }
+.node-table .pctv { font-weight:550; color:var(--ink-2); font-size:13px; }
+.node-table td > small { line-height:17px; font-size:12px; color:var(--node-muted); margin-top:2px; }
+.probe-value { font-weight:500; color:var(--ink-2); }
 .probe-value.bad { color:var(--bad); }
-.probe-value.info { color:var(--ink-3); }
-.node-table .state { max-width:100%; font-size:12px; white-space:normal; }
-.node-expand { border:1px solid var(--hair-2); background:var(--surface); color:var(--ink-3); width:30px; height:30px; border-radius:7px; cursor:pointer; }
+.probe-value.info { color:var(--node-muted); }
+.node-table .state { display:inline-flex; align-items:center; max-width:100%; padding:0; border:0; border-radius:0; font-size:12px; color:var(--node-muted); background:transparent; font-weight:400; white-space:normal; gap:7px; }
+.node-table .state::before { content:""; width:5px; height:5px; flex:0 0 auto; border-radius:50%; background:var(--good); }
+.node-table .state.warn { color:var(--warn); }
+.node-table .state.bad { color:var(--bad); }
+.node-table .state.info { color:var(--node-muted); }
+.node-table .state.warn::before { background:var(--warn); }
+.node-table .state.bad::before { background:var(--bad); }
+.node-table .state.info::before { background:var(--node-muted); }
+.node-expand { display:inline-grid; place-items:center; border:0; background:transparent; color:var(--node-muted); width:32px; height:32px; border-radius:6px; cursor:pointer; touch-action:manipulation; scroll-margin-top:88px; }
+.node-expand svg { width:16px; height:16px; transition:transform .15s; }
+.node-expand:hover { background:var(--sunken); color:var(--ink); }
 .node-expand[aria-expanded="true"] { background:var(--accent-soft); color:var(--accent); }
-.node-expand:focus-visible, .node-tools select:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
-.node-table .detail-row > td { padding:0 24px 18px; background:var(--surface-2); }
-.node-detail { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; text-align:left; padding:18px 0 0; font-family:var(--sans); }
-.node-detail h3 { font-size:12px; color:var(--ink-3); margin-bottom:10px; }
-.node-detail p { font-size:12px; line-height:1.8; overflow-wrap:anywhere; color:var(--ink-2); }
-.node-detail .full-name { grid-column:1/-1; color:var(--ink); font-weight:600; margin-bottom:-10px; }
+.node-expand[aria-expanded="true"] svg { transform:rotate(90deg); }
+.node-expand:focus-visible, .node-tools select:focus-visible, .node-tools button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.node-table .detail-row > td { padding:0 24px 20px; background:var(--surface-2); }
+.node-detail { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px 28px; text-align:left; padding:18px 0 0; font-family:var(--sans); }
+.node-detail h3 { font-size:12px; font-weight:600; color:var(--ink-2); margin-bottom:8px; }
+.node-detail p { font-size:12px; line-height:1.8; overflow-wrap:anywhere; color:var(--node-muted); }
+.node-detail .full-name { grid-column:1/-1; color:var(--ink); font-weight:500; margin-bottom:-8px; }
+.node-panel ::selection { background:var(--accent-soft); color:var(--ink); }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+/* The comparison variant is only selected by the controller-free preview. */
+[data-node-design="comfortable"] .node-panel { border-radius:16px; }
+[data-node-design="comfortable"] .node-table .node-row { height:76px; }
+[data-node-design="comfortable"] .node-table .node-row > td { border-bottom-color:transparent; }
+[data-node-design="comfortable"] .node-table .nm-copy { flex-direction:column; align-items:flex-start; gap:4px; }
+[data-node-design="comfortable"] .node-table .group-row td { background:transparent!important; border-top:1px solid var(--hair); padding-top:18px; }
+@media (pointer: coarse) { .node-expand { width:44px; height:44px; } .node-tools .filter,.node-tools select { min-height:44px; } }
 @container (max-width: 700px) {
   .node-tools { gap:10px; padding-inline:16px; }
   #node-order-note { width:100%; margin-left:0; }
@@ -512,13 +529,15 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .node-table colgroup, .node-table thead { display:none; }
   .node-table tbody .node-row { display:grid; height:auto; grid-template-columns:1fr 1fr; gap:14px; padding:16px; border-bottom:1px solid var(--hair); }
   .node-table tbody .node-row > td { display:block; min-width:0; padding:0!important; border:0; text-align:left; }
-  .node-table .node-row > td:first-child { grid-column:1/-1; padding-right:40px!important; }
+  .node-table .node-row > td:first-child { grid-column:1/-1; padding-right:48px!important; }
   .node-table .node-row { position:relative; }
   .node-table .node-row > td:last-child { position:absolute; right:16px; top:16px; }
+  .node-table .node-expand { width:44px; height:44px; scroll-margin-top:150px; }
+  .node-table .node-row:hover > td { background:transparent; }
+  .node-table .node-row:hover { background:var(--surface-2); }
+  .node-panel { scroll-margin-top:150px; }
   .node-table td[data-label]::before { content:attr(data-label); display:block; color:var(--ink-3); font-size:11px; margin-bottom:4px; }
-  .node-table .avail { justify-content:start; }
   .node-table .pctv { text-align:left; }
-  .node-table .bar { display:none; }
   .node-table .group-row { display:block; }
   .node-table .group-row td { display:block; padding:12px 16px!important; }
   .node-table .detail-row { display:block; }
@@ -614,7 +633,6 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   tbody td:first-child { grid-column: 1 / -1; }
   tbody td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--ink-3); margin-bottom: 1px; }
   .nm { min-width: 0; }
-  .avail .pctv { min-width: 0; text-align: left; }
   tr.is-current { background: var(--accent-soft); }
   tr.is-current td { background: transparent !important; }
 }
@@ -706,7 +724,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   <section class="routes" id="routes"></section>
   <section class="card idle" id="idle" aria-label="未接管的分组" hidden></section>
 
-  <section class="card node-panel" aria-label="节点状态">
+  <section class="card node-panel" id="node-panel" aria-label="节点状态">
     <div class="nodes-head">
       <div>
         <h2>节点状态</h2>
@@ -729,7 +747,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
     </div>
     <div class="table-wrap">
       <table class="node-table">
-        <colgroup><col style="width:32%"><col style="width:12%"><col style="width:12%"><col style="width:20%"><col style="width:19%"><col style="width:5%"></colgroup>
+        <colgroup><col style="width:36%"><col style="width:12%"><col style="width:12%"><col style="width:17%"><col style="width:18%"><col style="width:5%"></colgroup>
         <thead>
           <tr>
             <th>节点</th>
@@ -1588,9 +1606,7 @@ function latestProbeCell(n) {
 }
 
 function availabilityCell(value, samples) {
-  const cls = value == null || value >= .95 ? '' : value >= .8 ? 'warn' : 'bad';
-  const percent = value == null ? 0 : Math.max(0,Math.min(100,Math.round(value*100)));
-  return `<span class="avail"><span class="pctv">${pct(value)}</span><span class="bar" aria-hidden="true"><i class="${cls}" style="width:${percent}%"></i></span></span>${samples == null ? '' : `<small>${samples} 次${samples < 12 ? ' · 样本不足' : ''}</small>`}`;
+  return `<span class="pctv">${pct(value)}</span>${samples == null ? '<small aria-hidden="true">&nbsp;</small>' : `<small>${samples} 次${samples < 12 ? ' · 样本不足' : ''}</small>`}`;
 }
 
 function nodeDetailId(name) { return 'node-detail-' + encodeURIComponent(name); }
@@ -1604,12 +1620,12 @@ function rowHtml(r, d) {
   const label = title.replace(/^节点/, '').replace(/（.*$/, '');
   const progress = title.match(/（([^）]+)）/);
   const extra = progress ? '恢复进度 ' + progress[1] : n.lifecycle === 'warming' ? `采样 ${n.samples}/${d.policy.min_samples}` : '';
-  return `<td><div class="nm"><span class="dot ${r.cls === 'good' ? '' : r.cls}" aria-hidden="true"></span><span class="nm-copy"><b title="${esc(r.name)}">${esc(r.name)}</b><span class="node-role">${tags}</span></span></div></td>
+  return `<td><div class="nm"><span class="nm-copy"><b title="${esc(r.name)}">${esc(r.name)}</b><span class="node-role">${tags}</span></span></div></td>
     <td data-label="30分钟可用率">${availabilityCell(a,n.window_samples || 0)}</td>
     <td data-label="24小时可用率">${availabilityCell(n.long_availability ?? n.availability,null)}</td>
     <td data-label="最近检测">${latestProbeCell(n)}</td>
     <td data-label="选路状态"><span class="state ${r.cls === 'good' ? '' : r.cls}">${esc(label)}</span>${extra ? `<small>${esc(extra)}</small>` : ''}</td>
-    <td><button type="button" class="node-expand" data-node="${esc(r.name)}" aria-label="${expandedNode === r.name ? '收起' : '展开'} ${esc(r.name)} 详情" aria-expanded="${expandedNode === r.name}" aria-controls="${esc(nodeDetailId(r.name))}">${expandedNode === r.name ? '−' : '+'}</button></td>`;
+    <td><button type="button" class="node-expand" data-node="${esc(r.name)}" aria-label="${expandedNode === r.name ? '收起' : '展开'} ${esc(r.name)} 详情" aria-expanded="${expandedNode === r.name}" ${expandedNode === r.name ? `aria-controls="${esc(nodeDetailId(r.name))}"` : ''}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button></td>`;
 }
 
 function nodeDetailHtml(r,d) {
