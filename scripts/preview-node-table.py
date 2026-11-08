@@ -36,12 +36,13 @@ def payload():
                 n["last_probe_result"]["observed_at"] = now-1000
             if index == 6:
                 n.pop("last_probe_result")
+                n.update(win_n=3, win_success=None)
             state["nodes"][name] = n
         state["groups"][policy["group_name"]] = {"hot_standby":policy["static_candidates"][1]}
     state.update(updated_at=now, controller_connected=True)
     result = router.build_status_snapshots(state, net.proxy_data, [], now=now)["legacy"]
     old = router.POLICIES[0]["static_candidates"][3]
-    long_name = "【示例倍率】中转专线｜台湾家用宽带备用线路｜用于验证长名称两行截断与完整详情展示04"
+    long_name = "【示例倍率】中转专线｜台湾家用宽带备用线路｜长名称完整单行展示04"
     result["nodes"][long_name] = result["nodes"].pop(old)
     for group in result["groups"]:
         group["candidates"] = [long_name if name == old else name for name in group["candidates"]]
@@ -65,17 +66,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             mime = "text/css" if path.endswith(".css") else "text/html"
             if path == "/":
                 query = parse_qs(location.query)
-                design = "comfortable" if query.get("design") == ["comfortable"] else "compact"
                 theme = "dark" if query.get("theme") == ["dark"] else "light"
-                body = body.replace(b'<html lang="zh-CN">', ('<html lang="zh-CN" data-theme="%s" data-node-design="%s">' % (theme, design)).encode())
-                choices = [
-                    ("compact", theme, "A 紧凑监控"), ("comfortable", theme, "B 舒适清单"),
-                    (design, "light", "浅色"), (design, "dark", "深色"),
-                ]
-                links = ''.join('<a href="/?design=%s&amp;theme=%s#node-panel" style="color:var(--accent);padding:6px 8px;border-radius:5px;%s">%s</a>' % (
-                    d, t, 'background:var(--accent-soft);font-weight:600;' if d==design and t==theme else '', label)
-                    for d,t,label in choices)
-                controls = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 24px;border-bottom:1px solid var(--hair);font-size:12px;color:var(--ink-2)"><span>设计对比 · 模拟数据</span>%s</div>' % links
+                body = body.replace(b'<html lang="zh-CN">', ('<html lang="zh-CN" data-theme="%s">' % theme).encode())
+                controls = '<div style="display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--hair);font-size:12px;color:var(--ink-2)"><span>单行节点表 · 只读模拟数据</span><a href="/?theme=light" style="color:var(--accent)">浅色</a><a href="/?theme=dark" style="color:var(--accent)">深色</a></div>'
                 body = body.replace(b'<div class="nodes-head">', controls.encode()+b'<div class="nodes-head">', 1)
                 # Focus the review on the requested component, without hiding anything in production.
                 body = body.replace(b"</head>", b"<style>main.wrap > .head,main.wrap > .routes,main.wrap > .idle{display:none}</style></head>")

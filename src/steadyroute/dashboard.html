@@ -455,9 +455,9 @@ tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
 /* Node list: measured typography, restrained status and compact scan lines. */
-.node-panel { container-type:inline-size; border-radius:12px; box-shadow:none; --node-muted:color-mix(in srgb,var(--ink-2) 70%,var(--ink-3)); scroll-margin-top:88px; }
+.node-panel { position:relative; container-type:inline-size; border-radius:12px; box-shadow:none; --node-muted:color-mix(in srgb,var(--ink-2) 70%,var(--ink-3)); scroll-margin-top:88px; }
 .node-panel .nodes-head { padding:20px 24px 14px; align-items:baseline; }
-.node-panel .nodes-head > div { display:flex; align-items:baseline; gap:12px; }
+.node-panel .nodes-head > div { flex-wrap:wrap; display:flex; align-items:baseline; gap:12px; }
 .node-panel .nodes-head h2 { font-family:var(--sans); font-size:16px; font-weight:650; }
 .node-panel .nodes-head p { margin:0; font-size:12px; color:var(--node-muted); }
 .node-tools { display:flex; align-items:center; flex-wrap:wrap; gap:10px 20px; padding:0 24px 18px; }
@@ -469,80 +469,62 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
 .node-tools .filter:hover { background:var(--sunken); color:var(--ink); }
 .node-tools .count { background:transparent!important; padding:0; min-width:14px; font-weight:500; font-variant-numeric:tabular-nums; }
 #node-order-note { font-size:12px; color:var(--node-muted); margin-left:auto; }
-.node-table { table-layout:fixed; min-width:960px; }
-.node-table th, .node-table td { width:auto; padding:10px 16px; white-space:normal; font-variant-numeric:tabular-nums; text-align:left; font-family:var(--sans); }
+.node-table { table-layout:auto; min-width:1020px; }
+.node-table th, .node-table td { width:auto; padding:10px 16px; white-space:nowrap; font-variant-numeric:tabular-nums; text-align:left; font-family:var(--sans); }
 .node-table th { color:var(--node-muted); font-size:12px; background:var(--surface-2); height:40px; font-weight:500; }
-.node-table th:nth-child(2), .node-table th:nth-child(3), .node-table td:nth-child(2), .node-table td:nth-child(3) { text-align:right; }
+.node-table th:first-child, .node-table td:first-child { width:auto; }
+.node-table th:not(:first-child), .node-table .node-row > td:not(:first-child) { width:1%; }
 .node-table th:first-child, .node-table td:first-child { padding-left:24px; }
-.node-table .node-row { height:64px; }
+.node-table .node-row { height:56px; }
 .node-table .node-row > td { font-size:13px; }
 .node-table .group-row td { padding:12px 24px 8px; font-size:12px; font-weight:600; color:var(--ink-2); background:var(--surface-2)!important; }
 .node-table .group-row td span { font-size:12px; color:var(--node-muted); font-weight:400; }
 .node-table tr.is-current td { background:color-mix(in srgb,var(--accent-soft) 35%,var(--surface)); }
 .node-table tr.is-current td:first-child { box-shadow:none; }
 .node-table .nm { gap:0; }
-.node-table .nm-copy { display:flex; flex-direction:row; align-items:center; gap:8px; overflow:hidden; width:100%; }
-.node-table .nm-copy b { min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:break-word; line-height:20px; font-size:13px; font-weight:550; }
+.node-table .nm-copy { display:flex; flex-direction:row; align-items:center; gap:8px; width:100%; }
+.node-table .nm-copy b { display:block; white-space:nowrap; line-height:20px; font-size:13px; font-weight:550; }
 .node-role { display:flex; flex:0 0 auto; gap:4px; }
 .node-role:empty { display:none; }
 .node-role .tag { margin:0; font-size:11px; padding:1px 4px; border-radius:3px; font-weight:500; }
-.node-role .tag.cur { color:var(--accent); background:var(--accent-soft); }
+.node-role .tag.cur { color:var(--surface); background:var(--accent); }
 .node-role .tag.hot { color:var(--node-muted); border:1px solid var(--hair-2); }
 .node-table .pctv { font-weight:550; color:var(--ink-2); font-size:13px; }
 .node-table td > small { line-height:17px; font-size:12px; color:var(--node-muted); margin-top:2px; }
 .probe-value { font-weight:500; color:var(--ink-2); }
 .probe-value.bad { color:var(--bad); }
 .probe-value.info { color:var(--node-muted); }
-.node-table .state { display:inline-flex; align-items:center; max-width:100%; padding:0; border:0; border-radius:0; font-size:12px; color:var(--node-muted); background:transparent; font-weight:400; white-space:normal; gap:7px; }
-.node-table .state::before { content:""; width:5px; height:5px; flex:0 0 auto; border-radius:50%; background:var(--good); }
-.node-table .state.warn { color:var(--warn); }
-.node-table .state.bad { color:var(--bad); }
-.node-table .state.info { color:var(--node-muted); }
-.node-table .state.warn::before { background:var(--warn); }
-.node-table .state.bad::before { background:var(--bad); }
-.node-table .state.info::before { background:var(--node-muted); }
+.rate { display:inline-flex; align-items:center; gap:10px; white-space:nowrap; }
+.rate .pctv { width:42px; text-align:right; }
+.rate-bar { display:inline-block; width:64px; height:5px; border-radius:3px; background:var(--sunken); overflow:hidden; }
+.rate-bar i { display:block; height:100%; background:var(--good); border-radius:inherit; }
+.rate-bar.warn i { background:var(--warn); }
+.rate-bar.bad i { background:var(--bad); }
+.node-table .state { display:inline-flex; align-items:center; padding:4px 9px; border:1px solid color-mix(in srgb,var(--good) 24%,transparent); border-radius:999px; font-size:12px; line-height:18px; color:var(--good); background:color-mix(in srgb,var(--good) 8%,var(--surface)); font-weight:500; white-space:nowrap; }
+.node-table .state.warn { color:var(--warn); border-color:color-mix(in srgb,var(--warn) 24%,transparent); background:color-mix(in srgb,var(--warn) 8%,var(--surface)); }
+.node-table .state.bad { color:var(--bad); border-color:color-mix(in srgb,var(--bad) 24%,transparent); background:color-mix(in srgb,var(--bad) 8%,var(--surface)); }
+.node-table .state.info { color:var(--node-muted); border-color:var(--hair-2); background:var(--surface-2); }
 .node-expand { display:inline-grid; place-items:center; border:0; background:transparent; color:var(--node-muted); width:32px; height:32px; border-radius:6px; cursor:pointer; touch-action:manipulation; scroll-margin-top:88px; }
 .node-expand svg { width:16px; height:16px; transition:transform .15s; }
 .node-expand:hover { background:var(--sunken); color:var(--ink); }
 .node-expand[aria-expanded="true"] { background:var(--accent-soft); color:var(--accent); }
 .node-expand[aria-expanded="true"] svg { transform:rotate(90deg); }
-.node-expand:focus-visible, .node-tools select:focus-visible, .node-tools button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.node-panel .table-wrap:focus-visible, .node-expand:focus-visible, .node-tools select:focus-visible, .node-tools button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .node-table .detail-row > td { padding:0 24px 20px; background:var(--surface-2); }
-.node-detail { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px 28px; text-align:left; padding:18px 0 0; font-family:var(--sans); }
+.node-detail { white-space:normal; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px 28px; text-align:left; padding:18px 0 0; font-family:var(--sans); }
 .node-detail h3 { font-size:12px; font-weight:600; color:var(--ink-2); margin-bottom:8px; }
 .node-detail p { font-size:12px; line-height:1.8; overflow-wrap:anywhere; color:var(--node-muted); }
 .node-detail .full-name { grid-column:1/-1; color:var(--ink); font-weight:500; margin-bottom:-8px; }
 .node-panel ::selection { background:var(--accent-soft); color:var(--ink); }
-.sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
-/* The comparison variant is only selected by the controller-free preview. */
-[data-node-design="comfortable"] .node-panel { border-radius:16px; }
-[data-node-design="comfortable"] .node-table .node-row { height:76px; }
-[data-node-design="comfortable"] .node-table .node-row > td { border-bottom-color:transparent; }
-[data-node-design="comfortable"] .node-table .nm-copy { flex-direction:column; align-items:flex-start; gap:4px; }
-[data-node-design="comfortable"] .node-table .group-row td { background:transparent!important; border-top:1px solid var(--hair); padding-top:18px; }
+.sr-only { position:absolute; left:0; top:0; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
 @media (pointer: coarse) { .node-expand { width:44px; height:44px; } .node-tools .filter,.node-tools select { min-height:44px; } }
 @container (max-width: 700px) {
   .node-tools { gap:10px; padding-inline:16px; }
+  .node-panel .nodes-head > div { flex-wrap:wrap; gap:8px; }
   #node-order-note { width:100%; margin-left:0; }
-  .node-table { display:block; width:100%; min-width:0; }
-  .node-table tbody { display:block; width:100%; }
-  .node-table colgroup, .node-table thead { display:none; }
-  .node-table tbody .node-row { display:grid; height:auto; grid-template-columns:1fr 1fr; gap:14px; padding:16px; border-bottom:1px solid var(--hair); }
-  .node-table tbody .node-row > td { display:block; min-width:0; padding:0!important; border:0; text-align:left; }
-  .node-table .node-row > td:first-child { grid-column:1/-1; padding-right:48px!important; }
-  .node-table .node-row { position:relative; }
-  .node-table .node-row > td:last-child { position:absolute; right:16px; top:16px; }
   .node-table .node-expand { width:44px; height:44px; scroll-margin-top:150px; }
-  .node-table .node-row:hover > td { background:transparent; }
-  .node-table .node-row:hover { background:var(--surface-2); }
   .node-panel { scroll-margin-top:150px; }
-  .node-table td[data-label]::before { content:attr(data-label); display:block; color:var(--ink-3); font-size:11px; margin-bottom:4px; }
-  .node-table .pctv { text-align:left; }
-  .node-table .group-row { display:block; }
-  .node-table .group-row td { display:block; padding:12px 16px!important; }
-  .node-table .detail-row { display:block; }
-  .node-table .detail-row > td { display:block; padding:0 16px 16px!important; }
-  .node-detail { grid-template-columns:1fr; gap:14px; }
+  .node-detail { grid-template-columns:1fr; gap:14px; max-width:calc(100cqw - 48px); }
 }
 
 /* ------------------------------------------------------------------ tooltip */
@@ -624,17 +606,6 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   .dr-head { padding: 16px 18px 12px; }
   .dr-tabs { margin-inline: 18px; }
   .dr-body { padding: 14px 18px 26px; }
-  table { min-width: 0; }
-  thead { display: none; }
-  tbody tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 12px; padding: 14px 18px; border-bottom: 1px solid var(--hair); }
-  tbody tr.group-row { display: block; padding: 0; }
-  tbody tr.group-row td { display: block; padding: 14px 18px 8px; }
-  tbody td { width: auto; border: 0 !important; padding: 0 !important; text-align: left; white-space: normal; }
-  tbody td:first-child { grid-column: 1 / -1; }
-  tbody td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--ink-3); margin-bottom: 1px; }
-  .nm { min-width: 0; }
-  tr.is-current { background: var(--accent-soft); }
-  tr.is-current td { background: transparent !important; }
 }
 @media (prefers-reduced-motion: reduce) {
   .scrim, .drawer, .beacon::after, .pulse, .skeleton, .hs-mark::before, .hs-mark .flow, .hs-mark .halo, .hs-mark .dest { animation: none !important; }
@@ -728,7 +699,7 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
     <div class="nodes-head">
       <div>
         <h2>节点状态</h2>
-        <p id="node-summary">按地区分组，近期可用率从高到低</p>
+        <p id="node-summary">近30分钟已完成检测的成功比例</p>
       </div>
     </div>
     <div class="node-tools">
@@ -738,24 +709,22 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
       </div>
       <label>地区 <select id="node-region" aria-label="节点地区"><option value="">全部地区</option></select></label>
       <label>排序 <select id="node-sort" aria-label="节点排序">
-        <option value="recent">近30分钟可用率</option>
-        <option value="long">近24小时可用率</option>
+        <option value="recent">近30分钟成功率</option>
+        <option value="long">近24小时成功率</option>
         <option value="latency">最近有效延迟</option>
         <option value="role">当前与热备优先</option>
       </select></label>
       <span id="node-order-note" role="status"></span>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="节点表，可横向滚动">
       <table class="node-table">
-        <colgroup><col style="width:36%"><col style="width:12%"><col style="width:12%"><col style="width:17%"><col style="width:18%"><col style="width:5%"></colgroup>
         <thead>
           <tr>
-            <th>节点</th>
-            <th>30 分钟可用率</th>
-            <th>24 小时可用率</th>
-            <th>最近检测</th>
-            <th><span class="th">选路状态 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span></th>
-            <th><span class="sr-only">详情</span></th>
+            <th scope="col">节点</th>
+            <th scope="col">近期成功率</th>
+            <th scope="col">最近检测</th>
+            <th scope="col"><span class="th">节点状态 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span></th>
+            <th scope="col"><span class="sr-only">详情</span></th>
           </tr>
         </thead>
         <tbody id="node-rows"></tbody>
@@ -1577,7 +1546,7 @@ function regionOrder(d) {
 
 function matches(r, scope = activeFilter) {
   return (!activeRegion || r.region === activeRegion)
-    && (scope === 'all' || scope === 'focus' && (r.current || r.standby || r.cls !== 'good'));
+    && (scope === 'all' || scope === 'focus' && (r.current || r.standby || r.cls !== 'good' || (r.node && (probePresentation(r.node).cls !== '' || !(r.node.window_samples >= 12) || r.node.window_success == null))));
 }
 
 function renderFilters(d) {
@@ -1602,11 +1571,14 @@ function probePresentation(n) {
 
 function latestProbeCell(n) {
   const p = probePresentation(n);
-  return `<span class="probe-value ${p.cls}">${esc(p.text)}</span><small>${esc(p.when)}</small>`;
+  return `<span class="probe-value ${p.cls}">${esc(p.text)}</span>`;
 }
 
 function availabilityCell(value, samples) {
-  return `<span class="pctv">${pct(value)}</span>${samples == null ? '<small aria-hidden="true">&nbsp;</small>' : `<small>${samples} 次${samples < 12 ? ' · 样本不足' : ''}</small>`}`;
+  if (samples < 12 || value == null) return `<span class="pctv">${samples < 12 ? '样本不足' : '未知'}</span>`;
+  const percent = Math.max(0, Math.min(100, value * 100));
+  const cls = value >= .95 ? '' : value >= .8 ? 'warn' : 'bad';
+  return `<span class="rate"><span class="pctv">${pct(value)}</span><span class="rate-bar ${cls}" aria-hidden="true"><i style="width:${percent}%"></i></span></span>`;
 }
 
 function nodeDetailId(name) { return 'node-detail-' + encodeURIComponent(name); }
@@ -1617,14 +1589,12 @@ function rowHtml(r, d) {
   const tags = (r.current ? '<span class="tag cur">当前</span>' : '') + (r.standby ? '<span class="tag hot">热备</span>' : '');
   const title = n.lifecycle_title || '未知';
   // State and recovery progress come from the backend, never from a display score.
-  const label = title.replace(/^节点/, '').replace(/（.*$/, '');
   const progress = title.match(/（([^）]+)）/);
-  const extra = progress ? '恢复进度 ' + progress[1] : n.lifecycle === 'warming' ? `采样 ${n.samples}/${d.policy.min_samples}` : '';
+  const label = progress && title.includes('恢复') ? `恢复验证 ${progress[1]}` : title.replace(/（.*$/, '');
   return `<td><div class="nm"><span class="nm-copy"><b title="${esc(r.name)}">${esc(r.name)}</b><span class="node-role">${tags}</span></span></div></td>
-    <td data-label="30分钟可用率">${availabilityCell(a,n.window_samples || 0)}</td>
-    <td data-label="24小时可用率">${availabilityCell(n.long_availability ?? n.availability,null)}</td>
+    <td data-label="近期成功率">${availabilityCell(a,n.window_samples || 0)}</td>
     <td data-label="最近检测">${latestProbeCell(n)}</td>
-    <td data-label="选路状态"><span class="state ${r.cls === 'good' ? '' : r.cls}">${esc(label)}</span>${extra ? `<small>${esc(extra)}</small>` : ''}</td>
+    <td data-label="节点状态"><span class="state ${r.cls === 'good' ? '' : r.cls}">${esc(label)}</span></td>
     <td><button type="button" class="node-expand" data-node="${esc(r.name)}" aria-label="${expandedNode === r.name ? '收起' : '展开'} ${esc(r.name)} 详情" aria-expanded="${expandedNode === r.name}" ${expandedNode === r.name ? `aria-controls="${esc(nodeDetailId(r.name))}"` : ''}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button></td>`;
 }
 
@@ -1632,10 +1602,10 @@ function nodeDetailHtml(r,d) {
   const n = r.node, p = probePresentation(n);
   const success = n.last_success_delay_ms != null ? `${ms(n.last_success_delay_ms)}${n.last_success_at ? ' · '+age(Math.max(0,Math.round(nowSeconds()-n.last_success_at))) : ' · 时间未知'}` : '未保留';
   const reason = {probe_timeout:'探测超时',invalid_delay:'无有效延迟',controller_reported_error:'控制器报告错误，具体原因未知',controller_timeout:'控制器响应超时',controller_unreachable:'无法连接控制器',invalid_response:'控制器返回无效数据',unknown:'具体原因未知'}[n.latest_probe?.reason_code] || '未记录';
-  return `<td colspan="6"><div class="node-detail" id="${esc(nodeDetailId(r.name))}">
+  return `<td colspan="5"><div class="node-detail" id="${esc(nodeDetailId(r.name))}">
     <p class="full-name">${esc(r.name)}</p>
     <section><h3>检测详情</h3><p>最近完整检测：${esc(p.text)} · ${esc(p.when)}</p><p>上次成功：${esc(success)}</p><p>检测原因：${esc(reason)}</p><p>历史平均延迟：${ms(n.latency)}</p></section>
-    <section><h3>稳定性指标</h3><p>抖动：${ms(n.jitter)}</p><p>综合评分：${n.quality == null ? '—' : n.quality+'/100'}</p><p>近期样本：${n.window_samples || 0} 次 · 最近30分钟窗口</p><p>可用率分母为已完成检测；窗口内样本不代表持续在线时长。</p></section>
+    <section><h3>稳定性指标</h3><p>近30分钟检测成功率：${n.window_samples >= 12 ? pct(n.window_success) : '样本不足'}</p><p>近24小时检测成功率：${pct(n.long_availability ?? n.availability)}</p><p>抖动：${ms(n.jitter)}</p><p>综合评分：${n.quality == null ? '—' : n.quality+'/100'}</p><p>近期样本：${n.window_samples || 0} 次 · 最近30分钟窗口</p><p>检测成功率分母为已完成检测；窗口内样本不代表持续在线时长。</p></section>
     <section><h3>状态说明</h3><p>${esc(n.lifecycle_detail || n.lifecycle_title || '暂无状态说明')}</p><p>连续成功 ${n.success_streak || 0} 次 · 连续失败 ${n.failure_streak || 0} 次</p><p>检测成功后仍可能需要累计恢复样本，才重新获得选路资格。</p></section>
   </div></td>`;
 }
@@ -1660,7 +1630,7 @@ function renderNodes(d) {
   const map = body.__rows;
   const ordered = [];
   if (!rows.length) {
-    ordered.push(['__empty', '', '<td class="empty-row" colspan="6">没有符合筛选条件的节点</td>']);
+    ordered.push(['__empty', '', '<td class="empty-row" colspan="5">没有符合筛选条件的节点</td>']);
   } else {
     let region = null;
     rows.forEach(r => {
@@ -1668,7 +1638,7 @@ function renderNodes(d) {
         region = r.region;
         const inRegion = all.filter(x => x.region === region);
         const healthy = inRegion.filter(x => x.cls === 'good').length;
-        ordered.push([`__hdr_${region}`, 'group-row', `<td colspan="6">${esc(region)}<span>${inRegion.length} 个节点 · ${healthy} 个稳定${inRegion.length - healthy ? ` · ${inRegion.length - healthy} 个需留意` : ''}</span></td>`]);
+        ordered.push([`__hdr_${region}`, 'group-row', `<td colspan="5">${esc(region)}<span>${inRegion.length} 个节点 · ${healthy} 个稳定${inRegion.length - healthy ? ` · ${inRegion.length - healthy} 个需留意` : ''}</span></td>`]);
       }
       ordered.push([r.name, 'node-row' + (r.current ? ' is-current' : ''), rowHtml(r, d)]);
       if (expandedNode === r.name) ordered.push(['__detail_'+r.name, 'detail-row', nodeDetailHtml(r,d)]);
@@ -1685,7 +1655,7 @@ function renderNodes(d) {
     if (focusedName) tr.querySelector('.node-expand')?.focus({preventScroll:true});
     if (body.children[index] !== tr) body.insertBefore(tr, body.children[index] || null);
   });
-  setText($('#node-summary'), `显示 ${rows.length} / ${all.length} 个节点`);
+  setText($('#node-summary'), `显示 ${rows.length} / ${all.length} 个节点 · 成功率窗口30分钟 · 每2秒刷新`);
   setText($('#node-order-note'), interacting ? '阅读中，行序暂缓调整' : '');
 }
 
