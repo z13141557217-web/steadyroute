@@ -470,6 +470,62 @@ tr.is-current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 
 footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
+/* Node names and detail text cannot compete for intrinsic table width. */
+.node-panel { container-type: inline-size; }
+.node-panel .nodes-head { padding:20px 24px 12px; }
+.node-tools { display:flex; align-items:center; flex-wrap:wrap; gap:12px 20px; padding:0 24px 16px; }
+.node-tools label { display:flex; align-items:center; gap:8px; color:var(--ink-3); font-size:12px; }
+.node-tools select { max-width:100%; padding:7px 10px; border:1px solid var(--hair-2); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; }
+#node-order-note { font-size:11px; color:var(--ink-3); margin-left:auto; }
+.node-table { table-layout:fixed; min-width:1040px; }
+.node-table th, .node-table td { width:auto; padding:12px 14px; white-space:normal; font-variant-numeric:tabular-nums; }
+.node-table th { font-size:12px; }
+.node-table .node-row { height:84px; }
+.node-table .nm { gap:10px; }
+.node-table .nm-copy { gap:5px; overflow:hidden; }
+.node-table .nm-copy b { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:break-word; line-height:20px; font-size:14px; }
+.node-role { display:flex; gap:5px; min-height:0; }
+.node-role:empty { display:none; }
+.node-role .tag { margin-left:0; }
+.node-table .avail { display:grid; justify-content:center; gap:6px; }
+.node-table .pctv { font-weight:600; color:var(--ink); text-align:center; }
+.node-table .bar { width:56px; justify-self:center; }
+.node-table td > small { line-height:17px; }
+.probe-value { font-weight:600; color:var(--ink); }
+.probe-value.bad { color:var(--bad); }
+.probe-value.info { color:var(--ink-3); }
+.node-table .state { max-width:100%; font-size:12px; white-space:normal; }
+.node-expand { border:1px solid var(--hair-2); background:var(--surface); color:var(--ink-3); width:30px; height:30px; border-radius:7px; cursor:pointer; }
+.node-expand[aria-expanded="true"] { background:var(--accent-soft); color:var(--accent); }
+.node-expand:focus-visible, .node-tools select:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.node-table .detail-row > td { padding:0 24px 18px; background:var(--surface-2); }
+.node-detail { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; text-align:left; padding:18px 0 0; font-family:var(--sans); }
+.node-detail h3 { font-size:12px; color:var(--ink-3); margin-bottom:10px; }
+.node-detail p { font-size:12px; line-height:1.8; overflow-wrap:anywhere; color:var(--ink-2); }
+.node-detail .full-name { grid-column:1/-1; color:var(--ink); font-weight:600; margin-bottom:-10px; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+@container (max-width: 700px) {
+  .node-tools { gap:10px; padding-inline:16px; }
+  #node-order-note { width:100%; margin-left:0; }
+  .node-table { display:block; width:100%; min-width:0; }
+  .node-table tbody { display:block; width:100%; }
+  .node-table colgroup, .node-table thead { display:none; }
+  .node-table tbody .node-row { display:grid; height:auto; grid-template-columns:1fr 1fr; gap:14px; padding:16px; border-bottom:1px solid var(--hair); }
+  .node-table tbody .node-row > td { display:block; min-width:0; padding:0!important; border:0; text-align:left; }
+  .node-table .node-row > td:first-child { grid-column:1/-1; padding-right:40px!important; }
+  .node-table .node-row { position:relative; }
+  .node-table .node-row > td:last-child { position:absolute; right:16px; top:16px; }
+  .node-table td[data-label]::before { content:attr(data-label); display:block; color:var(--ink-3); font-size:11px; margin-bottom:4px; }
+  .node-table .avail { justify-content:start; }
+  .node-table .pctv { text-align:left; }
+  .node-table .bar { display:none; }
+  .node-table .group-row { display:block; }
+  .node-table .group-row td { display:block; padding:12px 16px!important; }
+  .node-table .detail-row { display:block; }
+  .node-table .detail-row > td { display:block; padding:0 16px 16px!important; }
+  .node-detail { grid-template-columns:1fr; gap:14px; }
+}
+
 /* ------------------------------------------------------------------ tooltip */
 .tip {
   width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--hair-2); background: transparent; color: var(--ink-4);
@@ -650,35 +706,38 @@ footer.wrap { padding-block: 0 32px; color: var(--ink-4); font-size: 12px; displ
   <section class="routes" id="routes"></section>
   <section class="card idle" id="idle" aria-label="未接管的分组" hidden></section>
 
-  <section class="card" aria-label="节点状态">
+  <section class="card node-panel" aria-label="节点状态">
     <div class="nodes-head">
       <div>
         <h2>节点状态</h2>
         <p id="node-summary">按地区分组，近期可用率从高到低</p>
       </div>
+    </div>
+    <div class="node-tools">
+      <div class="seg filters" role="group" aria-label="节点关注范围">
+        <button class="filter active" data-filter="focus" type="button" aria-pressed="true" title="当前线路、热备和异常节点">需关注<span class="count" data-count="focus"></span></button>
+        <button class="filter" data-filter="all" type="button" aria-pressed="false">全部<span class="count" data-count="all"></span></button>
+      </div>
+      <label>地区 <select id="node-region" aria-label="节点地区"><option value="">全部地区</option></select></label>
       <label>排序 <select id="node-sort" aria-label="节点排序">
         <option value="recent">近30分钟可用率</option>
         <option value="long">近24小时可用率</option>
         <option value="latency">最近有效延迟</option>
         <option value="role">当前与热备优先</option>
       </select></label>
-      <div class="seg filters" role="group" aria-label="节点筛选">
-        <button class="filter active" data-filter="focus" type="button" aria-pressed="true" title="当前线路、热备和异常节点">需关注<span class="count" data-count="focus"></span></button>
-        <button class="filter" data-filter="all" type="button" aria-pressed="false">全部<span class="count" data-count="all"></span></button>
-        <span class="region-filters" id="region-filters"></span>
-      </div>
+      <span id="node-order-note" role="status"></span>
     </div>
     <div class="table-wrap">
-      <table>
+      <table class="node-table">
+        <colgroup><col style="width:32%"><col style="width:12%"><col style="width:12%"><col style="width:20%"><col style="width:19%"><col style="width:5%"></colgroup>
         <thead>
           <tr>
             <th>节点</th>
-            <th>可用率 · 30分钟 / 24小时</th>
-            <th>最近完整检测</th>
-            <th><span class="th">抖动 <button class="tip" type="button" data-tip="jitter" aria-label="说明：抖动">?</button></span></th>
-            <th><span class="th">综合评分 <button class="tip" type="button" data-tip="quality" aria-label="说明：综合评分">?</button></span></th>
-            <th><span class="th">状态 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span></th>
-            <th><span class="th">连续 <button class="tip" type="button" data-tip="streak" aria-label="说明：连续次数">?</button></span></th>
+            <th>30 分钟可用率</th>
+            <th>24 小时可用率</th>
+            <th>最近检测</th>
+            <th><span class="th">选路状态 <button class="tip" type="button" data-tip="lifecycle" aria-label="说明：节点状态">?</button></span></th>
+            <th><span class="sr-only">详情</span></th>
           </tr>
         </thead>
         <tbody id="node-rows"></tbody>
@@ -751,6 +810,7 @@ let snapshot = null;
 let activeFilter = 'focus';
 let rangeSeconds = 300;
 let nodeSort = 'recent';
+let activeRegion = '', expandedNode = null, forceNodeSort = false;
 const drawer = { group: null, trigger: null };
 const charts = new Map();      // group name -> chart
 const readouts = new Map();    // group name -> {el, shown, target}
@@ -1497,64 +1557,82 @@ function regionOrder(d) {
   return [...new Set(d.groups.map(groupRegion))];
 }
 
-function matches(r) {
-  return activeFilter === 'all'
-    || activeFilter === `region:${r.region}`
-    || activeFilter === 'focus' && (r.current || r.standby || r.cls !== 'good');
+function matches(r, scope = activeFilter) {
+  return (!activeRegion || r.region === activeRegion)
+    && (scope === 'all' || scope === 'focus' && (r.current || r.standby || r.cls !== 'good'));
 }
 
 function renderFilters(d) {
-  const box = $('#region-filters');
+  const box = $('#node-region');
   const names = regionOrder(d);
   if (box.__names === names.join('|')) return;
   box.__names = names.join('|');
-  if (activeFilter.startsWith('region:') && !names.includes(activeFilter.slice(7))) activeFilter = 'focus';
-  box.innerHTML = names.map(name => `<button class="filter" data-filter="region:${esc(name)}" type="button" aria-pressed="false">${esc(name)}<span class="count" data-count="region:${esc(name)}"></span></button>`).join('');
-  $$('.filter').forEach(i => { i.classList.toggle('active', i.dataset.filter === activeFilter); i.setAttribute('aria-pressed', String(i.dataset.filter === activeFilter)); });
+  if (!names.includes(activeRegion)) activeRegion = '';
+  box.innerHTML = '<option value="">全部地区</option>' + names.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+  box.value = activeRegion;
 }
 
+function probePresentation(n) {
+  const p = n.latest_probe;
+  if (!p) return {text:'未知', cls:'info', when:'旧记录未保留结果'};
+  const when = p.observed_at == null ? '时间未知' : age(Math.max(0, Math.round(nowSeconds()-p.observed_at)));
+  if (p.stale || (p.stale_at != null && nowSeconds() >= p.stale_at)) return {text:'已过期', cls:'info', when};
+  const labels = {timeout:'超时', error:'错误', unavailable:'检测不可用'};
+  return {text:p.status === 'success' ? ms(p.delay_ms) : labels[p.status] || '原因未确认',
+    cls:['timeout','error'].includes(p.status) ? 'bad' : p.status === 'success' ? '' : 'info', when};
+}
 
 function latestProbeCell(n) {
-  const p = n.latest_probe;
-  const history = n.last_success_delay_ms != null
-    ? '上次成功 ' + ms(n.last_success_delay_ms) + (n.last_success_at ? ' · '+age(Math.round(nowSeconds()-n.last_success_at)) : '')
-    : '历史均值 ' + ms(n.latency);
-  if (!p) return `—<small>旧记录未保留原因 · ${history}</small>`;
-  if (p.stale || (p.stale_at != null && nowSeconds() >= p.stale_at)) return `已过期<small>${history}</small>`;
-  const labels = {success: '成功', timeout: 'Timeout 超时', error: 'Error 错误', unavailable: '检测不可用'};
-  const text = p.status === 'success' ? ms(p.delay_ms) : labels[p.status] || '原因未确认';
-  return `${esc(text)}<small>最近完整检测 · ${p.observed_at == null ? '时间未知' : age(Math.round(nowSeconds()-p.observed_at))}${p.status === 'success' ? '' : ' · '+history}</small>`;
+  const p = probePresentation(n);
+  return `<span class="probe-value ${p.cls}">${esc(p.text)}</span><small>${esc(p.when)}</small>`;
 }
+
+function availabilityCell(value, samples) {
+  const cls = value == null || value >= .95 ? '' : value >= .8 ? 'warn' : 'bad';
+  const percent = value == null ? 0 : Math.max(0,Math.min(100,Math.round(value*100)));
+  return `<span class="avail"><span class="pctv">${pct(value)}</span><span class="bar" aria-hidden="true"><i class="${cls}" style="width:${percent}%"></i></span></span>${samples == null ? '' : `<small>${samples} 次${samples < 12 ? ' · 样本不足' : ''}</small>`}`;
+}
+
+function nodeDetailId(name) { return 'node-detail-' + encodeURIComponent(name); }
 
 function rowHtml(r, d) {
   const n = r.node;
   const a = n.window_samples >= 12 ? n.window_success : null;
-  const aw = a == null ? 0 : Math.round(a * 100);
-  const barCls = a == null ? '' : a >= 0.95 ? '' : a >= 0.8 ? 'warn' : 'bad';
-  const q = n.quality;
-  const streak = n.last_success
-    ? `<span class="streak ok" title="连续成功 ${n.success_streak} 次">${n.success_streak}</span>`
-    : `<span class="streak fail" title="连续失败 ${n.failure_streak} 次">失败 ${n.failure_streak}</span>`;
-  const sampling = n.lifecycle === 'warming' ? ` · 采样 ${n.samples}/${d.policy.min_samples}` : '';
   const tags = (r.current ? '<span class="tag cur">当前</span>' : '') + (r.standby ? '<span class="tag hot">热备</span>' : '');
-  return `<td><div class="nm"><span class="dot ${r.cls === 'good' ? '' : r.cls}"></span><span class="nm-copy"><b>${esc(r.name)}${tags}</b><small>${esc(n.lifecycle_title || '')}${sampling}</small></span></div></td>
-    <td data-label="可用率"><span class="avail"><span class="pctv">${pct(a)}</span><span class="bar"><i class="${barCls}" style="width:${aw}%"></i></span></span><small>30分钟 · ${n.window_samples || 0} 次${n.window_samples < 12 ? ' · 预热中' : ''}</small><small>24小时 ${pct(n.long_availability ?? n.availability)}</small></td>
+  const title = n.lifecycle_title || '未知';
+  // State and recovery progress come from the backend, never from a display score.
+  const label = title.replace(/^节点/, '').replace(/（.*$/, '');
+  const progress = title.match(/（([^）]+)）/);
+  const extra = progress ? '恢复进度 ' + progress[1] : n.lifecycle === 'warming' ? `采样 ${n.samples}/${d.policy.min_samples}` : '';
+  return `<td><div class="nm"><span class="dot ${r.cls === 'good' ? '' : r.cls}" aria-hidden="true"></span><span class="nm-copy"><b title="${esc(r.name)}">${esc(r.name)}</b><span class="node-role">${tags}</span></span></div></td>
+    <td data-label="30分钟可用率">${availabilityCell(a,n.window_samples || 0)}</td>
+    <td data-label="24小时可用率">${availabilityCell(n.long_availability ?? n.availability,null)}</td>
     <td data-label="最近检测">${latestProbeCell(n)}</td>
-    <td data-label="抖动">${ms(n.jitter)}</td>
-    <td data-label="综合评分"><span class="q">${q == null ? '—' : `${q}/100`}</span></td>
-    <td data-label="状态"><span class="state ${r.cls === 'good' ? '' : r.cls}" title="${esc(n.lifecycle_detail || '')}">${esc(n.lifecycle_title || '未知')}</span></td>
-    <td data-label="连续">${streak}</td>`;
+    <td data-label="选路状态"><span class="state ${r.cls === 'good' ? '' : r.cls}">${esc(label)}</span>${extra ? `<small>${esc(extra)}</small>` : ''}</td>
+    <td><button type="button" class="node-expand" data-node="${esc(r.name)}" aria-label="${expandedNode === r.name ? '收起' : '展开'} ${esc(r.name)} 详情" aria-expanded="${expandedNode === r.name}" aria-controls="${esc(nodeDetailId(r.name))}">${expandedNode === r.name ? '−' : '+'}</button></td>`;
+}
+
+function nodeDetailHtml(r,d) {
+  const n = r.node, p = probePresentation(n);
+  const success = n.last_success_delay_ms != null ? `${ms(n.last_success_delay_ms)}${n.last_success_at ? ' · '+age(Math.max(0,Math.round(nowSeconds()-n.last_success_at))) : ' · 时间未知'}` : '未保留';
+  const reason = {probe_timeout:'探测超时',invalid_delay:'无有效延迟',controller_reported_error:'控制器报告错误，具体原因未知',controller_timeout:'控制器响应超时',controller_unreachable:'无法连接控制器',invalid_response:'控制器返回无效数据',unknown:'具体原因未知'}[n.latest_probe?.reason_code] || '未记录';
+  return `<td colspan="6"><div class="node-detail" id="${esc(nodeDetailId(r.name))}">
+    <p class="full-name">${esc(r.name)}</p>
+    <section><h3>检测详情</h3><p>最近完整检测：${esc(p.text)} · ${esc(p.when)}</p><p>上次成功：${esc(success)}</p><p>检测原因：${esc(reason)}</p><p>历史平均延迟：${ms(n.latency)}</p></section>
+    <section><h3>稳定性指标</h3><p>抖动：${ms(n.jitter)}</p><p>综合评分：${n.quality == null ? '—' : n.quality+'/100'}</p><p>近期样本：${n.window_samples || 0} 次 · 最近30分钟窗口</p><p>可用率分母为已完成检测；窗口内样本不代表持续在线时长。</p></section>
+    <section><h3>状态说明</h3><p>${esc(n.lifecycle_detail || n.lifecycle_title || '暂无状态说明')}</p><p>连续成功 ${n.success_streak || 0} 次 · 连续失败 ${n.failure_streak || 0} 次</p><p>检测成功后仍可能需要累计恢复样本，才重新获得选路资格。</p></section>
+  </div></td>`;
 }
 
 function renderNodes(d) {
   renderFilters(d);
   const all = allRows(d);
-  const saved = activeFilter;
-  $$('.filter').forEach(b => { activeFilter = b.dataset.filter; setText(b.querySelector('.count'), String(all.filter(matches).length)); });
-  activeFilter = saved;
-  let rows = all.filter(matches);
+  $$('.filter').forEach(b => setText(b.querySelector('.count'), String(all.filter(r => matches(r,b.dataset.filter)).length)));
+  let rows = all.filter(r => matches(r));
+  if (expandedNode && !rows.some(r => r.name === expandedNode)) expandedNode = null;
   const body = $('#node-rows');
-  const interacting = body.matches(':hover') || body.contains(document.activeElement);
+  const interacting = !forceNodeSort && (expandedNode != null || body.matches(':hover') || body.contains(document.activeElement));
+  forceNodeSort = false;
   if (interacting && body.__order) {
     const positions = new Map(body.__order.map((name,index) => [name,index]));
     const regions = regionOrder(d);
@@ -1566,7 +1644,7 @@ function renderNodes(d) {
   const map = body.__rows;
   const ordered = [];
   if (!rows.length) {
-    ordered.push(['__empty', '', '<td class="empty-row" colspan="7">没有符合筛选条件的节点</td>']);
+    ordered.push(['__empty', '', '<td class="empty-row" colspan="6">没有符合筛选条件的节点</td>']);
   } else {
     let region = null;
     rows.forEach(r => {
@@ -1574,9 +1652,10 @@ function renderNodes(d) {
         region = r.region;
         const inRegion = all.filter(x => x.region === region);
         const healthy = inRegion.filter(x => x.cls === 'good').length;
-        ordered.push([`__hdr_${region}`, 'group-row', `<td colspan="7">${esc(region)}<span>${inRegion.length} 个节点 · ${healthy} 个稳定${inRegion.length - healthy ? ` · ${inRegion.length - healthy} 个需留意` : ''}</span></td>`]);
+        ordered.push([`__hdr_${region}`, 'group-row', `<td colspan="6">${esc(region)}<span>${inRegion.length} 个节点 · ${healthy} 个稳定${inRegion.length - healthy ? ` · ${inRegion.length - healthy} 个需留意` : ''}</span></td>`]);
       }
-      ordered.push([r.name, r.current ? 'is-current' : '', rowHtml(r, d)]);
+      ordered.push([r.name, 'node-row' + (r.current ? ' is-current' : ''), rowHtml(r, d)]);
+      if (expandedNode === r.name) ordered.push(['__detail_'+r.name, 'detail-row', nodeDetailHtml(r,d)]);
     });
   }
   const wanted = new Set(ordered.map(item => item[0]));
@@ -1585,14 +1664,29 @@ function renderNodes(d) {
     let tr = map.get(key);
     if (!tr) { tr = document.createElement('tr'); map.set(key, tr); }
     if (tr.className !== cls) tr.className = cls;
+    const focusedName = tr.contains(document.activeElement) ? document.activeElement.dataset?.node : null;
     patch(tr, html);
+    if (focusedName) tr.querySelector('.node-expand')?.focus({preventScroll:true});
     if (body.children[index] !== tr) body.insertBefore(tr, body.children[index] || null);
   });
-  setText($('#node-summary'), `累计检测 ${(d.service.cycle_count || 0).toLocaleString('zh-CN')} 轮 · 显示 ${rows.length}/${all.length} 个节点 · 排序以所选指标为准${interacting ? ' · 阅读期间暂缓重排' : ''}`);
+  setText($('#node-summary'), `显示 ${rows.length} / ${all.length} 个节点`);
+  setText($('#node-order-note'), interacting ? '阅读中，行序暂缓调整' : '');
 }
+
+$('#node-region').addEventListener('change', event => {
+  activeRegion = event.target.value; forceNodeSort = true;
+  if (snapshot) renderNodes(snapshot);
+});
+$('#node-rows').addEventListener('click', event => {
+  const button = event.target.closest('.node-expand');
+  if (!button) return;
+  expandedNode = expandedNode === button.dataset.node ? null : button.dataset.node;
+  if (snapshot) renderNodes(snapshot);
+});
 
 $('#node-sort').addEventListener('change', event => {
   nodeSort = event.target.value;
+  forceNodeSort = true;
   if (snapshot) renderNodes(snapshot);
 });
 
@@ -1679,6 +1773,7 @@ $('.filters').addEventListener('click', event => {
   const b = event.target.closest('.filter');
   if (!b) return;
   activeFilter = b.dataset.filter;
+  forceNodeSort = true;
   $$('.filter').forEach(i => { i.classList.toggle('active', i === b); i.setAttribute('aria-pressed', String(i === b)); });
   if (snapshot) renderNodes(snapshot);
 });
