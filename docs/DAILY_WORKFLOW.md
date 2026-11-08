@@ -6,12 +6,13 @@
 Issue/需求
   → 功能分支
   → 编码与测试
+  → 同步使用说明、日志和 VERSION
   → Commit
   → Push
   → Pull Request
   → 自动检查
-  → 合并 main
-  → 更新版本与变更日志
+  → 交付并逐项报告文档/日志/Git同步
+  → 获得发布授权后合并 main
   → 构建发布包
   → 本机 ./install.command 升级、观察
   → 发布 GitHub Release
@@ -70,7 +71,8 @@ git switch -c feat/dynamic-candidates
 不要修改安装目录、不要重启稳航、不要写入 Clash Verge 的配置。
 先读取 README、docs/DEVELOPMENT.md、docs/ARCHITECTURE.md 和相关 ADR。
 为本次问题建立回归测试，完成后运行 ./scripts/check.sh。
-更新 CHANGELOG 和受影响文档，汇报修改文件、测试结果、风险和发布建议。
+同步看板使用说明、README、CHANGELOG、看板日志和版本说明，核对 VERSION、提交、推送与 PR 描述。
+同一未发布候选不无故升版；逐项汇报同步结果、测试和限制，发布授权另行取得。
 ```
 
 ## 五、并行开发规则
