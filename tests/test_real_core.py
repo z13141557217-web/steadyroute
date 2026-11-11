@@ -142,6 +142,43 @@ class RealCoreTests(unittest.TestCase):
         result = self.service.apply({"ai_line": {"enabled": True, "country": country}})
         return result, self.service.applied()
 
+    def test_strict_lock_real_apply_verify_restore_and_persistence_failure_rollback(self):
+        group = "AI 台湾家宽线路"
+        target = self.core.proxies()[group]["now"]
+        changes = {"ai_line": {"enabled": True, "group_name": group, "country": "TW",
+                               "exit_policy": "locked", "locked_node": target}}
+        from unittest import mock
+        original = (self.core.verge / "clash-verge.yaml").read_text(encoding="utf-8")
+        original_groups, original_rules = self.core.groups(), self.core.rules()
+        with mock.patch.object(self.service, "save_config", side_effect=OSError("simulated storage failure")):
+            with self.assertRaisesRegex(Exception, "已回滚"):
+                self.service.apply(changes)
+        self.assertEqual((self.core.verge / "clash-verge.yaml").read_text(encoding="utf-8"), original)
+        self.assertEqual(self.service.config(), BASE_CONFIG)
+        self.service.apply(changes)
+        self.assertEqual(self.core.proxies()[group]["all"], [target])
+        self.assertEqual(self.service.snapshot()["exit_policy"]["effective_mode"], "locked")
+        written = (self.core.verge / "clash-verge.yaml").read_text(encoding="utf-8")
+        self.assertEqual(self.core.load(written)[0], 204)
+        self.assertEqual(self.core.proxies()[group]["all"], [target])
+        self.assertEqual(self.service.line_problems(self.service.applied()), "")
+        self.service.apply({"ai_line": {"enabled": False}})
+        self.assertEqual(self.core.groups(), original_groups)
+        self.assertEqual(self.core.rules(), original_rules)
+
+    def test_locked_state_rejects_rule_order_drift_without_rebinding_target(self):
+        group = "AI 台湾家宽线路"
+        target = self.core.proxies()[group]["now"]
+        self.service.apply({"ai_line": {"enabled": True, "group_name": group, "country": "TW",
+                                      "exit_policy": "locked", "locked_node": target}})
+        written = (self.core.verge / "clash-verge.yaml").read_text(encoding="utf-8")
+        # An external earlier MATCH defeats all AI rules, even though they are still present.
+        mutated = written.replace("rules:\n", "rules:\n- MATCH,DIRECT\n", 1)
+        self.assertEqual(self.core.load(mutated)[0], 204)
+        self.assertIn("顺序未核实", self.service.line_problems(self.service.applied()))
+        self.assertIsNone(self.service.snapshot()["exit_policy"]["effective_mode"])
+        self.assertEqual(self.service.config()["ai_line"]["locked_node"], target)
+
     def test_apply_puts_the_line_and_its_rules_first(self):
         user_rules = self.core.rules()
         result, applied = self.apply()

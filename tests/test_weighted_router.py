@@ -73,7 +73,7 @@ class RoutingDecisionTests(unittest.TestCase):
         self.closed = []
         self.original_select = router.select_node
         self.original_close = router.close_old_connections
-        router.select_node = lambda group, node, dry_run: self.selected.append((group, node))
+        router.select_node = lambda group, node, dry_run, **kwargs: self.selected.append((group, node))
         router.close_old_connections = lambda group, node, connections=None, keep_ids=None: self.closed.append((group, node)) or 1
 
     def tearDown(self):

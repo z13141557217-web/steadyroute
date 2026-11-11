@@ -32,6 +32,7 @@ try:
     import regions
     import auto_lock
     import ai_line
+    import exit_policy
     import diagnostics
     import probe_trace
     import probe_display
@@ -48,6 +49,7 @@ except ModuleNotFoundError:
     import regions
     import auto_lock
     import ai_line
+    import exit_policy
     import diagnostics
     import probe_trace
     import probe_display
@@ -264,15 +266,30 @@ def refresh_auto_lock(state, proxy_data, now):
         per_group = dict(settings.get("group_business_urls") or {})
         per_group[line["group_name"]] = ai_line.business_urls(per_group.get(line["group_name"]))
         settings["group_business_urls"] = per_group
+    # Build AI discovery from the inventory, independent of the constrained serving group.
+    # Exclude it from country inference: a foreign external choice must never rebind its country.
+    ai_enabled = line.get("enabled") and line.get("group_name")
+    if ai_enabled:
+        settings["exclude_groups"] = list(settings.get("exclude_groups") or []) + [line["group_name"]]
     policies, statuses, events = auto_lock.build_policies(proxy_data, state, now, settings)
-    for policy in policies:
-        if line.get("enabled") and policy["group_name"] == line.get("group_name"):
-            # No ordinary performance switch on the AI line. slow_exit (on unless the user
-            # turned it off) still lets it leave a node that stays clearly slower.
-            policy["failover_only"] = True
-            policy["slow_exit"] = bool(line.get("slow_exit", True))
+    if ai_enabled:
+        name, country = line["group_name"], line["country"]
+        policy = {
+            "id": auto_lock._policy_id(name, country), "group_name": name,
+            "discovery_group_name": name, "discovery_inventory": True,
+            "region": country, "region_label": regions.label(country),
+            "match": route_policy.COUNTRY_RESIDENTIAL, "include_pattern": "", "exclude_pattern": "",
+            "exclude_types": ["direct"], "empty_fallback": "REJECT", "warmup_samples": 10,
+            "warmup_successes": 3, "retire_after_seconds": 86400,
+            "business_test_urls": ai_line.business_urls(),
+            "static_candidates": [node for node, data in proxy_data.items()
+                                  if ai_line.is_node(data) and node in ai_line.members(country, [node])],
+            "exit_policy": exit_policy.mode(line), "locked_node": line.get("locked_node"),
+            "failover_only": True, "slow_exit": exit_policy.mode(line) == "adaptive",
+        }
+        policies.append(policy)
     # A country without residential nodes is shown but never routed.
-    routed = [policy for policy in policies if policy["static_candidates"]]
+    routed = [policy for policy in policies if policy["static_candidates"] or policy.get("exit_policy") == "locked"]
     apply_policies(routed)
     auto_lock.prune_registry(state, routed)
     auto_lock.prune_nodes(state, proxy_data, now)
@@ -637,6 +654,7 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
     last_switch = int(group_state.get("last_switch_at", 0))
     cooldown = max(0, PERFORMANCE_COOLDOWN_SECONDS - (int(now) - last_switch)) if last_switch else 0
     policy = POLICY_BY_GROUP.get(group_name) or {}
+    locked = bool(ai_exit_line(group_name) and exit_policy.mode(ai_exit_line(group_name)) == "locked")
     failover_only = bool(policy.get("failover_only"))
     slow_exit_on = bool(failover_only and policy.get("slow_exit"))
     manual_hold = max(0, int(group_state.get("manual_hold_until", 0)) - int(now))
@@ -678,7 +696,7 @@ def group_decision_facts(group_name, candidates, state, proxy_data, connections,
         "slow_exit_window_minutes": SLOW_EXIT_WINDOW * PROBE_INTERVAL_SECONDS // 60,
         "manual_hold_remaining_seconds": manual_hold,
         "performance_optimization_paused": manual_hold > 0,
-        "safety_failover_active": bool(state.get("controller_connected", bool(proxy_data)) and candidates),
+        "safety_failover_active": bool(not locked and state.get("controller_connected", bool(proxy_data)) and candidates),
         "safe_backup_available": safe_backup_available,
     }
 
@@ -772,6 +790,7 @@ def transition_reason(scope, state_code, final_decision=None):
         return final_decision["reason_code"]
     if scope == "group":
         return {
+            "exit_locked": "explicit_exit_policy",
             "stable": "current_best",
             "candidate_confirming": "confirmation_incomplete",
             "handover_pending": "confirmation_complete",
@@ -970,6 +989,23 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             target_name = group_state.get("handover_new_node")
         facts = group_decision_facts(group_name, candidates, state, proxy_data, connections, now)
         decision = state_contract.resolve_group_decision(facts, now)
+        line = ai_exit_line(group_name)
+        policy_status = None
+        if line:
+            service = SETTINGS
+            rules_ok = False
+            if service and state.get("controller_connected", bool(proxy_data)):
+                try:
+                    rules_ok = bool(service.applied().get("groups")) and not service.line_problems(service.applied())
+                except Exception:
+                    pass
+            policy_status = exit_policy.status(line, proxy_data if state.get("controller_connected", bool(proxy_data)) else None,
+                rules_ok=rules_ok, probe_ok=state.get("nodes", {}).get(line.get("locked_node"), {}).get("last_success"),
+                connections=connections)
+            if exit_policy.mode(line) == "locked":
+                decision = dict(decision, code="exit_locked", reason_code=policy_status["policy_status"], severity="ok" if policy_status["policy_status"] == "locked" else "warning",
+                    title="固定节点 · " + policy_status["reason"], detail="不会自动更换节点；供应商公网 IP 变化无法由固定策略保证。",
+                    next_action_code="keep_locked", next_action="保持目标；需要更换时在设置中明确更新锁定。")
         previous = group_state.get("decision_code")
         group_state["decision_code"] = decision["code"]
         if previous is not None:
@@ -985,7 +1021,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
                 explicit_steps=pending_steps,
             )
         group_state["pending_decision_events"] = []
-        if current_name not in candidates and outside_same_country(group_name, current_name):
+        if not (line and exit_policy.mode(line) == "locked") and current_name not in candidates and outside_same_country(group_name, current_name):
             decision = adopt_decision(decision, group_name, candidates, state, facts)
         current = node_by_name.get(current_name)
         target = node_by_name.get(target_name)
@@ -994,6 +1030,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "name": group_name,
             "region": region_for_group(group_name),
             "decision": decision,
+            "exit_policy": policy_status,
             "current": current,
             "target": target,
             "confirmation": {
@@ -1199,6 +1236,7 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             ),
             "decision": group["decision"]["title"],
             "decision_code": group["decision"]["code"],
+            "exit_policy": group.get("exit_policy"),
             "decision_severity": group["decision"]["severity"],
             "decision_detail": group["decision"]["detail"],
             "next_action": group["decision"]["next_action"],
@@ -2141,6 +2179,8 @@ def active_connections(group_name, connections=None):
 
 def close_old_connections(group_name, old_node, connections=None, keep_ids=None):
     """Close the line's connections on old_node except keep_ids (still receiving data)."""
+    if ai_exit_line(group_name) and exit_policy.mode(ai_exit_line(group_name)) == "locked":
+        return 0
     closed = 0
     keep = set(keep_ids or ())
     for connection in active_connections(group_name, connections):
@@ -2181,11 +2221,22 @@ def selection_allowed(group_name, node_name):
     )
 
 
-def select_node(group_name, node_name, dry_run):
+def ai_exit_line(group_name):
+    line = POLICY_CONFIG.get("ai_line") or {}
+    return line if line.get("enabled") and line.get("group_name") == group_name else None
+
+
+def select_node(group_name, node_name, dry_run, reason="automatic"):
+    line = ai_exit_line(group_name)
+    if line and not exit_policy.authorizes(line, reason):
+        logging_setup.write_event("exit_policy_blocked", policy=exit_policy.mode(line), reason=reason)
+        raise RegionGuardError("exit policy refuses automatic selection")
     if not selection_allowed(group_name, node_name):
         log_warning("%s: BLOCKED selection of %r; outside this region's residential nodes" % (group_name, node_name))
         logging_setup.write_event("region_guard_blocked", group=group_name, node=node_name)
         raise RegionGuardError("refusing cross-region or non-residential selection: %s -> %s" % (group_name, node_name))
+    if line:
+        logging_setup.write_event("exit_policy_authorized", policy=exit_policy.mode(line), reason=reason)
     if dry_run:
         log("DRY RUN select %s -> %s" % (group_name, node_name))
         return
@@ -2374,6 +2425,9 @@ def adopt_residential(group_name, candidates, current, state, group_state, now, 
     The first time we see a group we move it onto the best residential node once one has
     warmed up. A later manual pick of such a node is honoured for MANUAL_HOLD_SECONDS, like
     any manual choice, unless it fails."""
+    line = ai_exit_line(group_name)
+    if line and exit_policy.mode(line) == "locked":
+        return
     previous_seen = group_state.get("last_seen")
     router_choice = group_state.get("last_router_selection")
     if previous_seen and current != previous_seen and current != router_choice:
@@ -2393,6 +2447,8 @@ def adopt_residential(group_name, candidates, current, state, group_state, now, 
         record_manual_preference_event(state, group_name, "MANUAL_PREFERENCE_INTERRUPTED",
                                        "confirmed_current_failure", now)
     group_state["manual_hold_until"] = 0
+    if line and not exit_policy.authorizes(line, "confirmed_failure" if failing else "adopt"):
+        return
     mature = [name for name in candidates if eligible_for_optimization(state["nodes"].get(name, {}))]
     target = min(mature, key=lambda name: float(state["nodes"].get(name, {}).get("score", 1000000.0))) if mature else None
     if target is None:
@@ -2403,13 +2459,18 @@ def adopt_residential(group_name, candidates, current, state, group_state, now, 
         log("%s: residential %s failed preflight; staying on %s" % (group_name, target, current))
         return
     kind = "failover" if failing else "adopt"
-    select_node(group_name, target, dry_run)
+    select_node(group_name, target, dry_run, reason="confirmed_failure" if failing else "adopt")
     apply_switch(group_name, group_state, kind, current, target, now)
     log("%s: moved from non-residential %s to residential %s (%s)" % (group_name, current, target, kind))
     logging_setup.write_event("auto_lock_adopt", group=group_name, **{"from": current}, to=target, reason=kind)
 
 
 def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_run, keep_ids=None):
+    line = ai_exit_line(group_name)
+    if line and exit_policy.mode(line) == "locked":
+        group_state = state["groups"].setdefault(group_name, {})
+        group_state.update(better_candidate=None, better_streak=0, slow_window=[])
+        return
     group_info = proxy_data.get(group_name) or {}
     current = group_info.get("now")
     group_state = state["groups"].setdefault(group_name, {})
@@ -2460,7 +2521,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
         log("%s: current selection is unavailable: %r" % (group_name, current))
         target = best_failover(candidates, state["nodes"], current)
         if target and business_preflight(group_name, target, state, dry_run):
-            select_node(group_name, target, dry_run)
+            select_node(group_name, target, dry_run, reason="removed")
             apply_switch(group_name, group_state, "removed", current, target, now)
             log("%s: current removed; selected mature backup %s without closing old connections" % (
                 group_name, target,
@@ -2550,7 +2611,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
             incident_id = (outage[3] if outage and outage[0] == current else None) or uuid.uuid4().hex
             timing = None
             try:
-                select_node(group_name, target, dry_run)
+                select_node(group_name, target, dry_run, reason="confirmed_failure")
             except Exception:
                 if not dry_run:
                     logging_setup.write_event(
@@ -2604,7 +2665,7 @@ def evaluate_group(group_name, candidates, proxy_data, connections, state, dry_r
 
     active = active_connections(group_name, connections)
 
-    if stability_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
+    if (not line or exit_policy.mode(line) == "adaptive") and stability_exit(group_name, candidates, current, state, group_state, active, now, dry_run):
         return
 
     policy = POLICY_BY_GROUP.get(group_name) or {}
@@ -2708,6 +2769,9 @@ def stability_exit(group_name, candidates, current, state, group_state, active, 
     STABLE_TARGET_SUCCESS of its probes. Not during a manual preference, not within
     PERFORMANCE_COOLDOWN_SECONDS of any switch, at most STALL_EXIT_DAILY_MAX in 24 hours.
     Old connections stay on the old node. Returns True when it switched."""
+    line = ai_exit_line(group_name)
+    if line and not exit_policy.authorizes(line, "stability"):
+        return False
     nodes = state["nodes"]
     mine = slow_answers(nodes.get(current, {}), now)
     if mine < STABLE_EXIT_MARGIN:
@@ -2765,6 +2829,9 @@ def slow_exit(group_name, candidates, current, state, group_state, active, now, 
     are enough elsewhere). Never during a manual preference or within
     PERFORMANCE_COOLDOWN_SECONDS of any switch, and at most SLOW_EXIT_DAILY_MAX times in
     24 hours. Old connections stay on the old node."""
+    line = ai_exit_line(group_name)
+    if line and not exit_policy.authorizes(line, "slow_exit"):
+        return
     group_state["better_candidate"] = None
     group_state["better_streak"] = 0
     group_state["last_seen"] = current
@@ -2877,10 +2944,13 @@ def outside_same_country(group_name, current):
 
 
 def current_for_group(proxy_data, group_name, candidates):
+    line = ai_exit_line(group_name)
+    if line and exit_policy.mode(line) == "locked":
+        return line["locked_node"]
     current = (proxy_data.get(group_name) or {}).get("now")
     if current in candidates or outside_same_country(group_name, current):
         return current
-    return candidates[0]
+    return candidates[0] if candidates else None
 
 
 def record_probe_results(state, targets, base_results, observed_at, record_failures, transient=()):
