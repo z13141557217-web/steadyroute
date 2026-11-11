@@ -494,7 +494,7 @@ class Writer(object):
             if node:
                 self.controller("PUT", "/proxies/" + quote(group, safe=""), {"name": node})
 
-    def commit(self, groups_text, rules_text, runtime_text, meta, verify=None, keep_selection=()):
+    def commit(self, groups_text, rules_text, runtime_text, meta, verify=None, keep_selection=(), precondition=None):
         """Validate, back up, write the three files, reload, verify; roll everything back on failure."""
         _uid, groups_file, rules_file = self.target.resolve()
         self.validate(runtime_text)
@@ -503,6 +503,8 @@ class Writer(object):
         self.check_current(originals["runtime"])
         backup = self._backup(files, meta)
         selections = self._selections(keep_selection)
+        if precondition:
+            precondition()
 
         def put_back():
             for label, path in files.items():

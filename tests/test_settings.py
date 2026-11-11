@@ -162,7 +162,7 @@ class SettingsServiceTests(ServiceBase):
         files, calls = self.files(), len(self.clash.calls)
         for value in (False, True):
             changes = {"ai_line": {"slow_exit": value}}
-            self.assertEqual(self.service.preview(changes), {"clash_change": False})
+            self.assertFalse(self.service.preview(changes)["clash_change"])
             self.assertEqual(self.service.apply(changes), {"clash_change": False})
             line = self.service.snapshot()["ai_line"]
             self.assertEqual((line["slow_exit"], line["enabled"], line["country"]), (value, True, "JP"))

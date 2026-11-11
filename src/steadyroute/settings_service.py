@@ -23,13 +23,14 @@ import urllib.request
 try:
     import ai_check
     import ai_line
+    import exit_policy
     import ai_rules
     import auto_lock
     import clash_profile
     import regions
     import route_policy
 except ModuleNotFoundError:  # pragma: no cover
-    from . import ai_check, ai_line, ai_rules, auto_lock, clash_profile, regions, route_policy
+    from . import exit_policy, ai_check, ai_line, ai_rules, auto_lock, clash_profile, regions, route_policy
 
 HOUR = 3600
 DAY = 86400
@@ -195,7 +196,14 @@ class SettingsService(object):
         if "ai_line" in changes:
             line = dict(config.get("ai_line") or {})
             line.update({key: value for key, value in changes["ai_line"].items()
-                         if key in ("enabled", "country", "group_name", "slow_exit")})
+                         if key in ("enabled", "country", "group_name", "slow_exit", "exit_policy", "locked_node")})
+            change = changes["ai_line"]
+            if "exit_policy" in change:
+                if "slow_exit" in change:
+                    raise clash_profile.ProfileError("出口策略与旧慢速开关不能同时保存")
+                line.pop("slow_exit", None)
+            elif "slow_exit" in change and "exit_policy" in line:
+                raise clash_profile.ProfileError("请使用出口策略，旧慢速开关已被替代")
             if "slow_exit" in line:
                 line["slow_exit"] = bool(line["slow_exit"])
             line.setdefault("group_name", ai_line.DEFAULT_AI_GROUP)
@@ -216,6 +224,17 @@ class SettingsService(object):
                 [item["group_name"] for item in config.get("managed_lines") or []]
             settings["include_groups"] = settings["include_groups"] + [g for g in ours if g not in settings["include_groups"]]
         route_policy.validate_policy_config(config)
+        line = config.get("ai_line") or {}
+        old_line = self.config().get("ai_line") or {}
+        if line.get("enabled") and exit_policy.mode(line) == "locked" and (
+                exit_policy.mode(old_line) != "locked" or not old_line.get("enabled")
+                or any(line.get(k) != old_line.get(k) for k in ("locked_node", "group_name", "country"))):
+            data = self.proxies()
+            node = line["locked_node"]
+            if (data.get(line["group_name"]) or {}).get("now") != node:
+                raise clash_profile.ProfileError("当前选择与锁定目标不同；请核对当前选择，未自动切回或重选")
+            if not ai_line.is_node(data.get(node)) or node not in ai_line.members(line["country"], [node]):
+                raise clash_profile.ProfileError("锁定目标必须是所选地区的明确家宽叶子节点")
         return config
 
     def snapshot(self):
@@ -251,6 +270,11 @@ class SettingsService(object):
         }
         try:
             proxies = self.proxies()
+            result["exit_policy"] = exit_policy.status(config.get("ai_line") or {}, proxies,
+                rules_ok=bool(applied.get("groups")) and not self.line_problems(applied),
+                connections=(self._get("/connections").get("connections") or [])
+                if exit_policy.mode(config.get("ai_line") or {}) == "locked" else [])
+            result["current_ai_node"] = (proxies.get((config.get("ai_line") or {}).get("group_name")) or {}).get("now")
             result["countries"] = ai_line.country_choices(proxies)
             result["groups"] = sorted(set(auto_lock.managed_groups(proxies)) | set(result["exclude_groups"]))
             result["group_details"] = group_details(proxies, result["exclude_groups"],
@@ -260,6 +284,7 @@ class SettingsService(object):
             result["tun"] = (configs.get("tun") or {}).get("enable")
         except Exception as error:
             result["controller_error"] = str(error)
+            result["exit_policy"] = exit_policy.status(config.get("ai_line") or {})
         try:
             uid, groups_file, rules_file = self.target.resolve()
             result["clash"] = {"ok": True, "profile_uid": uid, "core": bool(self.core)}
@@ -296,6 +321,11 @@ class SettingsService(object):
                 if (proxies.get(name) or {}).get("type") not in clash_profile.GROUP_TYPES]
         if gone:
             parts.append("Clash 中没有分组「%s」" % "」「".join(gone))
+        line = self.config().get("ai_line") or {}
+        if line.get("enabled") and exit_policy.mode(line) == "locked":
+            evidence = exit_policy.status(line, proxies, rules_ok=True)
+            if evidence["effective_mode"] != "locked":
+                parts.append(evidence["reason"])
         ours = []
         for line in applied.get("rules") or []:
             kind, _, rest = str(line).partition(",")
@@ -303,12 +333,24 @@ class SettingsService(object):
             if kind in ("DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD"):
                 ours.append((ai_check.norm(kind), value.strip().lower(), group.split(",")[0]))
         if ours:
+            live_rules = self._get("/rules").get("rules") or []
             live = {(ai_check.norm(rule.get("type")), str(rule.get("payload") or "").strip().lower(), rule.get("proxy"))
-                    for rule in self._get("/rules").get("rules") or []}
+                    for rule in live_rules}
             lost = [rule for rule in ours if rule not in live]
             if lost:
                 parts.append("Clash 中缺少 %d 条 AI 规则（共写入 %d 条）" % (
                     len(applied["rules"]) if len(lost) == len(ours) else len(lost), len(applied["rules"])))
+        configured = self.config().get("ai_line") or {}
+        if configured.get("enabled") and exit_policy.mode(configured) == "locked" and ours:
+            expected = []
+            for item in applied.get("rules") or []:
+                kind, value, group = str(item).split(",", 2)
+                kind = "IP-CIDR" if kind == "IP-CIDR6" else kind
+                expected.append((ai_check.norm(kind), value.strip().lower(), group.split(",")[0]))
+            actual = [(ai_check.norm(rule.get("type")), str(rule.get("payload") or "").strip().lower(), rule.get("proxy"))
+                      for rule in live_rules[:len(expected)]]
+            if actual != expected:
+                parts.append("AI 完整规则边界或优先顺序未核实")
         return "；".join(parts)
 
     def watch(self):
@@ -348,6 +390,12 @@ class SettingsService(object):
             watch["since"] = int(now)
             self.log("lines not in effect: %s" % problem)
         watch.update({"state": "missing", "problem": problem, "strikes": watch["strikes"] + 1})
+        line = config.get("ai_line") or {}
+        if line.get("enabled") and exit_policy.mode(line) == "locked":
+            live = self.proxies().get(line.get("group_name")) or {}
+            if live.get("now") not in (line.get("locked_node"), "REJECT", None):
+                watch["error"] = "外部选择漂移，暂停自动修复；请核对锁定目标"
+                return None
         if watch["strikes"] < WATCH_STRIKES or now < watch["next_attempt_at"]:
             return None
         if watch["stuck"] == problem:
@@ -396,7 +444,8 @@ class SettingsService(object):
         new = self.merged(changes)
         old = self.config()
         if not self._needs_clash(old, new):
-            return {"clash_change": False}
+            return {"clash_change": False, "policy_before": exit_policy.mode(old.get("ai_line") or {}),
+                    "policy_after": exit_policy.mode(new.get("ai_line") or {})}
         if not self._wants_lines(new):
             applied = self.applied()
             return {"clash_change": True, "action": "disable",
@@ -412,6 +461,9 @@ class SettingsService(object):
         plan.pop("texts", None)
         plan.pop("removed_items", None)
         plan.pop("restored_items", None)
+        plan.pop("original_runtime_rules", None)
+        plan["policy_before"] = exit_policy.mode(old.get("ai_line") or {})
+        plan["policy_after"] = exit_policy.mode(new.get("ai_line") or {})
         plan["clash_change"] = True
         plan["action"] = "apply"
         plan["rule_count"] = len(plan["rules"])
@@ -424,6 +476,8 @@ class SettingsService(object):
             new = self.merged(changes)
             old = self.config()
             result = {"clash_change": False}
+            original_applied = self.applied()
+            backup = None
             if self._needs_clash(old, new):
                 manager = self.manager(new)
                 if self._wants_lines(new):
@@ -434,9 +488,24 @@ class SettingsService(object):
                 else:
                     applied = manager.disable()
                     result = {"clash_change": True, "action": "disable"}
-                _atomic_json(self.applied_path, applied)
+                backup = applied.get("backup") if applied else getattr(manager, "last_backup", None)
+                try:
+                    _atomic_json(self.applied_path, applied)
+                    self.save_config(new)
+                except Exception as error:
+                    if backup:
+                        folder = pathlib.Path(backup)
+                        texts = {key: (folder / (key + ".yaml")).read_text(encoding="utf-8")
+                                 for key in ("groups", "rules", "runtime")}
+                        self.writer().commit(texts["groups"], texts["rules"], texts["runtime"],
+                                             {"action": "settings-persistence-rollback"})
+                        clash_profile._atomic_write(self.applied_path, json.dumps(original_applied, ensure_ascii=False))
+                        clash_profile._atomic_write(self.config_path, json.dumps(old, ensure_ascii=False))
+                        raise clash_profile.ProfileError("设置保存失败；内核、配置与应用记录已回滚：%s" % error)
+                    raise
                 self._watch = self._fresh_watch()
-            self.save_config(new)
+            else:
+                self.save_config(new)
             self.log("settings changed: %s" % json.dumps(result, ensure_ascii=False))
             return result
 

@@ -3,6 +3,7 @@
 import hashlib
 
 import route_policy
+import regions
 import state_contract
 
 
@@ -65,7 +66,10 @@ def _set_group_status(state, policy, policy_state, status, now):
 
 
 def _safe_observation(policy, proxy_data):
-    group = proxy_data.get(policy["discovery_group_name"])
+    group = ({"all": [name for name, item in proxy_data.items()
+                      if isinstance(item, dict) and "all" not in item
+                      and str(item.get("type") or "").lower() not in regions.NON_NODE_TYPES]}
+             if policy.get("discovery_inventory") else proxy_data.get(policy["discovery_group_name"]))
     if group is None:
         return None, "missing"
     if not isinstance(group, dict) or not isinstance(group.get("all"), list):

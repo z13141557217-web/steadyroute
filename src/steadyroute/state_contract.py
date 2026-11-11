@@ -29,7 +29,8 @@ GROUP_TRANSITIONS = {
     "no_candidate": {"recovery_observing", "stable"},
     "controller_offline": {"recovery_observing", "stable"},
 }
-GROUP_EXCEPTION_STATES = {"controller_offline", "no_candidate", "manual_hold"}
+GROUP_TRANSITIONS["exit_locked"] = {"stable", "degraded", "controller_offline", "no_candidate", "manual_hold"}
+GROUP_EXCEPTION_STATES = {"controller_offline", "no_candidate", "manual_hold", "exit_locked"}
 NODE_TRANSITIONS = {
     "discovered": {"warming"},
     "warming": {"healthy", "degraded"},
@@ -57,6 +58,11 @@ class InvalidTransitionError(StateContractError):
 SLOW_EXIT_VISIBLE_CYCLES = 6
 
 GROUP_DECISION_COPY = {
+    "exit_locked": {
+        "severity": "info", "title": "固定节点，保持明确目标",
+        "description": "受管 AI 流量只允许锁定节点；无法连接时拒绝，候选检测继续。",
+        "next_action_code": "keep_locked", "next_action": "更换节点需在设置中明确更新锁定目标。",
+    },
     "stable": {
         "severity": "ok", "title": "当前线路稳定且为最佳选择",
         "description": "当前线路健康，暂无已确认的更优候选。",

@@ -199,6 +199,13 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
   #check-table td.res { grid-column: 2; grid-row: 1; text-align: right; }
   #check-table td.hit, #check-table td.chain { grid-column: 1 / -1; }
 }
+ .policy-option{display:flex;gap:12px;padding:12px 0;align-items:flex-start;cursor:pointer}
+ .policy-option input{margin-top:5px;accent-color:var(--accent);min-width:20px;min-height:20px}
+ .policy-option small{display:block;margin:5px 0;line-height:1.6}
+ .policy-risk{display:flex;gap:6px;align-items:center;color:#b42318;font-size:13px;font-weight:600}
+ [data-theme="dark"] .policy-risk{color:#ff9a90}
+ @media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .policy-risk{color:#ff9a90}}
+ #locked-node{box-sizing:border-box;padding:10px;font:inherit;color:inherit;background:transparent;border:1px solid var(--hair-2);border-radius:8px}
 </style>
 </head>
 <body>
@@ -256,10 +263,16 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
     <p class="desc">ChatGPT、Claude 等 AI 服务固定从所选国家的家宽节点出口，不会跳到其他国家。</p>
     <div class="choices" id="choices" role="radiogroup" aria-label="AI 出口国家"></div>
     <div class="result" id="ai-result" aria-live="polite"></div>
-    <div class="grow opt" id="slow-row" hidden>
-      <div><b>节点变慢时更换</b><small id="slow-note"></small></div>
-      <label class="switch"><input type="checkbox" id="slow-exit" aria-label="节点变慢时更换"><i></i></label>
-    </div>
+    <fieldset id="exit-policy-fields" hidden style="border:0;padding:0;margin:24px 0">
+      <legend style="font-weight:650;margin-bottom:12px">出口策略</legend>
+      <div id="exit-policy-options"></div>
+      <p id="policy-status" class="desc" aria-live="polite"></p>
+      <label for="locked-node"><b>锁定节点</b></label>
+      <input id="locked-node" type="text" readonly style="width:100%;margin:8px 0" aria-describedby="locked-help">
+      <p id="locked-help" class="desc">使用当前明确选择的节点。要更换目标，请先在 Clash 中手动选择，再点击更新锁定；外部变化不会自动更新目标。</p>
+      <button class="btn" type="button" id="update-lock">将当前选择更新为锁定目标</button>
+      <p class="desc">固定节点故障或消失时，受管 AI 连接将无法完成。供应商动态公网 IP、上游 NAT 与其他客户端操作不由此策略保证。</p>
+    </fieldset>
     <details class="more" id="check">
       <summary>详情</summary>
       <div class="facts" id="ai-facts"></div>
@@ -449,7 +462,7 @@ function render() {
 
   const state = $('#ai-state');
   state.className = live() && !missing() ? 'state on' : l.enabled ? 'state warn' : 'state';
-  state.textContent = live() ? `${countryLabel(l.country)} · ${missing() ? '未生效' : '已生效'}` : l.enabled ? '尚未写入 Clash' : '未启用';
+  state.textContent = l.enabled && s.exit_policy && s.exit_policy.configured_mode === 'locked' ? (s.exit_policy.effective_mode === 'locked' ? `${countryLabel(l.country)} · 固定约束已核实` : '已保存固定 · 实际约束未核实') : live() ? `${countryLabel(l.country)} · ${missing() ? '未生效' : '已生效'}` : l.enabled ? '尚未写入 Clash' : '未启用';
 
   let result = '';
   if (live()) {
@@ -465,17 +478,21 @@ function render() {
     result = '<span class="dot warn"></span><span>设置已保存，尚未写入 Clash；确认 Clash Verge 正在运行后重新选择国家。</span>';
   }
   $('#ai-result').innerHTML = result;
-  const slowOn = l.slow_exit !== false;
-  $('#slow-row').hidden = !l.enabled;
-  $('#slow-exit').checked = slowOn;
-  $('#slow-note').textContent = slowOn
-    ? '当前节点在 15 分钟内累计 10 分钟明显慢于备用节点时，换到同国家的家宽节点；现有连接不中断，24 小时内最多 3 次。'
-    : '已关闭：只在节点故障时切换，节点变慢时保持出口不变。';
+  const policy = s.exit_policy || {};
+  const configured = policy.configured_mode || 'unknown';
+  const labels = {locked:'固定节点（推荐）',failover_only:'仅故障备援',adaptive:'自动择优'};
+  const descriptions = {locked:'仅允许指定节点。变慢、探测异常、故障或订阅移除时均不自动更换。',failover_only:'仅确认故障或节点移除后允许同国家备援，恢复后不自动回原节点。',adaptive:'性能持续下降或故障时允许自动更换同国家节点。'};
+  const warning = '<span class="policy-risk"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5m0 3v1"/></svg>可能改变出口IP，存在账号风控风险</span>';
+  $('#exit-policy-fields').hidden = !l.enabled;
+  $('#exit-policy-options').innerHTML = Object.keys(labels).map(mode => `<label class="policy-option"><input type="radio" name="exit-policy" value="${mode}" ${configured === mode ? 'checked' : ''}><span><b>${labels[mode]}</b><small>${descriptions[mode]}</small>${mode === 'locked' ? '' : warning}</span></label>`).join('');
+  $('#policy-status').textContent = `已保存：${labels[configured] || '未读取策略'}；${policy.effective_mode ? '已核实生效：'+labels[policy.effective_mode] : '实际约束尚未核实'}。${policy.reason || ''}${policy.legacy ? '（旧配置兼容，尚未明确选择新策略）' : ''}`;
+  $('#locked-node').value = l.locked_node || '尚未设置';
+  $('#update-lock').disabled = !s.current_ai_node || busy;
   const managed = s.managed_lines || [];
   $('#ai-facts').innerHTML = [
     `<div>Clash 中的分组：<b>${esc(l.group_name || 'AI 家宽专线')}</b>${live() ? ` · ${liveRules()} 条 AI 规则排在所有规则之前 · ${esc(ago(s.applied.at))}写入` : ''}</div>`,
-    '<div>只包含所选国家的家宽节点，订阅更新后自动跟随；节点全部不可用时拒绝连接，不会改走直连或其他国家。</div>',
-    `<div>按 ip.net.coffee 的要求：规则排在最前；UDP 与 NTP 时间同步同样经专线出口；${slowOn ? '节点故障或持续偏慢时才切换' : '只在节点故障时切换'}，出口 IP 尽量不变。</div>`,
+    `<div>${configured === 'locked' ? '只匹配已锁定的明确节点；移除或改名后拒绝连接，不认领其他节点。' : '候选跟随所选国家的家宽节点；组为空时拒绝连接。'}</div>`,
+    `<div>当前策略：${labels[configured]}。UDP 与 NTP 时间同步同样遵循受管专线边界。</div>`,
     managed.length ? `<div>其他家宽专线：${managed.map(x => `<b>${esc(x.group_name)}</b>（${esc(countryLabel(x.country))}家宽）`).join('、')}</div>` : '',
     (s.applied && (s.applied.dropped || []).length) ? `<div class="warnline">当前 Clash 内核缺少数据库，已跳过：${s.applied.dropped.map(x => esc(x.join(','))).join('、')}</div>` : '',
   ].join('');
@@ -540,7 +557,10 @@ function compareHtml(body, plan) {
   const rows = [], l = line();
   const migrating = body.migration === 'accept';
   const aiLabel = (on, country) => on && country ? `${countryLabel(country)}家宽` : '不使用';
-  if (body.ai_line) rows.push(['AI 服务出口', aiLabel(live(), l.country), aiLabel(body.ai_line.enabled, body.ai_line.country)]);
+  if (body.ai_line && ('enabled' in body.ai_line || 'country' in body.ai_line)) rows.push(['AI 服务出口', aiLabel(live(), l.country), aiLabel(body.ai_line.enabled ?? l.enabled, body.ai_line.country ?? l.country)]);
+  const policyLabels = {locked:'固定节点',failover_only:'仅故障备援',adaptive:'自动择优'};
+  if (plan.policy_after) rows.push(['出口策略', policyLabels[plan.policy_before] || plan.policy_before, policyLabels[plan.policy_after] || plan.policy_after]);
+  if (body.ai_line && body.ai_line.locked_node) rows.push(['锁定节点', l.locked_node || '未设置', body.ai_line.locked_node]);
   if (migrating && snap.migration && snap.migration.ai_line) rows.push(['AI 服务出口', '不使用', aiLabel(true, snap.migration.ai_line.country)]);
   (plan.lines || []).forEach(x => {
     const before = !x.exists ? '不存在' : migrating ? `固定列表 · ${x.before.length} 个节点` : `${x.before.length} 个节点`;
@@ -561,7 +581,11 @@ function compareHtml(body, plan) {
 function plainHtml(body, plan) {
   const exit = code => `之后 ChatGPT、Claude 等 AI 服务固定从${countryLabel(code)}家宽出口。${countryLabel(code)}家宽全部不可用时，这些网站会暂时无法访问，不会改走其他国家。`;
   let text = '';
-  if (body.migration === 'accept') {
+  if (body.ai_line && body.ai_line.exit_policy === 'locked') {
+    text = `只允许锁定节点「${body.ai_line.locked_node || line().locked_node}」。变慢、探测异常、故障或节点消失时均不自动换节点；无法完成的受管 AI 连接拒绝，不回退备用、DIRECT 或其他国家。固定节点不能保证供应商公网 IP 不变。`;
+  } else if (body.ai_line && body.ai_line.exit_policy) {
+    text = body.ai_line.exit_policy === 'failover_only' ? '仅在确认故障或节点移除时允许同国家备援，恢复后不自动返回原节点。' : '性能持续下降或故障时允许自动更换同国家节点。';
+  } else if (body.migration === 'accept') {
     const ai = snap.migration && snap.migration.ai_line;
     text = (ai ? exit(ai.country) : '') + '升级后的线路会自动包含订阅中新增的同国家家宽节点。';
   } else if (body.ai_line && body.ai_line.enabled) {
@@ -573,14 +597,16 @@ function plainHtml(body, plan) {
     const added = body.manual.filter(d => !before.includes(d)), removed = before.filter(d => !body.manual.includes(d));
     text = added.length ? `之后 ${added.join('、')} 及其子域名也从 AI 专线出口。` : `之后 ${removed.join('、')} 不再经过 AI 专线。`;
   }
-  return text ? `<p class="plain">${esc(text)}</p>` : '';
+  const risk = body.ai_line && ['failover_only','adaptive'].includes(body.ai_line.exit_policy)
+    ? '<p class="policy-risk"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5m0 3v1"/></svg>可能改变出口IP，存在账号风控风险</p>' : '';
+  return text ? `<p class="plain">${esc(text)}</p>${risk}` : '';
 }
 function linePreview(x) {
   const kept = x.after.filter(n => !x.added.includes(n));
   const items = x.added.map(n => `<li class="add">${esc(n)}</li>`)
     .concat(x.removed.map(n => `<li class="del">${esc(n)}</li>`))
     .concat(kept.map(n => `<li class="keep">${esc(n)}</li>`));
-  const empty = x.after.length ? '' : '<p class="badline">当前订阅中没有匹配的节点：分组会拒绝所有连接，直到出现该国家的家宽节点。</p>';
+  const empty = x.after.length ? '' : `<p class="badline">当前订阅中没有匹配的节点：分组会拒绝连接，直到${x.exit_policy === 'locked' ? '原锁定目标重新出现或明确更新锁定' : '出现该国家的家宽节点'}。</p>`;
   return `<div class="diff"><h4>${esc(x.group)} <span class="muted">${esc(x.country_label)}家宽 · ${x.after.length} 个节点</span></h4>${empty}<ul>${items.join('')}</ul></div>`;
 }
 /* 技术细节: everything that will be written, nothing left out. */
@@ -612,7 +638,7 @@ function techHtml(plan) {
       ['UDP', g['disable-udp'] ? '禁用' : '开启：UDP、QUIC、NTP 与网页同一出口'],
       ['切换时的已有连接', g['interrupt-exist-connections'] ? '中断' : '不中断，自然结束'],
     ].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('');
-    const empty = x.after.length ? '' : '<p class="badline">当前订阅中没有匹配的节点：分组会拒绝所有连接，直到出现该国家的家宽节点。</p>';
+    const empty = x.after.length ? '' : `<p class="badline">当前订阅中没有匹配的节点：分组会拒绝连接，直到${x.exit_policy === 'locked' ? '原锁定目标重新出现或明确更新锁定' : '出现该国家的家宽节点'}。</p>`;
     const unchanged = x.exists && same(x.before, x.after) && !(plan.removed_legacy || []).includes(g.name);
     html += sec(`分组「${g.name}」 · ${x.after.length} 个节点${unchanged ? '（不变）' : ''}`,
       `<dl class="kv tight">${facts}</dl>${empty}<ul class="members">${members}</ul>
@@ -663,7 +689,7 @@ async function submit(body, message) {
   try {
     const plan = await post('/api/settings/preview', body);
     if (plan.clash_change) {
-      const off = (body.ai_line && !body.ai_line.enabled) || plan.action === 'disable';
+      const off = (body.ai_line && body.ai_line.enabled === false) || plan.action === 'disable';
       const html = plainHtml(body, plan) + compareHtml(body, plan) +
         `<details class="more"><summary>技术细节</summary>${techHtml(plan)}</details>`;
       const ok = await confirmDialog(off ? '确认关闭 AI 专线' : '确认写入 Clash', '写入前自动备份并由 Clash 内核校验，失败会自动恢复原配置。', html, off ? '确认关闭' : '确认写入');
@@ -695,9 +721,16 @@ $('#choices').addEventListener('click', e => {
   if (code === 'off') submit({ ai_line: { enabled: false } }, '已关闭 AI 专线，AI 服务按 Clash 原有规则分流。');
   else submit({ ai_line: { enabled: true, country: code } }, r => `已生效：AI 服务从${countryLabel(code)}家宽出口（${r.rule_count} 条规则）。`);
 });
-$('#slow-exit').addEventListener('change', e => {
-  const on = e.target.checked;
-  submit({ ai_line: { slow_exit: on } }, on ? '已开启：节点持续偏慢时更换，24 小时内最多 3 次。' : '已关闭：只在节点故障时切换。');
+$('#exit-policy-options').addEventListener('change', e => {
+  if (!e.target.matches('input[name="exit-policy"]') || busy) return;
+  const mode = e.target.value;
+  const change = {enabled:true,country:line().country,exit_policy:mode};
+  if (mode === 'locked') change.locked_node = snap.current_ai_node;
+  submit({ai_line:change}, '出口策略已保存并完成内核核对。');
+});
+$('#update-lock').addEventListener('click', () => {
+  if (busy) return;
+  submit({ai_line:{enabled:true,country:line().country,exit_policy:'locked',locked_node:snap.current_ai_node}}, '已明确更新锁定目标并完成内核核对。');
 });
 $('#ai-result').addEventListener('click', e => { if (e.target.id === 'recheck') { check = null; render(); runCheck(); } });
 $('#manual-form').addEventListener('submit', e => {

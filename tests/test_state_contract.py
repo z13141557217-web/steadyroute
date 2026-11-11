@@ -38,7 +38,7 @@ class DecisionContractTests(unittest.TestCase):
             set(contract.GROUP_DECISION_COPY),
             {"stable", "candidate_confirming", "handover_pending", "handover_grace",
              "recovery_observing", "cooldown", "manual_hold", "degraded",
-             "failover_now", "no_candidate", "controller_offline"},
+             "failover_now", "no_candidate", "controller_offline", "exit_locked"},
         )
         self.assertEqual(
             set(contract.NODE_LIFECYCLE_COPY),

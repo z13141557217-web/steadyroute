@@ -17,10 +17,11 @@ import time
 
 try:
     import ai_rules
+    import exit_policy
     import clash_profile
     import regions
 except ModuleNotFoundError:  # pragma: no cover
-    from . import ai_rules, clash_profile, regions
+    from . import ai_rules, clash_profile, regions, exit_policy
 
 DEFAULT_AI_GROUP = "AI 家宽专线"
 # Checked 2026-09-30 against https://www.anthropic.com/supported-countries and
@@ -62,12 +63,15 @@ def members(code, node_names):
     return [name for name in node_names if include.search(name) and not exclude.search(name)]
 
 
-def group_definition(name, code, ai):
+def group_definition(name, code, ai, line=None):
     group = {
         "name": name, "type": "select", "include-all-proxies": True,
         "filter": line_filter(code), "exclude-filter": EXCLUDE_FILTER, "exclude-type": "direct",
         "empty-fallback": "REJECT", "interrupt-exist-connections": False,
     }
+    if ai and line and exit_policy.mode(line) == "locked":
+        exit_policy.validate(line)
+        group["filter"] = r"\A" + re.escape(line["locked_node"]) + r"\z"
     return group
 
 
@@ -126,7 +130,7 @@ class Manager(object):
         rule_lines, breakdown = self.rule_lines(drop)
         names = {line["name"] for line in lines}
         legacy = set(self.config.get("legacy_group_names") or []) | set(self.applied.get("groups") or [])
-        groups = [group_definition(line["name"], line["country"], line["ai"]) for line in lines]
+        groups = [group_definition(line["name"], line["country"], line["ai"], self.config.get("ai_line")) for line in lines]
         group_items = [clash_profile.group_item(group) for group in groups]
         rule_items = [clash_profile.rule_item(line) for line in rule_lines]
         groups_text = groups_file.read_text(encoding="utf-8")
@@ -141,6 +145,18 @@ class Manager(object):
         new_groups = clash_profile.insert_prepend_items(new_groups, restored)
         new_rules, _removed_rules = clash_profile.edit_prepend(rules_text, rule_items)
         runtime = self.target.runtime.read_text(encoding="utf-8")
+        # Remember unmarked user rules which runtime de-duplication replaces with our block.
+        original_rules = list(self.applied.get("original_runtime_rules") or [])
+        rule_rows = runtime_rule_items(runtime)
+        replaced = {clash_profile._normal_rule(item) for item in rule_items}
+        previous = set(self.applied.get("rules") or [])
+        for index, item in enumerate(rule_rows):
+            if item is None:
+                continue
+            normalized = clash_profile._normal_rule(item)
+            if normalized in replaced and normalized not in previous and not any(
+                    clash_profile._normal_rule(row["item"]) == normalized for row in original_rules):
+                original_rules.append({"index": index, "item": item})
         new_runtime = clash_profile.patch_runtime(
             runtime, group_items, rule_items, names | legacy, stale_rules=self.applied.get("rules") or [])
         new_runtime = insert_runtime_groups(new_runtime, [dedent_item(item) for item in restored])
@@ -150,11 +166,16 @@ class Manager(object):
         for line in lines:
             before = (proxy_data.get(line["name"]) or {}).get("all")
             after = members(line["country"], nodes)
+            policy = self.config.get("ai_line") or {}
+            if line["ai"] and exit_policy.mode(policy) == "locked":
+                after = [policy["locked_node"]] if policy["locked_node"] in after else []
             preview.append({
                 "group": line["name"], "country": line["country"], "country_label": regions.label(line["country"]),
                 "ai": line["ai"], "exists": before is not None,
                 "before": [n for n in (before or []) if n in proxy_data and is_node(proxy_data[n])],
                 "after": after,
+                "exit_policy": exit_policy.mode(policy) if line["ai"] else None,
+                "empty_behavior": "REJECT",
                 "added": [n for n in after if n not in (before or [])],
                 "removed": [n for n in (before or []) if n not in after and is_node(proxy_data.get(n))],
                 "ai_unsupported": line["ai"] and line["country"] in AI_UNSUPPORTED,
@@ -165,6 +186,7 @@ class Manager(object):
             "removed_rules": [line for line in self.applied.get("rules") or [] if line not in rule_lines],
             "removed_legacy": [clash_profile._item_name(item.splitlines()[0]) for item in removed_groups],
             "texts": {"groups": new_groups, "rules": new_rules, "runtime": new_runtime},
+            "original_runtime_rules": original_rules,
             "removed_items": removed_groups, "dropped": [list(item) for item in drop],
             "restored_items": restored,
             "restored": [clash_profile._item_name(item.splitlines()[0]) for item in restored],
@@ -205,14 +227,33 @@ class Manager(object):
         def verify():
             data = self.proxies_reader()
             missing = [name for name in names if name not in data]
+            line = self.config.get("ai_line") or {}
+            if line.get("enabled") and exit_policy.mode(line) == "locked":
+                evidence = exit_policy.status(line, data, rules_ok=True)
+                if evidence["effective_mode"] != "locked":
+                    raise clash_profile.ProfileError(evidence["reason"])
             if missing:
                 raise clash_profile.ProfileError("重新加载后没有看到分组：%s" % "、".join(missing))
+
+        def guard_current():
+            line = self.config.get("ai_line") or {}
+            if not line.get("enabled") or exit_policy.mode(line) != "locked":
+                return
+            live = self.proxies_reader().get(line.get("group_name")) or {}
+            # A prior applied lock may be absent after subscription removal; never rebind it.
+            prior = self.applied.get("exit_policy") or {}
+            continuing = prior.get("locked_node") == line.get("locked_node") and prior.get("group_name") == line.get("group_name")
+            allowed = (line["locked_node"], "REJECT", None) if continuing else (line["locked_node"],)
+            if live.get("now") not in allowed:
+                raise clash_profile.ProfileError("当前选择已变化；未重选或改写锁定目标，请重新核对")
 
         backup = self.writer.commit(
             plan["texts"]["groups"], plan["texts"]["rules"], plan["texts"]["runtime"],
             {"action": "apply", "at": int(time.time()), "profile_uid": plan["profile_uid"],
              "removed_items": plan["removed_items"], "previous_applied": self.applied},
-            verify=verify, keep_selection=names)
+            verify=verify, precondition=guard_current, keep_selection=[name for name in names if not (
+                name == (self.config.get("ai_line") or {}).get("group_name")
+                and exit_policy.mode(self.config.get("ai_line") or {}) == "locked")])
         removed = [item for item in self.applied.get("removed_items") or []
                    if item not in plan["restored_items"]] + plan["removed_items"]
         # Keep the original order of the groups we took out, so disable() puts them back as they were.
@@ -224,8 +265,11 @@ class Manager(object):
         removed.sort(key=lambda item: order.index(clash_profile._item_name(item.splitlines()[0])))
         self.applied = {
             "profile_uid": plan["profile_uid"], "groups": names, "rules": plan["rules"],
+            "original_runtime_rules": plan["original_runtime_rules"],
             "removed_items": removed, "removed_order": order, "dropped": plan["dropped"], "at": int(time.time()),
             "backup": str(backup), "first_rules": first_rules,
+            "exit_policy": {key: (self.config.get("ai_line") or {}).get(key)
+                            for key in ("exit_policy", "locked_node", "group_name")},
         }
         return plan, self.applied
 
@@ -240,7 +284,8 @@ class Manager(object):
             self.target.runtime.read_text(encoding="utf-8"), [], [],
             set(self.applied.get("groups") or []), stale_rules=self.applied.get("rules") or [])
         runtime = insert_runtime_groups(runtime, restored_runtime_groups)
-        self.writer.commit(groups_text, rules_text, runtime,
+        runtime = restore_runtime_rules(runtime, self.applied.get("original_runtime_rules") or [])
+        self.last_backup = self.writer.commit(groups_text, rules_text, runtime,
                            {"action": "disable", "at": int(time.time()), "profile_uid": uid,
                             "previous_applied": self.applied})
         self.applied = {}
@@ -278,3 +323,28 @@ def insert_runtime_groups(text, items):
     for item in items:
         block.extend(pad + line for line in item.splitlines())
     return "\n".join(lines[:at + 1] + block + lines[at + 1:]) + "\n"
+
+
+def runtime_rule_items(text):
+    lines = text.splitlines()
+    at = clash_profile._find_key(lines, "rules")
+    if at is None:
+        return []
+    indent, end = clash_profile._sequence(lines, at)
+    return [lines[first].strip()[2:] if last == first + 1 else None for first, last in
+            clash_profile._split_items(lines, at + 1, end, indent or 0)]
+
+
+def restore_runtime_rules(text, original_rules):
+    if not original_rules:
+        return text
+    lines = text.splitlines()
+    at = clash_profile._find_key(lines, "rules")
+    indent, end = clash_profile._sequence(lines, at)
+    spans = clash_profile._split_items(lines, at + 1, end, indent or 0)
+    rows = [lines[first:last] for first, last in spans]
+    for original in sorted(original_rules, key=lambda row: row["index"]):
+        item = original["item"]
+        if not any(clash_profile._normal_rule(row[0].strip()[2:]) == clash_profile._normal_rule(item) for row in rows):
+            rows.insert(min(original["index"], len(rows)), [" " * (indent or 0) + "- " + item])
+    return "\n".join(lines[:at + 1] + [line for row in rows for line in row] + lines[end:]) + "\n"

@@ -6,8 +6,9 @@ import re
 
 try:
     import regions
+    import exit_policy
 except ModuleNotFoundError:  # pragma: no cover - imported as a package in some tools
-    from . import regions
+    from . import regions, exit_policy
 
 
 SCHEMA_VERSION = 1
@@ -69,6 +70,7 @@ def validate_auto_lock_config(config):
     line = config.get("ai_line", {})
     if not isinstance(line, dict) or not isinstance(line.get("enabled", False), bool):
         raise PolicyConfigError("ai_line must be an object with a boolean enabled")
+    exit_policy.validate(line)
     if line.get("enabled"):
         if not isinstance(line.get("group_name"), str) or not line["group_name"].strip():
             raise PolicyConfigError("ai_line.group_name is required when enabled")
