@@ -321,6 +321,48 @@ class KernelBoundaryTests(unittest.TestCase):
         self.assertEqual(evidence['effective_mode'],'locked')
         self.evidence.append(dict(inherited_session='natural_completion',final_status=evidence['policy_status']))
 
+    def test_old_ruleset_group_session_survives_reload_and_is_reported(self):
+        import exit_policy
+        old = json.loads(self.config())
+        old['proxy-groups'].append(dict(name='Legacy AI', type='select', proxies=[BACKUP],
+                                       **{'interrupt-exist-connections': False}))
+        provider = self.home/'legacy-rules.yaml'
+        provider.write_text('payload:\n  - ai.invalid\n')
+        old['rule-providers'] = {'legacy-ai': dict(type='file', behavior='domain', format='yaml', path=str(provider))}
+        old['rules'] = ['RULE-SET,legacy-ai,Legacy AI', 'MATCH,DIRECT']
+        self.load(json.dumps(old))
+        held = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
+        try:
+            held.request('GET', 'http://ai.invalid:%d/hold' % self.origin.server_port)
+            response = held.getresponse()
+            before = self.get('/connections')['connections']
+            legacy = next(c for c in before if 'Legacy AI' in c['chains'])
+            self.assertEqual(legacy['rule'], 'RuleSet')
+            self.load(self.config())
+            self.request('/new-after-legacy', chain=TARGET)
+            connections = self.get('/connections')['connections']
+            self.assertIn(legacy['id'], [c['id'] for c in connections])
+            evidence = exit_policy.status(self.line, self.get('/proxies')['proxies'], True,
+                connections=connections, managed_rules=['DOMAIN,ai.invalid,' + GROUP])
+            self.assertEqual(evidence['inherited_connections'], 1)
+            self.assertEqual(evidence['policy_status'], 'inherited_sessions')
+            self.assertIsNone(evidence['effective_mode'])
+            self.hold.set()
+            self.assertEqual(response.read(), b'backup')
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                evidence = exit_policy.status(self.line, self.get('/proxies')['proxies'], True,
+                    connections=self.get('/connections')['connections'], managed_rules=['DOMAIN,ai.invalid,' + GROUP])
+                if evidence['effective_mode'] == 'locked':
+                    break
+                time.sleep(.01)
+            self.assertEqual(evidence['effective_mode'], 'locked')
+            self.evidence.append(dict(old_rule=legacy['rule'], old_chain=legacy['chains'],
+                old_id_retained=True, new_chain=TARGET, final_status=evidence['policy_status']))
+        finally:
+            self.hold.set()
+            held.close()
+
     def test_mutations_are_detected_by_real_backup_and_direct_hits(self):
         self.load(self.config(mutate='backup'))
         self.request('/managed',expected='backup',chain=BACKUP)

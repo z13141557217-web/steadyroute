@@ -1,5 +1,6 @@
 """Authorization, inventory, migration and evidence are independent of serving selection."""
 import copy
+import json
 import pathlib
 import sys
 import unittest
@@ -87,6 +88,20 @@ class AuthorizationTests(unittest.TestCase):
         self.data[GROUP]['all'] += [BACKUP]
         self.assertIsNone(exit_policy.status(self.line,self.data,True)['effective_mode'])
 
+    def test_dashboard_reports_off_target_session_from_old_group(self):
+        applied = {'groups': [GROUP], 'rules': ['DOMAIN-SUFFIX,claude.ai,' + GROUP]}
+        service = mock.Mock()
+        service.applied.return_value = applied
+        service.line_problems.return_value = ''
+        connections = [dict(id='old-session', metadata={'host': 'claude.ai'},
+                            chains=['other exit', 'legacy AI'], rule='RuleSet', rulePayload='claude')]
+        with mock.patch.object(self.router, 'SETTINGS', service):
+            snapshot = self.router.build_status_snapshots(self.state, self.data, connections, now=10000, memory_mb=20)
+        group = next(g for g in snapshot['v1']['groups'] if g['name'] == GROUP)
+        self.assertEqual(group['exit_policy']['inherited_connections'], 1)
+        self.assertEqual(group['decision']['severity'], 'warning')
+        self.assertIsNone(group['exit_policy']['effective_mode'])
+
 
 class SettingsTests(ServiceBase):
     def changes(self):
@@ -124,3 +139,59 @@ class SettingsTests(ServiceBase):
         with self.assertRaises(Exception): self.service.merged(changes)
         changes=self.changes();changes['ai_line']['exit_policy']='unknown'
         with self.assertRaises(Exception): self.service.merged(changes)
+
+    def test_snapshot_reports_old_group_claude_connection_without_writes(self):
+        line = self.changes()['ai_line']
+        config = self.service.config()
+        config['ai_line'] = line
+        self.config_path.write_text(json.dumps(config))
+        applied = {'groups': [line['group_name']],
+                   'rules': ['DOMAIN-SUFFIX,claude.ai,' + line['group_name']]}
+        connections = [dict(id='old-session', metadata={'host': 'claude.ai'},
+                            chains=['other exit', 'old AI group'], rule='RuleSet', rulePayload='claude')]
+        original = self.service._get
+        def get(path):
+            return {'connections': connections} if path == '/connections' else original(path)
+        proxies = self.clash.proxies()
+        proxies[line['group_name']].update(all=[NODES[0]], now=NODES[0])
+        with mock.patch.object(self.service, 'applied', return_value=applied), \
+                mock.patch.object(self.service, 'proxies', return_value=proxies), \
+                mock.patch.object(self.service, 'line_problems', return_value=''), \
+                mock.patch.object(self.service, '_get', side_effect=get):
+            policy = self.service.snapshot()['exit_policy']
+        self.assertEqual(policy['inherited_connections'], 1)
+        self.assertEqual(policy['policy_status'], 'inherited_sessions')
+        self.assertIsNone(policy['effective_mode'])
+        self.assertFalse(any(method != 'GET' for method, path in self.clash.calls))
+
+
+class ExistingConnectionTests(unittest.TestCase):
+    def test_rule_metadata_recognizes_legacy_groups_without_matching_unrelated_traffic(self):
+        rules = ['DOMAIN-SUFFIX,claude.ai,' + GROUP, 'DOMAIN,exact.invalid,' + GROUP,
+                 'DOMAIN-KEYWORD,datadog,' + GROUP, 'IP-CIDR,192.0.2.0/24,' + GROUP,
+                 'IP-CIDR6,2001:db8::/32,' + GROUP, 'PROCESS-NAME,Claude,' + GROUP,
+                 'GEOSITE,category-ai-!cn,' + GROUP, 'DOMAIN-SUFFIX,other.invalid,Other group']
+        line = dict(enabled=True, group_name=GROUP, exit_policy='locked', locked_node=TARGET)
+        proxies = {TARGET: {'type': 'Http'}, GROUP: {'type': 'Selector', 'all': [TARGET], 'now': TARGET}}
+        positive = [
+            {'host': 'Claude.AI.'}, {'host': 'api.claude.ai'}, {'host': 'exact.invalid'},
+            {'host': 'browser-datadog.invalid'}, {'destinationIP': '192.0.2.55'},
+            {'destinationIP': '2001:db8::55'}, {'process': 'Claude'}, {'processPath': '/apps/Claude'},
+        ]
+        negative = [
+            {}, {'host': 'notclaude.ai'}, {'host': 'claude.ai.attacker.invalid'},
+            {'host': 'sub.exact.invalid'}, {'host': 'other.invalid'}, {'destinationIP': '192.0.3.55'},
+            {'destinationIP': 'invalid'}, {'process': 'Claude Helper'},
+        ]
+        for metadata in positive + negative:
+            with self.subTest(metadata=metadata):
+                connection = dict(metadata=metadata, chains=['other exit', 'legacy group'])
+                policy = exit_policy.status(line, proxies, True, connections=[connection], managed_rules=rules)
+                self.assertEqual(policy['inherited_connections'], int(metadata in positive))
+                connection['chains'] = [TARGET, 'legacy group']
+                self.assertEqual(exit_policy.status(line, proxies, True, connections=[connection],
+                                                   managed_rules=rules)['inherited_connections'], 0)
+        recorded = dict(chains=['other exit'], rule='GeoSite', rulePayload='category-ai-!cn')
+        self.assertTrue(exit_policy.managed_connection(recorded, GROUP, rules))
+        recorded.update(rule='RuleSet', rulePayload='unknown-ai-provider')
+        self.assertFalse(exit_policy.managed_connection(recorded, GROUP, rules))

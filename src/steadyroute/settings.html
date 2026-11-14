@@ -468,9 +468,9 @@ function render() {
   if (live()) {
     const label = countryLabel(l.country);
     const full = check && !check.error && check.ok === check.total;
-    const text = !check ? '正在核对 AI 地址的去向…'
+    const text = !check ? '正在按当前规则推演 AI 地址的去向…'
       : check.error ? `核对失败：${esc(check.error)}`
-      : `<b>${check.ok} / ${check.total}</b> 项 AI 地址经${esc(label)}家宽出口${full ? '' : '，其余见详情'}`;
+      : `<b>${check.ok} / ${check.total}</b> 项 AI 地址的当前规则指向${esc(label)}家宽节点${full ? '' : '，其余见详情'}（规则推演，非公网 IP 实测）`;
     result = `<span class="dot${full || !check ? '' : ' warn'}"></span><span>${text}</span>
       <span class="links"><button type="button" id="recheck">重新核对</button><a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">出口 IP ↗</a><a href="https://ip.net.coffee/dns/" target="_blank" rel="noopener noreferrer">DNS 泄露 ↗</a><a href="https://ip.net.coffee/webrtc/" target="_blank" rel="noopener noreferrer">WebRTC ↗</a></span>`;
     if (s.ipv6) result += '<span class="warnline" style="flex-basis:100%">Clash 已开启 IPv6；ip.net.coffee 建议关闭 IPv6 后再访问 Claude。</span>';

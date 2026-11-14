@@ -994,14 +994,17 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
         if line:
             service = SETTINGS
             rules_ok = False
+            applied_rules = []
             if service and state.get("controller_connected", bool(proxy_data)):
                 try:
-                    rules_ok = bool(service.applied().get("groups")) and not service.line_problems(service.applied())
+                    applied = service.applied()
+                    applied_rules = applied.get("rules") or []
+                    rules_ok = bool(applied.get("groups")) and not service.line_problems(applied)
                 except Exception:
                     pass
             policy_status = exit_policy.status(line, proxy_data if state.get("controller_connected", bool(proxy_data)) else None,
                 rules_ok=rules_ok, probe_ok=state.get("nodes", {}).get(line.get("locked_node"), {}).get("last_success"),
-                connections=connections)
+                connections=connections, managed_rules=applied_rules)
             if exit_policy.mode(line) == "locked":
                 decision = dict(decision, code="exit_locked", reason_code=policy_status["policy_status"], severity="ok" if policy_status["policy_status"] == "locked" else "warning",
                     title="固定节点 · " + policy_status["reason"], detail="不会自动更换节点；供应商公网 IP 变化无法由固定策略保证。",

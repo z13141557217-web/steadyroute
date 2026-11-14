@@ -273,7 +273,8 @@ class SettingsService(object):
             result["exit_policy"] = exit_policy.status(config.get("ai_line") or {}, proxies,
                 rules_ok=bool(applied.get("groups")) and not self.line_problems(applied),
                 connections=(self._get("/connections").get("connections") or [])
-                if exit_policy.mode(config.get("ai_line") or {}) == "locked" else [])
+                if exit_policy.mode(config.get("ai_line") or {}) == "locked" else [],
+                managed_rules=applied.get("rules") or [])
             result["current_ai_node"] = (proxies.get((config.get("ai_line") or {}).get("group_name")) or {}).get("now")
             result["countries"] = ai_line.country_choices(proxies)
             result["groups"] = sorted(set(auto_lock.managed_groups(proxies)) | set(result["exclude_groups"]))

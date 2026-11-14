@@ -1,5 +1,13 @@
 """AI exit authorization and live evidence. No controller writes or inferred user intent."""
 
+import ipaddress
+import os
+
+try:
+    import ai_check
+except ModuleNotFoundError:  # pragma: no cover
+    from . import ai_check
+
 MODES = ("locked", "failover_only", "adaptive")
 LABELS = {"locked": "固定节点", "failover_only": "仅故障备援", "adaptive": "自动择优"}
 
@@ -27,7 +35,40 @@ def authorizes(line, reason):
     return policy == "adaptive" or reason in ("confirmed_failure", "removed")
 
 
-def status(line, proxies=None, rules_ok=False, probe_ok=None, connections=()):
+def managed_connection(connection, group, rules):
+    """Recognize existing AI sessions even when their chain predates the managed group.
+
+    Only use the applied AI rules and observable metadata; a provider/group name containing
+    'AI' is not membership evidence. GEOSITE/ASN need an exact recorded rule hit when no
+    directly testable domain, address or process is available. Never query or change routing.
+    """
+    if group in (connection.get("chains") or []):
+        return True
+    metadata = connection.get("metadata") or {}
+    host = str(metadata.get("host") or "").lower().rstrip(".")
+    process = metadata.get("process") or os.path.basename(metadata.get("processPath") or "")
+    recorded = (ai_check.norm(connection.get("rule")), str(connection.get("rulePayload") or "").lower())
+    for rule in rules or ():
+        parts = str(rule).split(",")
+        if len(parts) < 3 or parts[2] != group:
+            continue
+        kind, value = ai_check.norm(parts[0]), parts[1]
+        if recorded == (kind, value.lower()):
+            return True
+        if host and ai_check.domain_hit(kind, value, host):
+            return True
+        if kind == "processname" and process and process == value:
+            return True
+        if kind in ("ipcidr", "ipcidr6"):
+            try:
+                if ipaddress.ip_address(metadata.get("destinationIP")) in ipaddress.ip_network(value, strict=False):
+                    return True
+            except ValueError:
+                pass
+    return False
+
+
+def status(line, proxies=None, rules_ok=False, probe_ok=None, connections=(), managed_rules=()):
     configured = mode(line)
     result = {"configured_mode": configured, "effective_mode": None,
               "locked_node": line.get("locked_node"), "policy_status": "disabled",
@@ -58,10 +99,10 @@ def status(line, proxies=None, rules_ok=False, probe_ok=None, connections=()):
         if present and probe_ok is False:
             result.update(policy_status="probe_abnormal", reason="锁定节点探测异常；保持目标，不清理健康会话")
         inherited = sum(1 for connection in (connections or ())
-                        if line.get("group_name") in (connection.get("chains") or [])
+                        if managed_connection(connection, line.get("group_name"), managed_rules)
                         and target not in (connection.get("chains") or []))
         result["inherited_connections"] = inherited
         if inherited:
             result.update(effective_mode=None, policy_status="inherited_sessions",
-                          reason="新连接已约束；%d 条历史连接仍在其他出口，等待自然结束" % inherited)
+                          reason="新连接规则已约束；%d 条现有受管 AI 连接仍在其他出口，等待自然结束" % inherited)
     return result
