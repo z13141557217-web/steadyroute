@@ -71,7 +71,7 @@ class Probe(http.server.BaseHTTPRequestHandler):
             self.send_header('Content-Length',str(len(body)))
             self.end_headers()
             self.wfile.write(body[:1]);self.wfile.flush()
-            if path == '/hold' and route in ('target','backup'):
+            if (path == '/hold' and route in ('target','backup')) or (path == '/hold-direct' and route == 'origin'):
                 lab.hold.wait(30)
             else:
                 time.sleep(.05)  # keep a live /connections entry for proxy-chain evidence
@@ -134,7 +134,9 @@ class KernelBoundaryTests(unittest.TestCase):
         deadline=time.monotonic()+10
         while time.monotonic()<deadline:
             try:
-                if self.ctl('GET','/version')[0]==200:return
+                if self.ctl('GET','/version')[0]==200:
+                    self.wait_for_listener()
+                    return
             except OSError:pass
             time.sleep(.05)
         self.fail('isolated core did not start')
@@ -149,6 +151,20 @@ class KernelBoundaryTests(unittest.TestCase):
         clash_profile.core_validator(real_core.CORE,self.home)(text)
         status,body=self.ctl('PUT','/configs?force=true',dict(path='',payload=text))
         self.assertEqual(status,204,body)
+        self.wait_for_listener()
+
+    def wait_for_listener(self):
+        # The controller can answer before its separate mixed listener is bound after load.
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if self.process.poll() is not None:
+                self.fail('isolated core exited: ' + (self.home/'core.log').read_text()[-3000:])
+            try:
+                with socket.create_connection(('127.0.0.1', self.port), timeout=.1):
+                    return
+            except OSError:
+                time.sleep(.01)
+        self.fail('isolated mixed listener not ready: ' + (self.home/'core.log').read_text()[-3000:])
 
     def request(self,path='/ok',host='ai.invalid',expected='target',chain=None):
         client=http.client.HTTPConnection('127.0.0.1',self.port,timeout=2)
@@ -307,7 +323,7 @@ class KernelBoundaryTests(unittest.TestCase):
         self.load(self.config())
         self.request('/new-locked',chain=TARGET)
         evidence=exit_policy.status(self.line,self.get('/proxies')['proxies'],True,
-                                    connections=self.get('/connections')['connections'])
+                                    connections=exit_policy.connection_snapshot(self.get('/connections')))
         self.assertEqual(evidence['policy_status'],'inherited_sessions')
         self.assertIsNone(evidence['effective_mode'])
         self.assertGreaterEqual(evidence['inherited_connections'],1)
@@ -315,10 +331,12 @@ class KernelBoundaryTests(unittest.TestCase):
         deadline=time.monotonic()+2
         while time.monotonic()<deadline:
             evidence=exit_policy.status(self.line,self.get('/proxies')['proxies'],True,
-                                        connections=self.get('/connections')['connections'])
-            if evidence['effective_mode']=='locked':break
+                                        connections=exit_policy.connection_snapshot(self.get('/connections')))
+            if evidence['connections']['status']=='no_sessions':break
             time.sleep(.01)
-        self.assertEqual(evidence['effective_mode'],'locked')
+        self.assertTrue(evidence['boundary_verified'])
+        self.assertEqual(evidence['policy_status'],'no_sessions')
+        self.assertIsNone(evidence['effective_mode'])
         self.evidence.append(dict(inherited_session='natural_completion',final_status=evidence['policy_status']))
 
     def test_old_ruleset_group_session_survives_reload_and_is_reported(self):
@@ -352,11 +370,13 @@ class KernelBoundaryTests(unittest.TestCase):
             deadline = time.monotonic() + 2
             while time.monotonic() < deadline:
                 evidence = exit_policy.status(self.line, self.get('/proxies')['proxies'], True,
-                    connections=self.get('/connections')['connections'], managed_rules=['DOMAIN,ai.invalid,' + GROUP])
-                if evidence['effective_mode'] == 'locked':
+                    connections=exit_policy.connection_snapshot(self.get('/connections')), managed_rules=['DOMAIN,ai.invalid,' + GROUP])
+                if evidence['connections']['status'] == 'no_sessions':
                     break
                 time.sleep(.01)
-            self.assertEqual(evidence['effective_mode'], 'locked')
+            self.assertTrue(evidence['boundary_verified'])
+            self.assertEqual(evidence['policy_status'], 'no_sessions')
+            self.assertIsNone(evidence['effective_mode'])
             self.evidence.append(dict(old_rule=legacy['rule'], old_chain=legacy['chains'],
                 old_id_retained=True, new_chain=TARGET, final_status=evidence['policy_status']))
         finally:
@@ -370,3 +390,52 @@ class KernelBoundaryTests(unittest.TestCase):
         self.load(self.config(mutate='direct'))
         self.request('/direct-mutant',expected='DIRECT',chain='DIRECT')
         self.assertGreater(self.hits[('origin','/direct-mutant')],0)
+
+    def test_direct_existing_ai_session_is_reported_after_lock(self):
+        import exit_policy
+        old = json.loads(self.config())
+        old['rules'] = ['DOMAIN,ai.invalid,DIRECT', 'MATCH,DIRECT']
+        self.load(json.dumps(old))
+        held = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
+        try:
+            held.request('GET', 'http://ai.invalid:%d/hold-direct' % self.origin.server_port)
+            response = held.getresponse()
+            self.load(self.config())
+            self.request('/new-after-direct', chain=TARGET)
+            evidence = exit_policy.status(self.line, self.get('/proxies')['proxies'], True,
+                connections=self.get('/connections')['connections'], managed_rules=['DOMAIN,ai.invalid,' + GROUP])
+            self.assertEqual(evidence['connections']['foreign'], 1)
+            self.assertIsNone(evidence['effective_mode'])
+            self.assertNotEqual(evidence['severity'], 'ok')
+            self.hold.set()
+            self.assertEqual(response.read(), b'DIRECT')
+            self.evidence.append(dict(existing_direct_foreign=1, new_chain=TARGET, erroneous_green=0))
+        finally:
+            self.hold.set()
+            held.close()
+
+    def test_other_country_existing_ai_session_is_reported_after_lock(self):
+        import exit_policy
+        other = '日本 isolated exit'
+        current = json.loads(self.config())
+        current['proxies'].append(dict(name=other, type='http', server='127.0.0.1', port=self.backup.server_port))
+        old = dict(current, rules=['DOMAIN,ai.invalid,' + other, 'MATCH,DIRECT'])
+        self.load(json.dumps(old))
+        held = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
+        try:
+            held.request('GET', 'http://ai.invalid:%d/hold' % self.origin.server_port)
+            response = held.getresponse()
+            self.load(json.dumps(current))
+            self.request('/new-after-other-country', chain=TARGET)
+            evidence = exit_policy.status(self.line, self.get('/proxies')['proxies'], True,
+                connections=self.get('/connections')['connections'], managed_rules=['DOMAIN,ai.invalid,' + GROUP])
+            self.assertEqual(evidence['connections']['foreign'], 1)
+            self.assertEqual(evidence['connections']['unknown'], 0)
+            self.assertIsNone(evidence['effective_mode'])
+            self.assertNotEqual(evidence['severity'], 'ok')
+            self.hold.set()
+            self.assertEqual(response.read(), b'backup')
+            self.evidence.append(dict(existing_other_country_foreign=1, new_chain=TARGET, erroneous_green=0))
+        finally:
+            self.hold.set()
+            held.close()

@@ -1004,10 +1004,12 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
                     pass
             policy_status = exit_policy.status(line, proxy_data if state.get("controller_connected", bool(proxy_data)) else None,
                 rules_ok=rules_ok, probe_ok=state.get("nodes", {}).get(line.get("locked_node"), {}).get("last_success"),
-                connections=connections, managed_rules=applied_rules)
+                connections=connections if state.get("connections_observed_at") is not None else None,
+                managed_rules=applied_rules, now=now, checked_at=state.get("proxies_observed_at", 0),
+                connections_checked_at=state.get("connections_observed_at"))
             if exit_policy.mode(line) == "locked":
-                decision = dict(decision, code="exit_locked", reason_code=policy_status["policy_status"], severity="ok" if policy_status["policy_status"] == "locked" else "warning",
-                    title="固定节点 · " + policy_status["reason"], detail="不会自动更换节点；供应商公网 IP 变化无法由固定策略保证。",
+                decision = dict(decision, code="exit_locked", reason_code=policy_status["policy_status"], severity=policy_status["severity"],
+                    title=policy_status["summary"], detail=policy_status["evidence_detail"],
                     next_action_code="keep_locked", next_action="保持目标；需要更换时在设置中明确更新锁定。")
         previous = group_state.get("decision_code")
         group_state["decision_code"] = decision["code"]
@@ -1332,6 +1334,8 @@ def update_dashboard_cache(snapshots):
         "snapshot_id": snapshots["snapshot_id"],
         "v1": json.dumps(snapshots["v1"], ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
         "legacy": json.dumps(snapshots["legacy"], ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+        "policy_expires_at": min((group["exit_policy"]["expires_at"] for group in snapshots["v1"]["groups"]
+                                  if (group.get("exit_policy") or {}).get("expires_at") is not None), default=None),
     }
     with DASHBOARD_CACHE_LOCK:
         DASHBOARD_CACHE = encoded
@@ -1339,7 +1343,27 @@ def update_dashboard_cache(snapshots):
 
 def read_dashboard_cache(kind):
     with DASHBOARD_CACHE_LOCK:
-        return None if DASHBOARD_CACHE is None else DASHBOARD_CACHE.get(kind)
+        content = None if DASHBOARD_CACHE is None else DASHBOARD_CACHE.get(kind)
+        expires_at = None if DASHBOARD_CACHE is None else DASHBOARD_CACHE.get("policy_expires_at")
+    now = time.time()
+    if content is None or expires_at is None or now <= expires_at:
+        return content
+    # Cache reads never scan connections or query the controller. Only age existing evidence.
+    payload = json.loads(content)
+    for group in payload.get("groups", []):
+        evidence = group.get("exit_policy")
+        if not evidence:
+            continue
+        aged = exit_policy.age_status(evidence, now)
+        group["exit_policy"] = aged
+        if aged != evidence:
+            if kind == "v1":
+                group["decision"].update(reason_code=aged["policy_status"], severity=aged["severity"],
+                                         title=aged["summary"], detail=aged["evidence_detail"])
+            else:
+                group.update(decision=aged["summary"], decision_severity=aged["severity"],
+                             decision_detail=aged["evidence_detail"])
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
 NODES_CACHE = None
@@ -3211,7 +3235,11 @@ def run_fast_tick(dry_run=False):
         state = load_state()
         try:
             proxy_data = (api_request("GET", "/proxies") or {}).get("proxies") or {}
-            connections = (api_request("GET", "/connections") or {}).get("connections") or []
+            state["proxies_observed_at"] = time.time()
+            response = api_request("GET", "/connections") or {}
+            snapshot = exit_policy.connection_snapshot(response)
+            connections = snapshot or []
+            state["connections_observed_at"] = time.time() if snapshot is not None else None
         except Exception:
             return "controller_error"
         for group_name in confirmed:
@@ -3352,13 +3380,17 @@ def plan_cycle():
         raise
     proxy_data = proxy_response.get("proxies") or {}
     state["controller_connected"] = True
+    state["proxies_observed_at"] = time.time()
     refresh_auto_lock(state, proxy_data, cycle_started_at)
     candidate_registry.reconcile(POLICY_CONFIG, state, proxy_data, cycle_started_at)
     try:
         connection_response = api_request("GET", "/connections") or {}
-        connections = connection_response.get("connections") or []
+        snapshot = exit_policy.connection_snapshot(connection_response)
+        connections = snapshot or []
+        state["connections_observed_at"] = time.time() if snapshot is not None else None
     except Exception:
         connections = []
+        state["connections_observed_at"] = None
     targets = choose_probe_targets(state, proxy_data)
     RUNTIME["plan_proxy_data"] = proxy_data
 
@@ -3409,6 +3441,8 @@ def plan_cycle():
     return dict(clock=cycle_clock, started=cycle_started_at, resume=resume_cycle, targets=targets, jobs=jobs,
                 state=state, generation=STATE_GENERATION[0],
                 business_plan=business_plan, connections=connections,
+                connections_observed_at=state.get("connections_observed_at"),
+                proxies_observed_at=state.get("proxies_observed_at"),
                 currents={group: current_for_group(proxy_data, group, candidates) for group, candidates in GROUPS.items()})
 
 
@@ -3441,9 +3475,14 @@ def record_cycle(plan, results, retry, dry_run):
                     fresh[key] = group_state[key]
     try:
         proxy_data = (api_request("GET", "/proxies") or {}).get("proxies") or {}
+        state["proxies_observed_at"] = time.time()
+        state["controller_connected"] = True
     except Exception:
         proxy_data = RUNTIME.get("plan_proxy_data") or {}
+        state["proxies_observed_at"] = plan.get("proxies_observed_at", 0)
+        state["controller_connected"] = False
     connections = plan["connections"]
+    state["connections_observed_at"] = plan.get("connections_observed_at")
     for group_name, candidates in GROUPS.items():
         if current_for_group(proxy_data, group_name, candidates) != plan["currents"].get(group_name):
             # The fast lane (or the user) moved this line while the probes ran.

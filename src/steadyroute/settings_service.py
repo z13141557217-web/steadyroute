@@ -269,12 +269,18 @@ class SettingsService(object):
             },
         }
         try:
+            checked_at = self.clock()
             proxies = self.proxies()
+            connections = None
+            try:
+                response = self._get("/connections")
+                connections = exit_policy.connection_snapshot(response)
+            except Exception:
+                pass  # Unavailable evidence must never become a successful empty observation.
             result["exit_policy"] = exit_policy.status(config.get("ai_line") or {}, proxies,
                 rules_ok=bool(applied.get("groups")) and not self.line_problems(applied),
-                connections=(self._get("/connections").get("connections") or [])
-                if exit_policy.mode(config.get("ai_line") or {}) == "locked" else [],
-                managed_rules=applied.get("rules") or [])
+                connections=connections, managed_rules=applied.get("rules") or [],
+                checked_at=checked_at, connections_checked_at=checked_at, now=self.clock())
             result["current_ai_node"] = (proxies.get((config.get("ai_line") or {}).get("group_name")) or {}).get("now")
             result["countries"] = ai_line.country_choices(proxies)
             result["groups"] = sorted(set(auto_lock.managed_groups(proxies)) | set(result["exclude_groups"]))
@@ -325,7 +331,7 @@ class SettingsService(object):
         line = self.config().get("ai_line") or {}
         if line.get("enabled") and exit_policy.mode(line) == "locked":
             evidence = exit_policy.status(line, proxies, rules_ok=True)
-            if evidence["effective_mode"] != "locked":
+            if not evidence["boundary_verified"]:
                 parts.append(evidence["reason"])
         ours = []
         for line in applied.get("rules") or []:

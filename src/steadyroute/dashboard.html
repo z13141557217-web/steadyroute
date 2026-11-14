@@ -793,7 +793,15 @@ function setText(el, text) {
 /* ====================================================================
    State
    ==================================================================== */
-let snapshot = null;
+let snapshot = null, statusReadFailed = false;
+function visiblePolicyGroup(group) {
+  const policy = group.exit_policy;
+  if (!policy || policy.configured_mode !== 'locked') return group;
+  const expired = policy.expires_at != null && nowSeconds() > policy.expires_at;
+  if (!statusReadFailed && !expired) return group;
+  return {...group, decision:statusReadFailed ? policy.unavailable_summary : policy.stale_summary,
+    decision_severity:'warning', decision_detail:policy.evidence_detail};
+}
 let activeFilter = 'focus';
 let rangeSeconds = 300;
 let nodeSort = 'recent';
@@ -909,6 +917,7 @@ function resumeNote(s) {
 }
 
 function renderHead(d) {
+  d = {...d, groups:d.groups.map(visiblePolicyGroup)};
   const now = nowSeconds(), s = d.service;
   const seen = s.last_probe_at ?? s.updated_at;
   const a = seen == null ? null : Math.max(0, Math.round(now - seen));
@@ -1068,7 +1077,8 @@ function ensureRoutes(d) {
 
 function renderRoutes(d) {
   const box = ensureRoutes(d);
-  d.groups.forEach(g => {
+  d.groups.forEach(raw => {
+    const g = visiblePolicyGroup(raw);
     const card = box.querySelector(`.route[data-group="${CSS.escape(g.name)}"]`);
     if (!card) return;
     const f = name => card.querySelector(`[data-f="${name}"]`);
@@ -1086,7 +1096,7 @@ function renderRoutes(d) {
       f('ai').dataset.lost = lost ? '1' : '0';
       setText(f('ai'), lost ? 'AI 专线未生效' : 'AI 专线');
       f('ai').title = lost ? 'Clash 正在运行的配置中没有 AI 专线的规则，稳航正在重新写入；详情见设置页'
-        : 'AI 家宽专线：ChatGPT、Claude 等 AI 服务的流量经此分组';
+        : '受管 AI 规则指向此分组；实际连接以核验状态为准';
     }
     /* Share edition: the lock is the key fact, so it sits on the current-node line where it
        never gets squeezed out; the fixed profile keeps its short note beside the title. */
@@ -1790,8 +1800,12 @@ async function refresh() {
   try {
     const r = await fetch('/api/status', { cache: 'no-store' });
     if (!r.ok) throw Error(r.status);
-    render(await r.json());
+    const data = await r.json();
+    statusReadFailed = false;
+    render(data);
   } catch (e) {
+    statusReadFailed = true;
+    if (snapshot) { renderHead(snapshot); renderRoutes(snapshot); }
     $('#status-pill').dataset.sev = 'bad';
     setText($('#status-title'), '暂时无法连接');
     setText($('#head-meta'), '请稍后刷新，稳航会自动恢复');

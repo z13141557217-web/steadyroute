@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前独立修复分支 `fix/inherited-ai-sessions` 形成 `0.7.0-rc.2` 候选，基于已发布 rc.1 源提交 `0aae09c`。修复固定核验遗漏旧 AI 分组会话的问题，设置和看板按已应用规则与元数据识别其他出口的受管连接；“34/34”明确为规则推演，不冒充公网 IP 实测。详见 [EXIT_POLICY.md](EXIT_POLICY.md) 与 [EXIT_POLICY_VALIDATION.md](EXIT_POLICY_VALIDATION.md)。
+当前独立修复分支 `fix/inherited-ai-sessions` 形成 `0.7.0-rc.2` 候选，基于已发布 rc.1 源提交 `0aae09c`。核验分层报告配置意图、规则/组、已识别 AI 连接分类、新鲜度与覆盖；其他出口、未知路径、离线、抓取失败与过期均不显示绿色一致，零活动只核实规则。设置和看板共用后端结论，快检不续期连接证据；“34/34”明确为规则推演，不冒充公网 IP 实测。详见 [EXIT_POLICY.md](EXIT_POLICY.md) 与 [EXIT_POLICY_VALIDATION.md](EXIT_POLICY_VALIDATION.md)。
 
 现场排障只读生产连接、规则和应用日志；实施与测试使用独立临时内核、socket、端口与合成节点，不更换、重载或停止生产组。候选包含后端核验变化，需要专项验收，不套用旧72小时观察结论。rc.2 不合并、不打Tag、不创建Release、不安装生产；交管理对话核验后按授权发布。原有观察资料与时间口径保持原样。
 
