@@ -123,9 +123,28 @@ class Manager(object):
                               claude=self.rules_source.get("claude"), gpt=self.rules_source.get("gpt"),
                               manual=[item for item in manual if item], drop=drop)
 
+    def profile_record(self, uid):
+        """Only this subscription may supply originals to restore.
+
+        Older records have a single profile_uid. Keep that record with its owner on
+        the first switch; never relabel its static groups as the new profile's.
+        """
+        if uid == self.applied.get("profile_uid"):
+            return self.applied
+        return (self.applied.get("profiles") or {}).get(uid) or {}
+
+    def other_profiles(self, uid):
+        records = dict(self.applied.get("profiles") or {})
+        previous = self.applied.get("profile_uid")
+        if previous and previous != uid:
+            records[previous] = {key: value for key, value in self.applied.items() if key != "profiles"}
+        records.pop(uid, None)
+        return records
+
     def plan(self, drop=()):
         """Everything apply() would write, plus a human preview. Touches nothing."""
         uid, groups_file, rules_file = self.target.resolve()
+        owned = self.profile_record(uid)
         lines = self.lines()
         rule_lines, breakdown = self.rule_lines(drop)
         names = {line["name"] for line in lines}
@@ -139,17 +158,17 @@ class Manager(object):
         # A line we no longer keep but that replaced a group of the same name (e.g. the AI line
         # switched off after migrating): put the old definition back, since the user's own rules
         # may still point at that name. Everything else stays until disable() restores it all.
-        gone = set(self.applied.get("groups") or []) - names
-        restored = [item for item in self.applied.get("removed_items") or []
+        gone = set(owned.get("groups") or []) - names
+        restored = [item for item in owned.get("removed_items") or []
                     if clash_profile._item_name(item.splitlines()[0]) in gone]
         new_groups = clash_profile.insert_prepend_items(new_groups, restored)
         new_rules, _removed_rules = clash_profile.edit_prepend(rules_text, rule_items)
         runtime = self.target.runtime.read_text(encoding="utf-8")
         # Remember unmarked user rules which runtime de-duplication replaces with our block.
-        original_rules = list(self.applied.get("original_runtime_rules") or [])
+        original_rules = list(owned.get("original_runtime_rules") or [])
         rule_rows = runtime_rule_items(runtime)
         replaced = {clash_profile._normal_rule(item) for item in rule_items}
-        previous = set(self.applied.get("rules") or [])
+        previous = set(owned.get("rules") or [])
         for index, item in enumerate(rule_rows):
             if item is None:
                 continue
@@ -254,17 +273,19 @@ class Manager(object):
             verify=verify, precondition=guard_current, keep_selection=[name for name in names if not (
                 name == (self.config.get("ai_line") or {}).get("group_name")
                 and exit_policy.mode(self.config.get("ai_line") or {}) == "locked")])
-        removed = [item for item in self.applied.get("removed_items") or []
+        owned = self.profile_record(plan["profile_uid"])
+        profiles = self.other_profiles(plan["profile_uid"])
+        removed = [item for item in owned.get("removed_items") or []
                    if item not in plan["restored_items"]] + plan["removed_items"]
         # Keep the original order of the groups we took out, so disable() puts them back as they were.
-        order = list(self.applied.get("removed_order") or [])
+        order = list(owned.get("removed_order") or [])
         for item in removed:
             name = clash_profile._item_name(item.splitlines()[0])
             if name not in order:
                 order.append(name)
         removed.sort(key=lambda item: order.index(clash_profile._item_name(item.splitlines()[0])))
         self.applied = {
-            "profile_uid": plan["profile_uid"], "groups": names, "rules": plan["rules"],
+            "profile_uid": plan["profile_uid"], "profiles": profiles, "groups": names, "rules": plan["rules"],
             "original_runtime_rules": plan["original_runtime_rules"],
             "removed_items": removed, "removed_order": order, "dropped": plan["dropped"], "at": int(time.time()),
             "backup": str(backup), "first_rules": first_rules,
@@ -276,19 +297,21 @@ class Manager(object):
     def disable(self):
         """Take every SteadyRoute item out of Clash and put back what an older version had there."""
         uid, groups_file, rules_file = self.target.resolve()
-        removed = self.applied.get("removed_items") or []
+        owned = self.profile_record(uid)
+        profiles = self.other_profiles(uid)
+        removed = owned.get("removed_items") or []
         groups_text = clash_profile.restore_prepend(groups_file.read_text(encoding="utf-8"), removed)
         rules_text = clash_profile.restore_prepend(rules_file.read_text(encoding="utf-8"), [])
         restored_runtime_groups = [dedent_item(item) for item in removed]
         runtime = clash_profile.patch_runtime(
             self.target.runtime.read_text(encoding="utf-8"), [], [],
-            set(self.applied.get("groups") or []), stale_rules=self.applied.get("rules") or [])
+            set(owned.get("groups") or []), stale_rules=owned.get("rules") or [])
         runtime = insert_runtime_groups(runtime, restored_runtime_groups)
-        runtime = restore_runtime_rules(runtime, self.applied.get("original_runtime_rules") or [])
+        runtime = restore_runtime_rules(runtime, owned.get("original_runtime_rules") or [])
         self.last_backup = self.writer.commit(groups_text, rules_text, runtime,
                            {"action": "disable", "at": int(time.time()), "profile_uid": uid,
                             "previous_applied": self.applied})
-        self.applied = {}
+        self.applied = {"profiles": profiles} if profiles else {}
         return self.applied
 
     def healthy(self, runtime_text=None, rules_payload=None):

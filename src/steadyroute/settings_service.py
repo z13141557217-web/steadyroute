@@ -324,6 +324,10 @@ class SettingsService(object):
         """
         proxies = self.proxies()
         parts = []
+        if applied.get("profile_uid"):
+            uid, _groups, _rules = self.target.resolve()
+            if uid != applied["profile_uid"]:
+                parts.append("当前订阅与上次应用记录不同，需重新核对；当前内核可能仍运行原配置")
         gone = [name for name in applied.get("groups") or []
                 if (proxies.get(name) or {}).get("type") not in clash_profile.GROUP_TYPES]
         if gone:
