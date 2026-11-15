@@ -1,5 +1,5 @@
 #!/bin/bash
-# 稳航 SteadyRoute：回到升级前的版本（macOS）。先撤销稳航写入 Clash 的专线和规则，再启动旧版本。
+# 稳航 SteadyRoute：恢复旧程序迁移时存档的旧启动项（macOS），不是同一安装目录任意版本回退；会撤销受管分组与规则。
 cd "$(dirname "$0")" || exit 1
 if [ -t 0 ]; then
   read -r -p "确定回到升级前的版本？(y/N) " answer

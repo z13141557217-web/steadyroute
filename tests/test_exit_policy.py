@@ -1,5 +1,6 @@
 """Authorization, inventory, migration and evidence are independent of serving selection."""
 import copy
+import json
 import pathlib
 import sys
 import unittest
@@ -82,10 +83,65 @@ class AuthorizationTests(unittest.TestCase):
     def test_status_never_claims_offline_or_unconstrained_group_is_effective(self):
         self.assertIsNone(exit_policy.status(self.line)['effective_mode'])
         self.assertIsNone(exit_policy.status(self.line,self.data,False)['effective_mode'])
-        self.assertEqual(exit_policy.status(self.line,self.data,True)['effective_mode'],'locked')
+        self.assertTrue(exit_policy.status(self.line,self.data,True)['boundary_verified'])
+        self.assertIsNone(exit_policy.status(self.line,self.data,True)['effective_mode'])
         self.assertEqual(exit_policy.status(self.line,self.data,True,False)['policy_status'],'probe_abnormal')
         self.data[GROUP]['all'] += [BACKUP]
         self.assertIsNone(exit_policy.status(self.line,self.data,True)['effective_mode'])
+
+    def test_dashboard_reports_off_target_session_from_old_group(self):
+        self.state.update(proxies_observed_at=10000, connections_observed_at=10000)
+        self.data['other exit'] = {'type': 'Http'}
+        applied = {'groups': [GROUP], 'rules': ['DOMAIN-SUFFIX,claude.ai,' + GROUP]}
+        service = mock.Mock()
+        service.applied.return_value = applied
+        service.line_problems.return_value = ''
+        connections = [dict(id='old-session', metadata={'host': 'claude.ai'},
+                            chains=['other exit', 'legacy AI'], rule='RuleSet', rulePayload='claude')]
+        with mock.patch.object(self.router, 'SETTINGS', service):
+            snapshot = self.router.build_status_snapshots(self.state, self.data, connections, now=10000, memory_mb=20)
+        group = next(g for g in snapshot['v1']['groups'] if g['name'] == GROUP)
+        self.assertEqual(group['exit_policy']['inherited_connections'], 1)
+        self.assertEqual(group['decision']['severity'], 'warning')
+        self.assertIsNone(group['exit_policy']['effective_mode'])
+
+    def test_cached_dashboard_ages_evidence_without_controller_reads_or_timestamp_renewal(self):
+        self.state.update(proxies_observed_at=10000, connections_observed_at=10000)
+        applied = {'groups': [GROUP], 'rules': ['DOMAIN-SUFFIX,claude.ai,' + GROUP]}
+        service = mock.Mock()
+        service.applied.return_value = applied
+        service.line_problems.return_value = ''
+        connections = [dict(metadata={'host': 'claude.ai'}, chains=[TARGET, GROUP])]
+        with mock.patch.object(self.router, 'SETTINGS', service):
+            snapshot = self.router.build_status_snapshots(self.state, self.data, connections, now=10000, memory_mb=20)
+        self.router.RUNTIME.update(last_snapshots=snapshot, last_state=self.state)
+        self.router.refresh_cached_snapshot(now=10020)
+        self.assertEqual(snapshot['v1']['groups'][0]['exit_policy']['connections']['checked_at'], 10000)
+        self.router.update_dashboard_cache(snapshot)
+        with mock.patch.object(self.router.time, 'time', return_value=10051), \
+                mock.patch.object(self.router, 'api_request') as api:
+            for kind in ('legacy', 'v1'):
+                payload = json.loads(self.router.read_dashboard_cache(kind))
+                group = next(g for g in payload['groups'] if g['name'] == GROUP)
+                self.assertEqual(group['exit_policy']['policy_status'], 'evidence_stale')
+                self.assertEqual(group['exit_policy']['connections']['checked_at'], 10000)
+                self.assertIsNone(group['exit_policy']['effective_mode'])
+                self.assertEqual(group['decision_severity'] if kind == 'legacy' else group['decision']['severity'], 'warning')
+            api.assert_not_called()
+        self.assertEqual(snapshot['v1']['groups'][0]['exit_policy']['policy_status'], 'locked')
+
+    def test_failed_connection_fetch_is_not_a_successful_empty_observation(self):
+        def get(method, path, **kwargs):
+            if path == '/proxies':
+                return {'proxies': copy.deepcopy(self.data)}
+            if path == '/connections':
+                raise OSError('fixture unavailable')
+            raise AssertionError(path)
+        with mock.patch.object(self.router, 'load_state', return_value=copy.deepcopy(self.state)), \
+                mock.patch.object(self.router, 'api_request', side_effect=get):
+            plan = self.router.plan_cycle()
+        self.assertIsNone(plan['connections_observed_at'])
+        self.assertIsNone(plan['state']['connections_observed_at'])
 
 
 class SettingsTests(ServiceBase):
@@ -124,3 +180,163 @@ class SettingsTests(ServiceBase):
         with self.assertRaises(Exception): self.service.merged(changes)
         changes=self.changes();changes['ai_line']['exit_policy']='unknown'
         with self.assertRaises(Exception): self.service.merged(changes)
+
+    def test_snapshot_reports_old_group_claude_connection_without_writes(self):
+        line = self.changes()['ai_line']
+        config = self.service.config()
+        config['ai_line'] = line
+        self.config_path.write_text(json.dumps(config))
+        applied = {'groups': [line['group_name']],
+                   'rules': ['DOMAIN-SUFFIX,claude.ai,' + line['group_name']]}
+        connections = [dict(id='old-session', metadata={'host': 'claude.ai'},
+                            chains=['other exit', 'old AI group'], rule='RuleSet', rulePayload='claude')]
+        original = self.service._get
+        def get(path):
+            return {'connections': connections} if path == '/connections' else original(path)
+        proxies = self.clash.proxies()
+        proxies['other exit'] = {'type': 'Http'}
+        proxies[line['group_name']].update(all=[NODES[0]], now=NODES[0])
+        with mock.patch.object(self.service, 'applied', return_value=applied), \
+                mock.patch.object(self.service, 'proxies', return_value=proxies), \
+                mock.patch.object(self.service, 'line_problems', return_value=''), \
+                mock.patch.object(self.service, '_get', side_effect=get):
+            policy = self.service.snapshot()['exit_policy']
+        self.assertEqual(policy['inherited_connections'], 1)
+        self.assertEqual(policy['policy_status'], 'inherited_sessions')
+        self.assertIsNone(policy['effective_mode'])
+        self.assertFalse(any(method != 'GET' for method, path in self.clash.calls))
+
+    def test_settings_and_dashboard_share_connection_conclusion_and_failure_states(self):
+        line = self.changes()['ai_line']
+        config = self.service.config()
+        config['ai_line'] = line
+        self.config_path.write_text(json.dumps(config))
+        proxies = self.clash.proxies()
+        proxies[line['group_name']].update(all=[NODES[0]], now=NODES[0])
+        applied = {'groups': [line['group_name']], 'rules': ['DOMAIN-SUFFIX,claude.ai,' + line['group_name']]}
+        router = cycle_harness.load_router('evidence_consistency_router')
+        router.POLICY_CONFIG.update(profile='auto_lock', ai_line=line)
+        router.PROFILE = 'auto_lock'
+        state = dict(nodes={}, groups={}, controller_connected=True,
+                     proxies_observed_at=self.clock[0], connections_observed_at=self.clock[0])
+        router.refresh_auto_lock(state, proxies, self.clock[0])
+        original = self.service._get
+        for sessions in ([], [dict(metadata={'host': 'claude.ai'}, chains=[NODES[0], line['group_name']])],
+                         [dict(metadata={'host': 'claude.ai'}, chains=['DIRECT'])],
+                         [dict(metadata={'host': 'claude.ai'}, chains=[])], None):
+            with self.subTest(sessions=sessions):
+                def get(path):
+                    if path == '/connections':
+                        if sessions is None:
+                            raise OSError('fixture unavailable')
+                        return {'connections': sessions}
+                    return original(path)
+                with mock.patch.object(self.service, 'applied', return_value=applied), \
+                        mock.patch.object(self.service, 'proxies', return_value=proxies), \
+                        mock.patch.object(self.service, 'line_problems', return_value=''), \
+                        mock.patch.object(self.service, '_get', side_effect=get), \
+                        mock.patch.object(router, 'SETTINGS', self.service):
+                    settings_policy = self.service.snapshot()['exit_policy']
+                    state['connections_observed_at'] = self.clock[0] if sessions is not None else None
+                    dashboard = router.build_status_snapshots(state, proxies, sessions or [], now=self.clock[0], memory_mb=20)
+                policy = next(g['exit_policy'] for g in dashboard['v1']['groups'] if g['name'] == line['group_name'])
+                for key in ('policy_status', 'effective_mode', 'boundary_verified', 'summary', 'severity', 'connections'):
+                    self.assertEqual(settings_policy[key], policy[key], key)
+                if sessions is None or not sessions or any(not c['chains'] or c['chains']==['DIRECT'] for c in sessions):
+                    self.assertNotEqual(policy['severity'], 'ok')
+
+
+class ExistingConnectionTests(unittest.TestCase):
+    def test_mixed_paths_zero_activity_failure_and_freshness_have_distinct_evidence(self):
+        self.assertEqual(exit_policy.connection_snapshot({'connections': None}), [])
+        self.assertEqual(exit_policy.connection_snapshot({'connections': []}), [])
+        self.assertIsNone(exit_policy.connection_snapshot({}))
+        self.assertIsNone(exit_policy.connection_snapshot({'connections': 'invalid'}))
+        line = dict(enabled=True, group_name=GROUP, exit_policy='locked', locked_node=TARGET)
+        proxies = {TARGET: {'type': 'Http'}, BACKUP: {'type': 'Http'}, 'Japan test exit': {'type': 'Http'},
+                   GROUP: {'type': 'Selector', 'all': [TARGET], 'now': TARGET}}
+        def session(chain):
+            return dict(metadata={'host': 'claude.ai'}, chains=chain)
+        def read(connections, **extra):
+            params = dict(now=1000, checked_at=1000, connections_checked_at=1000)
+            params.update(extra)
+            return exit_policy.status(line, proxies, True, connections=connections,
+                managed_rules=['DOMAIN-SUFFIX,claude.ai,' + GROUP], **params)
+        cases = [
+            ([session([TARGET, GROUP])], (1, 0, 0), 'locked'),
+            ([session([BACKUP, 'legacy'])], (0, 1, 0), 'inherited_sessions'),
+            ([session(['Japan test exit', 'legacy'])], (0, 1, 0), 'inherited_sessions'),
+            ([session(['DIRECT'])], (0, 1, 0), 'inherited_sessions'),
+            ([session([])], (0, 0, 1), 'path_unknown'),
+            ([session([GROUP])], (0, 0, 1), 'path_unknown'),
+            ([session(['unresolved exit'])], (0, 0, 1), 'path_unknown'),
+            ([session([TARGET, GROUP]), session(['DIRECT']), session([]),
+              dict(metadata={'host': 'ordinary.invalid'}, chains=['DIRECT'])], (1, 1, 1), 'inherited_sessions'),
+            ([], (0, 0, 0), 'no_sessions'),
+            (None, (0, 0, 0), 'connections_unavailable'),
+        ]
+        for connections, counts, expected in cases:
+            with self.subTest(expected=expected, counts=counts):
+                policy = read(connections)
+                self.assertEqual(policy['policy_status'], expected)
+                self.assertEqual(tuple(policy['connections'][k] for k in ('target', 'foreign', 'unknown')), counts)
+                self.assertTrue(policy['boundary_verified'])
+                if expected != 'locked':
+                    self.assertIsNone(policy['effective_mode'])
+                    self.assertNotEqual(policy['severity'], 'ok')
+                else:
+                    self.assertEqual(policy['effective_mode'], 'locked')
+                self.assertIn('未识别连接不判违规', policy['coverage_note'])
+        mixed = read(cases[7][0])
+        self.assertEqual(mixed['connections']['unclassified'], 1)
+        for params in ({'now': 1051}, {'connections_checked_at': 900}, {'checked_at': 900},
+                       {'connections_checked_at': 1100}):
+            with self.subTest(params=params):
+                policy = read([session([TARGET, GROUP])], **params)
+                self.assertEqual(policy['policy_status'], 'evidence_stale')
+                self.assertIsNone(policy['effective_mode'])
+                self.assertNotEqual(policy['severity'], 'ok')
+        offline = exit_policy.status(line, None, True, connections=[session([TARGET, GROUP])], now=1000)
+        self.assertEqual(offline['policy_status'], 'controller_offline')
+        self.assertIsNone(offline['effective_mode'])
+
+    def test_known_ai_without_chain_never_claims_a_verified_path(self):
+        line = dict(enabled=True, group_name=GROUP, exit_policy='locked', locked_node=TARGET)
+        proxies = {TARGET: {'type': 'Http'}, 'other exit': {'type': 'Http'}, GROUP: {'type': 'Selector', 'all': [TARGET], 'now': TARGET}}
+        policy = exit_policy.status(line, proxies, True,
+            connections=[dict(metadata={'host': 'claude.ai'})],
+            managed_rules=['DOMAIN-SUFFIX,claude.ai,' + GROUP])
+        self.assertEqual(policy['connections']['unknown'], 1)
+        self.assertEqual(policy['connections']['foreign'], 0)
+        self.assertIsNone(policy['effective_mode'])
+        self.assertNotEqual(policy['severity'], 'ok')
+
+    def test_rule_metadata_recognizes_legacy_groups_without_matching_unrelated_traffic(self):
+        rules = ['DOMAIN-SUFFIX,claude.ai,' + GROUP, 'DOMAIN,exact.invalid,' + GROUP,
+                 'DOMAIN-KEYWORD,datadog,' + GROUP, 'IP-CIDR,192.0.2.0/24,' + GROUP,
+                 'IP-CIDR6,2001:db8::/32,' + GROUP, 'PROCESS-NAME,Claude,' + GROUP,
+                 'GEOSITE,category-ai-!cn,' + GROUP, 'DOMAIN-SUFFIX,other.invalid,Other group']
+        line = dict(enabled=True, group_name=GROUP, exit_policy='locked', locked_node=TARGET)
+        proxies = {TARGET: {'type': 'Http'}, 'other exit': {'type': 'Http'}, GROUP: {'type': 'Selector', 'all': [TARGET], 'now': TARGET}}
+        positive = [
+            {'host': 'Claude.AI.'}, {'host': 'api.claude.ai'}, {'host': 'exact.invalid'},
+            {'host': 'browser-datadog.invalid'}, {'destinationIP': '192.0.2.55'},
+            {'destinationIP': '2001:db8::55'}, {'process': 'Claude'}, {'processPath': '/apps/Claude'},
+        ]
+        negative = [
+            {}, {'host': 'notclaude.ai'}, {'host': 'claude.ai.attacker.invalid'},
+            {'host': 'sub.exact.invalid'}, {'host': 'other.invalid'}, {'destinationIP': '192.0.3.55'},
+            {'destinationIP': 'invalid'}, {'process': 'Claude Helper'},
+        ]
+        for metadata in positive + negative:
+            with self.subTest(metadata=metadata):
+                connection = dict(metadata=metadata, chains=['other exit', 'legacy group'])
+                policy = exit_policy.status(line, proxies, True, connections=[connection], managed_rules=rules)
+                self.assertEqual(policy['inherited_connections'], int(metadata in positive))
+                connection['chains'] = [TARGET, 'legacy group']
+                self.assertEqual(exit_policy.status(line, proxies, True, connections=[connection],
+                                                   managed_rules=rules)['inherited_connections'], 0)
+        recorded = dict(chains=['other exit'], rule='GeoSite', rulePayload='category-ai-!cn')
+        self.assertTrue(exit_policy.managed_connection(recorded, GROUP, rules))
+        recorded.update(rule='RuleSet', rulePayload='unknown-ai-provider')
+        self.assertFalse(exit_policy.managed_connection(recorded, GROUP, rules))

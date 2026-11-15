@@ -200,7 +200,9 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <li><b>可以随时撤销</b>：关闭开关或卸载稳航，专线和规则会完整撤销，Clash 恢复原样。</li>
           <li><b>不能选的地区</b>：香港、澳门等地区不在 ChatGPT / Claude 的服务范围内，不能用作 AI 专线。</li>
         </ul>
-        <p><b>AI 分流体检</b>：开启专线后，设置页会自动核对 ip.net.coffee 列出的每个 AI 域名和 IP 段，按 Clash 当前生效的规则会命中哪条、走哪个分组、最终从哪个国家出口，结果显示为一行“34 / 34 项 AI 地址经台湾家宽出口”，可展开看每一项。想确认 AI 服务实际看到的地址，可以打开看板专线卡片上的“检测出口 IP”。</p>
+        <p><b>AI 分流体检</b>：设置页按 Clash 当前规则推演参考列表中各 AI 地址命中的规则、分组和所选节点。“34 / 34”是规则推演通过项数，国家根据节点名称识别，不是 34 次实际请求或公网 IP 地区检测。</p>
+        <p><b>规则与连接分开核验</b>：已保存的策略表示意图，内核组与规则核对后显示“规则约束已核实”。已识别 AI 连接再分为目标一致、其他出口、路径未知；同国家另一个节点与 DIRECT 也算其他出口，缺链或只有分组名的链属于未知。其他出口或未知任一存在时不显示绿色一致；暂无活动时只显示“暂无可识别 AI 会话证据”。旧会话可继续保留原出口，等待自然结束，不会为变绿清理连接。</p>
+        <p><b>检查时间与范围</b>：规则与连接快照分别带时间，证据有效期50秒；快检不续期旧连接证据，离线、抓取失败、过期或页面读取失败均提示未核实。识别只依据受管分组、已应用规则与可用域名、IP、进程或已记录规则命中，无法识别归属的普通连接不判 AI 违规。“已识别 AI 连接一致”只描述该快照，不保证所有流量或公网 IP 地区。可通过“检测出口 IP”复测实际地址，并核对新连接链。</p>
         <p>从旧版升级时，原来的台湾 / 香港线路会出现在设置页的迁移提示里；确认后改为同名、自动筛选同国家家宽的专线，Clash 中引用这些分组的规则继续有效。</p>
       </section>
 
@@ -389,7 +391,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <details><summary>看板打不开怎么办？</summary>
             <p>先确认稳航在运行：它由系统的 LaunchAgent 自动启动，开机后自己会跑起来。看板地址是 <code>http://127.0.0.1:17654</code>。运行 <code>python3 scripts/installer.py status</code> 能看到它是否在线；如果没在运行，重新运行一次 <code>install.command</code> 即可。</p></details>
           <details><summary>怎么升级、换电脑或卸载？</summary>
-            <p>升级：下载新版（或在仓库里 <code>git pull</code>）后再运行一次 <code>install.command</code>，状态、历史和设置都会保留，新版启动失败会自动恢复旧版。换电脑：在新 Mac 上装好 Clash Verge，再运行 <code>install.command</code>。想回到升级前的版本：运行 <code>rollback.command</code>。卸载：运行 <code>uninstall.command</code>，稳航写进 Clash 的专线和规则会一并撤销。</p></details>
+            <p>升级：下载新版（或在仓库里 <code>git pull</code>）后再运行一次 <code>install.command</code>，状态、历史和设置都会保留，安装失败的自动恢复以安装器输出及备份为准。换电脑：在新 Mac 上装好 Clash Verge，再运行 <code>install.command</code>。<code>rollback.command</code> 仅恢复旧程序迁移时存档的旧启动项，无此存档会拒绝，不是同一安装目录任意版本回退；它会撤销受管分组与规则，可能失去固定边界。固定场景应由发布管理保持服务停止，成套核对并恢复应用、配置、状态及 Clash 边界后再启动和验证。卸载：运行 <code>uninstall.command</code>，稳航写进 Clash 的专线和规则会一并撤销。</p></details>
           <details><summary>一直在测，会不会耗流量、拖慢网速？</summary>
             <p>不会拖慢网速，但会用一些流量。每次探测是一个很小的请求（约 0.5–5 KB，取决于节点协议），v0.6 起当前节点每秒一次、其余候选每 5 秒一次，每天合计约 20–30 万次，约 0.1–1.3 GB。部分机场按节点倍数计算流量。24 小时可用率不到 90% 的节点只每 30 秒测一次。</p></details>
           <details><summary>“全部节点”里的节点能用来切换吗？</summary>

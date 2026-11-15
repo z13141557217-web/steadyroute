@@ -157,7 +157,10 @@ class RealCoreTests(unittest.TestCase):
         self.assertEqual(self.service.config(), BASE_CONFIG)
         self.service.apply(changes)
         self.assertEqual(self.core.proxies()[group]["all"], [target])
-        self.assertEqual(self.service.snapshot()["exit_policy"]["effective_mode"], "locked")
+        evidence = self.service.snapshot()["exit_policy"]
+        self.assertTrue(evidence["boundary_verified"])
+        self.assertEqual(evidence["policy_status"], "no_sessions")
+        self.assertIsNone(evidence["effective_mode"])
         written = (self.core.verge / "clash-verge.yaml").read_text(encoding="utf-8")
         self.assertEqual(self.core.load(written)[0], 204)
         self.assertEqual(self.core.proxies()[group]["all"], [target])

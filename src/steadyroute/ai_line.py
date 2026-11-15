@@ -230,7 +230,7 @@ class Manager(object):
             line = self.config.get("ai_line") or {}
             if line.get("enabled") and exit_policy.mode(line) == "locked":
                 evidence = exit_policy.status(line, data, rules_ok=True)
-                if evidence["effective_mode"] != "locked":
+                if not evidence["boundary_verified"]:
                     raise clash_profile.ProfileError(evidence["reason"])
             if missing:
                 raise clash_profile.ProfileError("重新加载后没有看到分组：%s" % "、".join(missing))
