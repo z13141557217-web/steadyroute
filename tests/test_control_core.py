@@ -51,12 +51,22 @@ class ControlCoreTests(unittest.TestCase):
         self.env.start()
 
     def tearDown(self):
-        if self.control.worker is not None:
-            self.control.pause()
-        self.env.stop();self.core.stop();self.tmp.cleanup()
+        try:
+            if self.control.worker is not None:
+                try:self.control.pause()
+                except Exception:
+                    self.control.worker.kill();self.control.worker.wait(10)
+        finally:
+            self.env.stop();self.core.stop();self.tmp.cleanup()
 
     def start(self):
-        self.control.change('start',self.control.preview('start')['fingerprint'])
+        try:
+            self.control.change('start',self.control.preview('start')['fingerprint'])
+        except Exception:
+            print('Synthetic worker readiness:',getattr(self.control,'startup_evidence',None),file=sys.stderr)
+            for p in (self.base/'logs').glob('*.log'):
+                print('Synthetic worker log:',p.name,p.read_text(errors='replace')[-8000:],file=sys.stderr)
+            raise
 
     def test_real_worker_stops_probes_and_late_writes_then_manual_restart(self):
         config=self.config_path.read_bytes()
@@ -182,7 +192,11 @@ class ControlCoreTests(unittest.TestCase):
             self.assertEqual(self.core.proxies()[self.group]['now'],self.target)
         finally:
             if parent.poll() is None:
-                parent.terminate();parent.wait(10)
+                parent.terminate()
+                try:parent.wait(10)
+                except subprocess.TimeoutExpired:
+                    print("Synthetic control log:",(self.base/"parent.log").read_text(errors="replace")[-8000:],file=sys.stderr)
+                    parent.kill();parent.wait(5)
             log.close()
 
     def test_source_changes_after_preview_are_refused_at_final_commit_boundary(self):
@@ -217,4 +231,3 @@ class ControlCoreTests(unittest.TestCase):
         self.assertFalse(self.control.state['desired_running'])
         self.assertEqual(self.control.state['actual'],'failed')
         for p,data in files.items():self.assertEqual(p.read_bytes(),data)
-

@@ -332,16 +332,19 @@ class Control:
                                STEADYROUTE_WORKER_PORT=str(self.worker_port), STEADYROUTE_BASE_DIR=str(self.base),
                                STEADYROUTE_POLICY_CONFIG=str(self.service.config_path))
                     self.worker = self.spawn([sys.executable, str(self.worker_script), '--daemon'], env=env)
+                    self.startup_evidence = {"stage":"waiting_for_worker_http","expected_pid":self.worker.pid}
                     deadline = time.monotonic()+20
                     while True:
                         if self.worker.poll() is not None:
                             raise RuntimeError('工作进程未能启动；已有规则可能保留')
                         try:
                             code, _, ready = self._worker_call('GET','/api/control/worker', timeout=1)
-                            if code == 200 and json.loads(ready).get('pid') == self.worker.pid:
+                            observed_pid = json.loads(ready).get('pid') if code == 200 else None
+                            self.startup_evidence = {"stage":"worker_http_response","http_status":code,"expected_pid":self.worker.pid,"observed_pid":observed_pid}
+                            if code == 200 and observed_pid == self.worker.pid:
                                 break
-                        except OSError:
-                            pass
+                        except OSError as connection_error:
+                            self.startup_evidence = {"stage":"waiting_for_worker_http","error_type":type(connection_error).__name__,"expected_pid":self.worker.pid}
                         if time.monotonic() > deadline:
                             # No successful admission proof: drain rather than kill a live transaction.
                             self.pause()

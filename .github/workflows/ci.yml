@@ -39,6 +39,12 @@ jobs:
           cache: false
       - if: steps.core.outputs.cache-hit != 'true'
         run: ./scripts/build-core.sh "$HOME/.cache/steadyroute-core/mihomo"
+      - name: worker startup smoke, with the real core
+        env:
+          STEADYROUTE_REQUIRE_CORE: '1'
+        run: |
+          export STEADYROUTE_MIHOMO="$HOME/.cache/steadyroute-core/mihomo"
+          PYTHONPATH=tests python3 -m unittest test_control_core.ControlCoreTests.test_confirmed_handover_restores_current_profile_only_and_retains_target -v
       - name: checks, with the real core
         run: |
           export STEADYROUTE_MIHOMO="$HOME/.cache/steadyroute-core/mihomo"
