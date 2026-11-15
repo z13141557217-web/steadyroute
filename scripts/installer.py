@@ -13,7 +13,7 @@ On the Mac:
     ~/Library/Application Support/SteadyRoute/          program, state.json, config/
     ~/Library/Application Support/SteadyRoute-backups/  last 3 versions + retired old agents
     ~/Library/Logs/SteadyRoute/                         logs (bounded by the router itself)
-    ~/Library/LaunchAgents/com.steadyroute.plist        starts at login, restarts if it stops
+    ~/Library/LaunchAgents/com.steadyroute.plist        keeps the control page available; worker login preference is independent
 
 An older install (any LaunchAgent that runs weighted_router.py, e.g. the pre-0.5.1 author
 setup or the 0.5.0 share edition) is migrated: its state, history and logs are carried over,
@@ -46,7 +46,8 @@ MIN_PYTHON = (3, 9)
 CLASH_APP_ID = "io.github.clash-verge-rev.clash-verge-rev"
 CLASH_APPS = ("/Applications/Clash Verge.app", "~/Applications/Clash Verge.app")
 APP_FILES = (
-    "weighted_router.py", "state_contract.py", "route_policy.py", "candidate_registry.py",
+    "weighted_router.py", "operation_gate.py", "service_control.py", "service_cli.py",
+    "control.html", "control.js", "state_contract.py", "route_policy.py", "candidate_registry.py",
     "health_model.py", "runtime_metrics.py", "logging_setup.py", "node_catalog.py",
     "regions.py", "auto_lock.py", "ai_rules.py", "ai_line.py", "ai_check.py", "probe_display.py",
     "clash_profile.py", "settings_service.py", "exit_policy.py", "diagnostics.py", "probe_trace.py",
@@ -313,6 +314,15 @@ class Installer(object):
             os.replace(str(temporary), str(target))
         shutil.copy2(str(self.root / "VERSION"), str(app / "VERSION"))
         shutil.rmtree(str(app / "__pycache__"), ignore_errors=True)
+        for label, action in (("启动稳航.command","start"),("停止稳航.command","stop")):
+            entry = app / label
+            entry.write_text('#!/bin/sh\ncd "$(dirname "$0")" || exit 1\n/usr/bin/python3 service_cli.py '+action+'\n',encoding="utf-8")
+            entry.chmod(0o755)
+        # Pin independent entries to this installed instance (also used by isolated acceptance).
+        context = {"schema_version":1,"label":LABEL,"plist":str(self.paths.plist),"port":PORT}
+        context_tmp = app / "service-instance.json.new"
+        context_tmp.write_text(json.dumps(context,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+        os.replace(str(context_tmp),str(app / "service-instance.json"))
         config_path = app / "config" / "route-policies.json"
         config, kind = self.planned_config(legacy)
         if kind == "kept":
@@ -412,7 +422,7 @@ class Installer(object):
                 if connect_deadline is None:
                     connect_deadline = self.clock() + CONNECT_WAIT_SECONDS
                 # Clash Verge is running: wait for the first cycle so the summary shows the real lines.
-                if service.get("controller_connected") or not self.clash_socket() or self.clock() >= connect_deadline:
+                if service.get("lifecycle") or service.get("controller_connected") or not self.clash_socket() or self.clock() >= connect_deadline:
                     return snapshot
                 self.sleep(1)
                 continue
@@ -465,7 +475,7 @@ class Installer(object):
             where = ("已恢复到 v%s。" % previous) if backup else ("旧版已重新启动。" if legacy else "没有留下运行中的服务。")
             raise InstallError("%s%s" % (error, where))
         retired = self._retire_legacy(legacy)
-        say("  已启动，开机会自动运行。")
+        say("  控制页面已启动；工作进程是否运行以总开关为准。登录时启动可在总开关独立设置。")
         if retired:
             say("  旧版的开机自启已停用（保存在 %s）" % retired)
         self.describe(snapshot)
@@ -512,6 +522,9 @@ class Installer(object):
         service = (snapshot or {}).get("service") or {}
         groups = (snapshot or {}).get("groups") or []
         idle = service.get("auto_lock_idle") or {}
+        if service.get("lifecycle"):
+            say("  工作进程已停止；请在总开关预览当前订阅与保存目标后启动。原有规则可能保留。")
+            return
         if not service.get("controller_connected"):
             say("  还没连上 Clash Verge；打开 Clash Verge 后会自动接管。")
             return

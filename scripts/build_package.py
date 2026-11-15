@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import installer  # noqa: E402
 
-TOP_FILES = ("install.command", "uninstall.command", "rollback.command")
+TOP_FILES = ("install.command", "uninstall.command", "rollback.command", "启动稳航.command", "停止稳航.command")
 
 # Anything here means the package would carry someone's machine, subscription or nodes.
 PERSONAL = [
@@ -34,7 +34,7 @@ PERSONAL = [
     (re.compile(r"[A-Za-z0-9._%+-]+@(?:gmail|qq|163|outlook|icloud|hotmail)\.com", re.I), "邮箱"),
 ]
 FORBIDDEN_NAMES = {"state.json", "groups.yaml", "route-policies.json", "clash-applied.json",
-                   "ai-rules.json", "router.lock"}
+                   "ai-rules.json", "router.lock", "control-state.json", "control.lock", "service-instance.json"}
 
 README = """稳航 SteadyRoute v{version}
 
@@ -73,12 +73,29 @@ AI 家宽专线与出口策略
   1. 解压后，右键点 install.command，选“打开”（第一次需要这样，之后双击即可）。
   2. 如提示安装“命令行工具”，点安装，完成后再打开一次 install.command。
   3. 装好后会自动打开看板：http://127.0.0.1:{port}/
-     开机后自动运行，无需再操作。
+     新安装先保持工作进程暂停；在总开关预览并确认启动。登录启动单独设置。
   4. 刚装好会先检测并预热候选。只有已允许自动切换的线路才会按策略使用备用；固定节点
      策略在此期间也不会自动换目标。
 
 通用分组换国家：在 Clash Verge 里选择其他国家节点后，按通用接管规则重新识别国家。
 AI 固定目标变更：在设置中核对并明确更新锁定，不通过外部改选静默变更国家或目标。
+总开关与独立入口
+  设置顶部及看板显示已保存意愿与实际工作进程。暂停等待在途事务结束后停止全部检测、
+  自动选路、规则同步与修复；保留控制页面、原目标、历史和已写入规则。暂停不是撤销固定。
+  “停用并交还 Clash”先预览当前订阅的分组与规则，经明确确认后撤销自己的内容；
+  固定保护会解除，原有订阅规则恢复，其他订阅的恢复资料保留。失败显示未完成。
+  不清连接/Cookie，不选择其他国家或 DIRECT。重启前核对当前订阅与原锁定目标，
+  目标缺席、外部选择漂移、控制器离线或预览变化时保持停用，不偷偷重新认领目标。
+  轻量控制页面仍在运行；要退出它，请双击“停止稳航.command”。用“启动稳航.command”
+  重新打开独立控制页面，再预览确认启动。安装目录也提供这两个入口。
+  登录时启动工作进程独立保存；已经暂停时，登录、重启或 KeepAlive 都不会重新接管。
+  工作进程崩溃不会自动重启；控制页面意外崩溃时子进程停止接单并退出，需重新核对。
+  键盘打开预览后焦点进入预览区域，确认错误定位确认框，取消返回发起按钮。
+  页面离线时停止入口也核对并卸载自身KeepAlive启动项，不以当前无进程代替完整退出。
+  固定AI组显示固定策略；独立入口读取本安装目录登记的实例，确认错误不会被轮询清掉。
+  控制页面不等待本机反向DNS；Clash离线也可打开控制页，启动工作仍需核对核心和目标。
+  旧版本污染的撤销记录仍需依据备份校正，不能用总开关猜测原始归属。
+
 设置：看板右上角“设置”，可开关 AI 家宽专线、添加域名、排除分组、做 AI 分流体检。
 升级 / 换电脑：用新版再运行一次 install.command，状态和设置都会保留。
 卸载：运行 uninstall.command，稳航写进 Clash 的专线和规则会一并去掉。

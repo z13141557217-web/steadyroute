@@ -46,6 +46,8 @@ class FakeController(object):
 
     def __call__(self, method, path, payload):
         self.calls.append((method, path, payload))
+        if method == "GET" and path == "/rules":
+            return 200, json.dumps({"rules": self.loaded.rules()}, ensure_ascii=False)
         if method == "PUT" and path.startswith("/configs"):
             return (400, "bad config") if self.fail_reload else self.loaded.put(payload)
         if method == "GET" and path == "/proxies":

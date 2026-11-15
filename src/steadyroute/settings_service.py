@@ -11,6 +11,7 @@ and the dashboard say so while they are missing.
 """
 
 import copy
+import operation_gate
 import json
 import os
 import pathlib
@@ -286,6 +287,11 @@ class SettingsService(object):
             result["groups"] = sorted(set(auto_lock.managed_groups(proxies)) | set(result["exclude_groups"]))
             result["group_details"] = group_details(proxies, result["exclude_groups"],
                                                     (config.get("auto_lock") or {}).get("include_groups"))
+            line = config.get("ai_line") or {}
+            if line.get("enabled") and exit_policy.mode(line) == "locked":
+                for row in result["group_details"]:
+                    if row["name"] == line.get("group_name"):
+                        row["status"] = "exit_locked"
             configs = self._get("/configs")
             result["ipv6"] = configs.get("ipv6")
             result["tun"] = (configs.get("tun") or {}).get("enable")
@@ -324,6 +330,10 @@ class SettingsService(object):
         """
         proxies = self.proxies()
         parts = []
+        if applied.get("profile_uid"):
+            uid, _groups, _rules = self.target.resolve()
+            if uid != applied["profile_uid"]:
+                parts.append("当前订阅与上次应用记录不同，需重新核对；当前内核可能仍运行原配置")
         gone = [name for name in applied.get("groups") or []
                 if (proxies.get(name) or {}).get("type") not in clash_profile.GROUP_TYPES]
         if gone:
@@ -360,6 +370,7 @@ class SettingsService(object):
                 parts.append("AI 完整规则边界或优先顺序未核实")
         return "；".join(parts)
 
+    @operation_gate.guarded
     def watch(self):
         """One look, and a re-write when the lines have been gone for two looks. Never raises.
 
@@ -477,6 +488,7 @@ class SettingsService(object):
         plan["runtime_file"] = self.target.runtime.name
         return plan
 
+    @operation_gate.guarded
     def apply(self, changes):
         with self.lock:
             self.check_writable()
@@ -504,8 +516,11 @@ class SettingsService(object):
                         folder = pathlib.Path(backup)
                         texts = {key: (folder / (key + ".yaml")).read_text(encoding="utf-8")
                                  for key in ("groups", "rules", "runtime")}
+                        original_meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
                         self.writer().commit(texts["groups"], texts["rules"], texts["runtime"],
-                                             {"action": "settings-persistence-rollback"})
+                                             {"action": "settings-persistence-rollback",
+                                              "profile_uid": original_meta.get("profile_uid"),
+                                              "binding": original_meta.get("binding")})
                         clash_profile._atomic_write(self.applied_path, json.dumps(original_applied, ensure_ascii=False))
                         clash_profile._atomic_write(self.config_path, json.dumps(old, ensure_ascii=False))
                         raise clash_profile.ProfileError("设置保存失败；内核、配置与应用记录已回滚：%s" % error)
@@ -516,6 +531,7 @@ class SettingsService(object):
             self.log("settings changed: %s" % json.dumps(result, ensure_ascii=False))
             return result
 
+    @operation_gate.guarded
     def remove_all(self):
         """Uninstall: take every SteadyRoute item out of Clash and put back what was there."""
         with self.lock:
@@ -538,6 +554,7 @@ class SettingsService(object):
         if self.config_path.name.endswith(".default.json"):
             raise clash_profile.ProfileError("正在直接从仓库运行，设置不会保存；请先运行 install.command 安装")
 
+    @operation_gate.guarded
     def save_config(self, config):
         self.check_writable()
         stored = copy.deepcopy(config)
@@ -564,6 +581,7 @@ class SettingsService(object):
     def next_check_at(self, state):
         return state.get("next_check_at") or (state.get("checked_at", 0) + WEEK)
 
+    @operation_gate.guarded
     def sync(self, now, state):
         """One net.coffee sync plus a geodata update when due. Updates `state`; True if the rules changed.
 
@@ -607,6 +625,7 @@ class SettingsService(object):
         _atomic_json(self.rules_path, state)
         return changed
 
+    @operation_gate.guarded
     def reapply(self, config, applied, reason):
         self.check_core()
         manager = self.manager(config, applied)
@@ -615,6 +634,7 @@ class SettingsService(object):
             _atomic_json(self.applied_path, new_applied)
         self.log("AI line re-applied (%s)" % reason)
 
+    @operation_gate.guarded
     def sync_now(self):
         """The settings page's 立即同步: sync at once and write new rules into Clash if they changed."""
         self.check_writable()
@@ -628,6 +648,7 @@ class SettingsService(object):
         return {"ok": not state.get("last_error"), "changed": changed, "error": state.get("last_error"),
                 "last_change": state.get("last_change") if changed else None}
 
+    @operation_gate.guarded
     def maintenance(self):
         """Hourly: self-heal, and the net.coffee sync when it is due. Never raises."""
         now = self.clock()
