@@ -391,7 +391,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <details><summary>看板打不开怎么办？</summary>
             <p>先确认稳航在运行：它由系统的 LaunchAgent 自动启动，开机后自己会跑起来。看板地址是 <code>http://127.0.0.1:17654</code>。运行 <code>python3 scripts/installer.py status</code> 能看到它是否在线；如果没在运行，重新运行一次 <code>install.command</code> 即可。</p></details>
           <details><summary>怎么升级、换电脑或卸载？</summary>
-            <p>升级：下载新版（或在仓库里 <code>git pull</code>）后再运行一次 <code>install.command</code>，状态、历史和设置都会保留，新版启动失败会自动恢复旧版。换电脑：在新 Mac 上装好 Clash Verge，再运行 <code>install.command</code>。想回到升级前的版本：运行 <code>rollback.command</code>。卸载：运行 <code>uninstall.command</code>，稳航写进 Clash 的专线和规则会一并撤销。</p></details>
+            <p>升级：下载新版（或在仓库里 <code>git pull</code>）后再运行一次 <code>install.command</code>，状态、历史和设置都会保留，安装失败的自动恢复以安装器输出及备份为准。换电脑：在新 Mac 上装好 Clash Verge，再运行 <code>install.command</code>。<code>rollback.command</code> 仅恢复旧程序迁移时存档的旧启动项，无此存档会拒绝，不是同一安装目录任意版本回退；它会撤销受管分组与规则，可能失去固定边界。固定场景应由发布管理保持服务停止，成套核对并恢复应用、配置、状态及 Clash 边界后再启动和验证。卸载：运行 <code>uninstall.command</code>，稳航写进 Clash 的专线和规则会一并撤销。</p></details>
           <details><summary>一直在测，会不会耗流量、拖慢网速？</summary>
             <p>不会拖慢网速，但会用一些流量。每次探测是一个很小的请求（约 0.5–5 KB，取决于节点协议），v0.6 起当前节点每秒一次、其余候选每 5 秒一次，每天合计约 20–30 万次，约 0.1–1.3 GB。部分机场按节点倍数计算流量。24 小时可用率不到 90% 的节点只每 30 秒测一次。</p></details>
           <details><summary>“全部节点”里的节点能用来切换吗？</summary>

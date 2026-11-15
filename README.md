@@ -343,7 +343,7 @@ python3 scripts/installer.py status
 
 安装器：检查 macOS、Python 3.9+ 与 Clash Verge → 只读检查 Clash（内核版本；从旧版升级时，用本机内核校验“升级这些线路”将写入的分组成员与规则，并打印出来，不改动 Clash）→ 停止旧服务 → 备份当前版本 → 安装程序、保留设置 → 启动并确认看板回报的是新版本；失败自动恢复上一版（保留最近 3 份备份）。
 
-- `rollback.command` 回到升级前的版本（先撤销写入 Clash 的内容，再启动旧版本）。
+- `rollback.command` 仅恢复从旧程序迁移时存档的旧 LaunchAgent（启动项）；没有迁移存档时拒绝，不是同一安装目录任意版本回退命令。它会停止当前服务并撤销受管分组/规则，可能失去固定边界。固定场景的版本回退应由发布管理保持服务停止，成套核对并恢复应用、配置、状态与 Clash 边界后再启动和验证；安装失败的自动恢复是另一条路径。
 - `uninstall.command` 先停止服务，再撤销写入 Clash 的专线和规则，最后删除程序（`--purge` 连日志一起删除）。
 - `python3 scripts/installer.py status` 显示是否在运行以及每条线路的锁定情况。
 
