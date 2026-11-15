@@ -26,3 +26,8 @@ backups/
 *.key
 *.pem
 
+
+# Installed instance metadata and lifecycle state stay on the local machine.
+service-instance.json
+control-state.json
+control.lock

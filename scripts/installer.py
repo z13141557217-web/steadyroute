@@ -318,6 +318,11 @@ class Installer(object):
             entry = app / label
             entry.write_text('#!/bin/sh\ncd "$(dirname "$0")" || exit 1\n/usr/bin/python3 service_cli.py '+action+'\n',encoding="utf-8")
             entry.chmod(0o755)
+        # Pin independent entries to this installed instance (also used by isolated acceptance).
+        context = {"schema_version":1,"label":LABEL,"plist":str(self.paths.plist),"port":PORT}
+        context_tmp = app / "service-instance.json.new"
+        context_tmp.write_text(json.dumps(context,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+        os.replace(str(context_tmp),str(app / "service-instance.json"))
         config_path = app / "config" / "route-policies.json"
         config, kind = self.planned_config(legacy)
         if kind == "kept":

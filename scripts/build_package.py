@@ -34,7 +34,7 @@ PERSONAL = [
     (re.compile(r"[A-Za-z0-9._%+-]+@(?:gmail|qq|163|outlook|icloud|hotmail)\.com", re.I), "邮箱"),
 ]
 FORBIDDEN_NAMES = {"state.json", "groups.yaml", "route-policies.json", "clash-applied.json",
-                   "ai-rules.json", "router.lock"}
+                   "ai-rules.json", "router.lock", "control-state.json", "control.lock", "service-instance.json"}
 
 README = """稳航 SteadyRoute v{version}
 
@@ -90,6 +90,9 @@ AI 固定目标变更：在设置中核对并明确更新锁定，不通过外�
   重新打开独立控制页面，再预览确认启动。安装目录也提供这两个入口。
   登录时启动工作进程独立保存；已经暂停时，登录、重启或 KeepAlive 都不会重新接管。
   工作进程崩溃不会自动重启；控制页面意外崩溃时子进程停止接单并退出，需重新核对。
+  键盘打开预览后焦点进入预览区域，确认错误定位确认框，取消返回发起按钮。
+  页面离线时停止入口也核对并卸载自身KeepAlive启动项，不以当前无进程代替完整退出。
+  固定AI组显示固定策略；独立入口读取本安装目录登记的实例，确认错误不会被轮询清掉。
   控制页面不等待本机反向DNS；Clash离线也可打开控制页，启动工作仍需核对核心和目标。
   旧版本污染的撤销记录仍需依据备份校正，不能用总开关猜测原始归属。
 

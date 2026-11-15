@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 import uuid
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 import ai_line
 import clash_profile
 import exit_policy
@@ -391,6 +391,9 @@ def make_handler(control, router, synthetic=False):
                         self._reply(code, content, page)
                         return
                 if synthetic:
+                    theme = (parse_qs(urlsplit(self.path).query).get('theme') or [''])[0]
+                    if theme in ('light','dark'):
+                        page = page.replace(b'<html',('<html data-theme="'+theme+'"').encode(),1)
                     page = page.replace(b'<body>', '<body><p style="padding:12px 24px;color:var(--ink);background:var(--accent-soft)">隔离合成预览 · 仅含测试节点；不读取生产订阅，不代表真实线路健康。</p>'.encode())
                 page = page.replace(b'</body>', b'<script src="/assets/control.js"></script></body>')
                 self._reply(200,'text/html; charset=utf-8',page)

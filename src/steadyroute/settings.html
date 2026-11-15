@@ -522,19 +522,20 @@ function render() {
   /* groups */
   const details = s.group_details || [];
   const switching = details.filter(g => g.status === 'switching').length;
-  $('#groups-count').textContent = details.length ? `${switching} / ${details.length} 个开启` : '';
+  const fixed = details.filter(g => g.status === 'exit_locked').length;
+  $('#groups-count').textContent = details.length ? `${switching} / ${details.length - fixed} 个开启${fixed ? ` · ${fixed} 个固定` : ''}` : '';
   $('#groups').innerHTML = details.length ? details.map(g => {
     const on = g.status !== 'excluded';
     const single = g.status === 'switching' && g.residential === 1;
     const where = g.country_label ? `${g.country_label}家宽` : '';
-    const text = single ? `${where}只有 1 个节点，断线时没有备用`
+    const text = g.status === 'exit_locked' ? '已保存固定策略，不自动切换；实际约束见上方核验' : single ? `${where}只有 1 个节点，断线时没有备用`
       : g.status === 'switching' ? `${where} · ${g.residential} 个节点`
       : g.status === 'excluded' ? '已关闭，保持 Clash 自身的选择'
       : g.status === 'no_residential' ? `订阅中没有${g.country_label}家宽节点，暂不切换`
       : '当前节点的国家无法识别，暂不切换';
     const warn = single || g.status === 'no_residential' || g.status === 'unknown';
     return `<div class="grow${on ? '' : ' off'}"><div><b>${esc(g.name)}</b><small${warn ? ' class="warn"' : ''}>${esc(text)}</small></div>
-      <label class="switch"><input type="checkbox" data-group="${esc(g.name)}" ${on ? 'checked' : ''} aria-label="${esc(g.name)} 自动切换"><i></i></label></div>`;
+      ${g.status === 'exit_locked' ? '<span class="state">固定策略</span>' : `<label class="switch"><input type="checkbox" data-group="${esc(g.name)}" ${on ? 'checked' : ''} aria-label="${esc(g.name)} 自动切换"><i></i></label>`}</div>`;
   }).join('') : '<p class="empty">Clash 中暂无直接选中节点的分组。</p>';
 
   /* advanced */

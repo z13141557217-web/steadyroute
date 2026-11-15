@@ -227,6 +227,12 @@ class ControlFailureTests(ServiceBase):
 
 
 class IndependentEntryTests(ServiceBase):
+    def setUp(self):
+        super().setUp()
+        self.entry_env = mock.patch.dict(service_cli.os.environ, {'STEADYROUTE_BASE_DIR':str(self.base)})
+        self.entry_env.start()
+        self.addCleanup(self.entry_env.stop)
+
     def test_stop_quiesces_before_unloading_control_plane(self):
         order=[]
         class Connection:
@@ -267,3 +273,39 @@ class IndependentEntryTests(ServiceBase):
             self.assertEqual(service_cli.main(['start']),0)
             self.assertEqual(run.call_args.args[0],['launchctl','bootstrap','gui/%d'%service_cli.os.getuid(),str(plist)])
             self.assertTrue(opened.call_args.args[0].endswith('/control'))
+
+
+class InstanceAndPolicyPresentationTests(ServiceBase):
+    def test_locked_group_has_fixed_policy_status_instead_of_switching(self):
+        cfg=self.service.config()
+        cfg['ai_line']=dict(enabled=True,country='TW',group_name='AI 台湾家宽线路',exit_policy='locked',locked_node=NODES[0])
+        self.service.save_config(cfg)
+        row=next(r for r in self.service.snapshot()['group_details'] if r['name']=='AI 台湾家宽线路')
+        self.assertEqual(row['status'],'exit_locked')
+        cfg['ai_line']['exit_policy']='adaptive';self.service.save_config(cfg)
+        row=next(r for r in self.service.snapshot()['group_details'] if r['name']=='AI 台湾家宽线路')
+        self.assertEqual(row['status'],'switching')
+
+    def test_independent_entry_uses_its_own_instance_not_production_job(self):
+        agent=self.base/'isolated-agent.plist';agent.write_text('synthetic')
+        (self.base/'service-instance.json').write_text(json.dumps(dict(schema_version=1,label='com.steadyroute.acceptance',plist=str(agent),port=18788)))
+        ports=[];routes=[]
+        class Connection:
+            def __init__(self,host,port,**kwargs):ports.append(port)
+            def request(self,method,path,**kwargs):self.path=path;routes.append(path)
+            def getresponse(self):return mock.Mock(status=200,read=lambda:json.dumps({'app':'SteadyRoute'} if self.path=='/api/control' else {'actual':'paused'}).encode())
+            def close(self):pass
+        with mock.patch.dict(service_cli.os.environ,{'STEADYROUTE_BASE_DIR':str(self.base),'STEADYROUTE_CONTROL_PORT':'17654'}),mock.patch.object(service_cli.http.client,'HTTPConnection',Connection),mock.patch.object(service_cli.subprocess,'run') as run,mock.patch('builtins.print'):
+            service_cli.main(['stop'])
+        self.assertEqual(ports,[18788,18788])
+        self.assertEqual(run.call_args.args[0],['launchctl','bootout','gui/%d'%service_cli.os.getuid(),str(agent)])
+        self.assertEqual(routes,['/api/control','/api/control/change'])
+
+
+class OfflineInstanceStopTests(ServiceBase):
+    def test_offline_stop_unloads_own_keepalive_job_before_reporting_success(self):
+        agent=self.base/'isolated.plist';agent.write_text('synthetic')
+        (self.base/'service-instance.json').write_text(json.dumps(dict(schema_version=1,label='com.steadyroute.acceptance',plist=str(agent),port=18788)))
+        with mock.patch.dict(service_cli.os.environ,{'STEADYROUTE_BASE_DIR':str(self.base)}),mock.patch.object(service_cli.http.client,'HTTPConnection',side_effect=ConnectionRefusedError),mock.patch.object(service_cli.subprocess,'run') as run,mock.patch('builtins.print'):
+            self.assertEqual(service_cli.main(['stop']),0)
+        self.assertEqual(run.call_args.args[0],['launchctl','bootout','gui/%d'%service_cli.os.getuid(),str(agent)])

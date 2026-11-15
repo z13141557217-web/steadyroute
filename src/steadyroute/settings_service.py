@@ -287,6 +287,11 @@ class SettingsService(object):
             result["groups"] = sorted(set(auto_lock.managed_groups(proxies)) | set(result["exclude_groups"]))
             result["group_details"] = group_details(proxies, result["exclude_groups"],
                                                     (config.get("auto_lock") or {}).get("include_groups"))
+            line = config.get("ai_line") or {}
+            if line.get("enabled") and exit_policy.mode(line) == "locked":
+                for row in result["group_details"]:
+                    if row["name"] == line.get("group_name"):
+                        row["status"] = "exit_locked"
             configs = self._get("/configs")
             result["ipv6"] = configs.get("ipv6")
             result["tun"] = (configs.get("tun") or {}).get("enable")
