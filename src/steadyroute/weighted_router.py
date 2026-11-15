@@ -15,6 +15,7 @@ import logging
 import os
 import resource
 import socket
+import socketserver
 import stat
 import tempfile
 import sys
@@ -1445,6 +1446,13 @@ EXPECTED_DISCONNECTS = (BrokenPipeError, ConnectionResetError, ConnectionAborted
 class QuietHTTPServer(http.server.ThreadingHTTPServer):
     """A browser closing a tab mid-response is normal; don't print a traceback for it."""
     daemon_threads = True
+
+    def server_bind(self):
+        # HTTPServer.server_bind calls getfqdn even for 127.0.0.1. A stalled
+        # reverse lookup on macOS must not delay the local control plane.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "localhost"
+        self.server_port = self.server_address[1]
 
     def handle_error(self, request, client_address):
         error = sys.exc_info()[1]

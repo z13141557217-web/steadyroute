@@ -98,5 +98,21 @@ class HttpSecurityTests(unittest.TestCase):
         self.assertFalse(router.host_allowed("evil.localhost:17654", 17654))
 
 
+
+
+class LoopbackStartupTests(unittest.TestCase):
+    def test_loopback_control_server_does_not_wait_for_reverse_dns(self):
+        # HTTPServer normally calls getfqdn from server_bind. macOS runners can
+        # wait ~35 s there, after the worker starts but before HTTP is usable.
+        from unittest import mock
+        with mock.patch.object(socket, 'getfqdn', side_effect=AssertionError('loopback startup must not resolve DNS')):
+            server = router.QuietHTTPServer(('127.0.0.1', 0), router.DashboardHandler)
+            try:
+                self.assertEqual(server.server_name, 'localhost')
+                self.assertEqual(server.server_port, server.server_address[1])
+            finally:
+                server.server_close()
+
+
 if __name__ == "__main__":
     unittest.main()
