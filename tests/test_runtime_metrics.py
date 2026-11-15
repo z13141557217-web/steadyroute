@@ -105,7 +105,7 @@ class FreshnessTests(unittest.TestCase):
                 mock.patch("builtins.open", mock.mock_open()), \
                 mock.patch.object(sys, "argv", ["weighted_router.py", "--daemon"]):
             with self.assertRaises(KeyboardInterrupt):
-                router.main()
+                router.run_worker(router.argparse.Namespace(daemon=True,status=False,dry_run=False))
         # Still anchored at 101.2 after a late first wake. Sleeping a full interval
         # after each cycle would accumulate cycle time and reach 101.95 instead.
         for actual, expected in zip(starts, [100.0, 100.75, 101.2]):

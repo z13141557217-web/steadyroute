@@ -76,7 +76,7 @@ class PackageTests(unittest.TestCase):
                          "config/route-policies.default.json", "src/steadyroute/weighted_router.py",
                          "src/steadyroute/settings.html", "src/steadyroute/ai_line.py", "src/steadyroute/ai_rules.py"):
             self.assertIn(required, names)
-        self.assertEqual(names, {"VERSION", "install.command", "uninstall.command", "rollback.command", "使用说明.txt",
+        self.assertEqual(names, {"VERSION", "install.command", "uninstall.command", "rollback.command", "启动稳航.command", "停止稳航.command", "使用说明.txt",
                                  "scripts/installer.py", "config/route-policies.default.json"}
                          | {"src/steadyroute/" + name for name in installer.APP_FILES})
 
@@ -509,6 +509,8 @@ class UninstallTests(InstallerBase):
                 if path == "/proxies":
                     data = {"台湾 HiNet 家宽 01 🇨🇳": {"type": "Hysteria2"}}
                     return 200, json.dumps({"proxies": loaded.groups(data, {"type": "Selector", "all": []})})
+                if method == "GET" and path == "/rules":
+                    return 200, json.dumps({"rules": loaded.rules()}, ensure_ascii=False)
                 if method == "PUT" and path.startswith("/configs"):
                     return loaded.put(payload)
                 return 204, ""

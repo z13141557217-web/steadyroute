@@ -499,11 +499,14 @@ class Writer(object):
         _uid, groups_file, rules_file = self.target.resolve()
         if meta.get("profile_uid") and meta["profile_uid"] != _uid:
             raise ProfileError("预览后当前订阅已变化，未写入；请重新预览")
+        binding = [_uid, groups_file.name, rules_file.name]
+        if meta.get("binding") and meta["binding"] != binding:
+            raise ProfileError("原事务订阅绑定已变化，拒绝把备份恢复到其他文件")
         self.validate(runtime_text)
         files = {"groups": groups_file, "rules": rules_file, "runtime": self.target.runtime}
         originals = {label: path.read_text(encoding="utf-8") for label, path in files.items()}
         self.check_current(originals["runtime"])
-        backup = self._backup(files, meta)
+        backup = self._backup(files, dict(meta, binding=binding))
         selections = self._selections(keep_selection)
         if precondition:
             precondition()

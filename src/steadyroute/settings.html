@@ -452,6 +452,7 @@ function render() {
 
   /* AI exit country */
   const selected = pending || (l.enabled && l.country ? l.country : 'off');
+  const saved = l.enabled && l.country ? l.country : 'off';
   const countries = (s.countries || []).slice();
   if (l.country && !countries.some(c => c.code === l.country)) {
     countries.unshift({ code: l.country, label: countryLabel(l.country), residential: 0, ai_ok: !(l.country in (s.unsupported || {})) });
@@ -471,7 +472,7 @@ function render() {
   const policy = displayPolicy(s.exit_policy);
   const locked = l.enabled && policy.configured_mode === 'locked';
   state.className = locked ? (policy.severity === 'ok' ? 'state on' : policy.severity === 'info' ? 'state' : 'state warn') : live() && !missing() ? 'state on' : l.enabled ? 'state warn' : 'state';
-  state.textContent = locked ? (policy.headline || '实际约束未核实') : live() ? `${countryLabel(l.country)} · ${missing() ? '未生效' : '已生效'}` : l.enabled ? '尚未写入 Clash' : '未启用';
+  state.textContent = pending && pending !== saved ? '未保存草稿；实际状态见已保存设置' : locked ? (policy.headline || '实际约束未核实') : live() ? `${countryLabel(l.country)} · ${missing() ? '未生效' : '已生效'}` : l.enabled ? '尚未写入 Clash' : '未启用';
 
   let result = '';
   if (live()) {

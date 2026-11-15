@@ -2,6 +2,8 @@
 """Weighted, connection-aware selector for Clash Verge residential routes."""
 
 import argparse
+import hmac
+import operation_gate
 import datetime
 import collections
 import concurrent.futures
@@ -56,7 +58,7 @@ except ModuleNotFoundError:
     import settings_service
 
 
-CONTROLLER_SOCKET_PATHS = (
+CONTROLLER_SOCKET_PATHS = tuple(filter(None, (os.environ.get("STEADYROUTE_CONTROLLER_SOCKET"),))) or (
     "/var/run/clash-verge-service/users/%d/verge-mihomo.sock" % os.getuid(),
     os.path.join(tempfile.gettempdir(), "verge-mihomo.sock"),
     "/tmp/verge/verge-mihomo.sock",
@@ -89,7 +91,7 @@ API_CSP = "default-src 'none'; frame-ancestors 'none'"
 # rebinding: a web page can re-point its own name at 127.0.0.1 and read the API same-origin.
 LOCAL_HOSTNAMES = ("127.0.0.1", "localhost")
 DASHBOARD_HOST = "127.0.0.1"
-DASHBOARD_PORT = 17654
+DASHBOARD_PORT = int(os.environ.get("STEADYROUTE_WORKER_PORT", "17654"))
 SERVICE_NAME = "稳航 SteadyRoute"
 SERVICE_STARTED_AT = int(time.time())
 DASHBOARD_CACHE = None
@@ -444,6 +446,7 @@ class ControllerHTTPError(RuntimeError):
         super().__init__("controller HTTP %d: %s" % (status, body))
 
 
+@operation_gate.guarded
 def api_request(method, path, payload=None, timeout=10):
     body = b""
     if payload is not None:
@@ -1500,6 +1503,13 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if (route.rstrip("/") or "/") in STATIC_PAGES:
             self._reply(*static_page_response(route))
             return
+        if route == "/api/control/worker":
+            expected = os.environ.get("STEADYROUTE_WORKER_KEY", "")
+            if not expected or not hmac.compare_digest(self.headers.get("X-SteadyRoute-Worker", ""), expected):
+                self._reply(403,"application/json",b'{"error":"forbidden"}',api=True)
+                return
+            self._reply(200,"application/json",json.dumps({"pid":os.getpid(),"worker":True}).encode(),api=True)
+            return
         if route in ("/api/status", "/api/v1/status", "/api/nodes"):
             self._reply(*cached_api_response(route), api=True)
             return
@@ -1521,9 +1531,14 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self._reply(421, "text/plain; charset=utf-8", b"misdirected request", api=True)
             return
         route = urlsplit(self.path).path
-        if route not in ("/api/settings/preview", "/api/settings/apply", "/api/settings/sync"):
+        if route not in ("/api/settings/preview", "/api/settings/apply", "/api/settings/sync", "/api/control/quiesce"):
             self._reply(404, "text/plain; charset=utf-8", b"not found", api=True)
             return
+        if route == "/api/control/quiesce":
+            expected = os.environ.get("STEADYROUTE_WORKER_KEY", "")
+            if not expected or not hmac.compare_digest(self.headers.get("X-SteadyRoute-Worker", ""), expected):
+                self._reply(403,"application/json",b'{"error":"forbidden"}',api=True)
+                return
         if not settings_request_allowed(self.headers, port):
             self._reply(403, "application/json; charset=utf-8", b'{"error":"forbidden"}', api=True)
             return
@@ -1562,7 +1577,8 @@ def controller_call(method, path, payload=None):
 def settings_service_instance():
     global SETTINGS
     if SETTINGS is None and POLICY_CONFIG_PATH:
-        SETTINGS = settings_service.SettingsService(POLICY_CONFIG_PATH, BASE_DIR, controller_call, log=log)
+        SETTINGS = settings_service.SettingsService(POLICY_CONFIG_PATH, BASE_DIR, controller_call, log=log,
+            clash_home=os.environ.get("STEADYROUTE_CLASH_HOME"), core=os.environ.get("STEADYROUTE_MIHOMO"))
     return SETTINGS
 
 
@@ -1645,6 +1661,11 @@ def settings_post(route, body):
         changes = json.loads(body.decode("utf-8") or "{}")
         if not isinstance(changes, dict):
             raise ValueError("body must be an object")
+        if route == "/api/control/quiesce":
+            if not os.environ.get("STEADYROUTE_WORKER"):
+                return 409, {"error":"不是受控工作进程"}
+            operation_gate.gate.close(180)
+            return 200, {"drained":True}
         changes = {key: value for key, value in changes.items() if key in settings_service.EDITABLE}
         if route == "/api/settings/preview":
             return 200, service.preview(changes)
@@ -3672,6 +3693,26 @@ def main():
     parser.add_argument("--status", action="store_true")
     args = parser.parse_args()
 
+    if args.daemon and not os.environ.get("STEADYROUTE_WORKER"):
+        import service_control
+        return service_control.main()
+    if os.environ.get("STEADYROUTE_WORKER"):
+        parent = int(os.environ["STEADYROUTE_PARENT"])
+        if os.getppid() != parent:
+            return 1
+        def parent_watch():
+            while os.getppid() == parent:
+                time.sleep(.2)
+            operation_gate.gate.close(180)
+            os._exit(0)
+        threading.Thread(target=parent_watch,name="steadyroute-parent-watch",daemon=True).start()
+    elif not args.status and os.path.exists(os.path.join(BASE_DIR,"control-state.json")):
+        print("请使用总开关或启动.command；独立检测不能绕过已保存的停止状态", file=sys.stderr)
+        return 1
+    return run_worker(args)
+
+
+def run_worker(args):
     os.makedirs(BASE_DIR, exist_ok=True)
     if args.status:
         show_status()

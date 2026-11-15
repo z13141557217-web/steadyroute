@@ -200,7 +200,7 @@ class Manager(object):
                 "ai_unsupported": line["ai"] and line["country"] in AI_UNSUPPORTED,
             })
         return {
-            "profile_uid": uid, "groups_file": groups_file.name, "rules_file": rules_file.name,
+            "profile_uid": uid, "binding": [uid,groups_file.name,rules_file.name], "groups_file": groups_file.name, "rules_file": rules_file.name,
             "lines": preview, "rules": rule_lines, "rule_breakdown": breakdown, "groups": groups,
             "removed_rules": [line for line in self.applied.get("rules") or [] if line not in rule_lines],
             "removed_legacy": [clash_profile._item_name(item.splitlines()[0]) for item in removed_groups],
@@ -238,7 +238,7 @@ class Manager(object):
                 drop.append((named or remaining)[0])
         return plan
 
-    def apply(self):
+    def apply(self, resume=False, precondition=None):
         plan = self.validated_plan()
         names = [line["name"] for line in self.lines()]
         first_rules = plan["rules"][:3]
@@ -261,20 +261,26 @@ class Manager(object):
             live = self.proxies_reader().get(line.get("group_name")) or {}
             # A prior applied lock may be absent after subscription removal; never rebind it.
             prior = self.applied.get("exit_policy") or {}
-            continuing = prior.get("locked_node") == line.get("locked_node") and prior.get("group_name") == line.get("group_name")
+            continuing = resume or (prior.get("locked_node") == line.get("locked_node") and prior.get("group_name") == line.get("group_name"))
             allowed = (line["locked_node"], "REJECT", None) if continuing else (line["locked_node"],)
             if live.get("now") not in allowed:
                 raise clash_profile.ProfileError("当前选择已变化；未重选或改写锁定目标，请重新核对")
 
+        def combined_guard():
+            guard_current()
+            if precondition:
+                precondition()
+
         backup = self.writer.commit(
             plan["texts"]["groups"], plan["texts"]["rules"], plan["texts"]["runtime"],
             {"action": "apply", "at": int(time.time()), "profile_uid": plan["profile_uid"],
-             "removed_items": plan["removed_items"], "previous_applied": self.applied},
-            verify=verify, precondition=guard_current, keep_selection=[name for name in names if not (
+             "removed_items": plan["removed_items"], "previous_applied": self.applied, "binding":plan["binding"]},
+            verify=verify, precondition=combined_guard, keep_selection=[name for name in names if not (
                 name == (self.config.get("ai_line") or {}).get("group_name")
                 and exit_policy.mode(self.config.get("ai_line") or {}) == "locked")])
         owned = self.profile_record(plan["profile_uid"])
         profiles = self.other_profiles(plan["profile_uid"])
+        self.last_written = plan["texts"]
         removed = [item for item in owned.get("removed_items") or []
                    if item not in plan["restored_items"]] + plan["removed_items"]
         # Keep the original order of the groups we took out, so disable() puts them back as they were.
@@ -294,7 +300,7 @@ class Manager(object):
         }
         return plan, self.applied
 
-    def disable(self):
+    def disable_plan(self):
         """Take every SteadyRoute item out of Clash and put back what an older version had there."""
         uid, groups_file, rules_file = self.target.resolve()
         owned = self.profile_record(uid)
@@ -308,10 +314,43 @@ class Manager(object):
             set(owned.get("groups") or []), stale_rules=owned.get("rules") or [])
         runtime = insert_runtime_groups(runtime, restored_runtime_groups)
         runtime = restore_runtime_rules(runtime, owned.get("original_runtime_rules") or [])
-        self.last_backup = self.writer.commit(groups_text, rules_text, runtime,
-                           {"action": "disable", "at": int(time.time()), "profile_uid": uid,
-                            "previous_applied": self.applied})
-        self.applied = {"profiles": profiles} if profiles else {}
+        return {"profile_uid":uid, "binding":[uid,groups_file.name,rules_file.name], "profiles":profiles,
+                "texts":{"groups":groups_text,"rules":rules_text,"runtime":runtime}}
+
+    def disable(self, precondition=None):
+        plan = self.disable_plan()
+        text = plan["texts"]
+        # Preserve every surviving selector's current choice across reload. Do not
+        # select a replacement for a removed group or clear any connection.
+        current = self.proxies_reader()
+        surviving = set(clash_profile.runtime_group_names(text["runtime"]) or [])
+        keep = [name for name in surviving if (current.get(name) or {}).get("type") == "Selector"]
+        def verify_removed():
+            self.writer.check_current(text["runtime"])
+            status, body = self.writer.controller("GET", "/rules", None)
+            if status != 200:
+                raise clash_profile.ProfileError("撤销后规则无法核对，未确认交还")
+            def signature(row):
+                parts = clash_profile._normal_rule(row).split(",")
+                if parts[-1] == "no-resolve":
+                    parts.pop()
+                kind = parts[0].replace("-", "").replace("_", "").lower()
+                return (kind, "" if kind == "match" else ",".join(parts[1:-1]).replace(" ", ""), parts[-1])
+            expected = [signature(row) for row in runtime_rule_items(text["runtime"]) if row is not None]
+            live = [(str(row.get("type", "")).replace("-", "").replace("_", "").lower(),
+                     str(row.get("payload", "")).replace(" ", ""), row.get("proxy"))
+                    for row in json.loads(body).get("rules") or []]
+            uid = plan["profile_uid"]
+            for rule in self.profile_record(uid).get("rules") or []:
+                key = signature(rule)
+                if live.count(key) > expected.count(key):
+                    raise clash_profile.ProfileError("撤销后仍有额外的稳航受管规则；未确认交还")
+        self.last_backup = self.writer.commit(text["groups"],text["rules"],text["runtime"],
+            {"action":"disable","at":int(time.time()),"profile_uid":plan["profile_uid"],
+             "previous_applied":self.applied, "binding":plan["binding"]}, keep_selection=keep,
+            verify=verify_removed, precondition=precondition)
+        self.last_written = text
+        self.applied = {"profiles":plan["profiles"]} if plan["profiles"] else {}
         return self.applied
 
     def healthy(self, runtime_text=None, rules_payload=None):

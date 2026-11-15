@@ -132,7 +132,8 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
   <div class="guide">
     <nav class="toc" aria-label="目录">
       <p>目录</p>
-      <a href="#overview">稳航是什么</a>
+      <a href="#master-switch">总开关与启动</a>
+        <a href="#overview">稳航是什么</a>
       <a href="#iron-rule">铁律：只换同地区家宽</a>
       <a href="#takeover">接管哪些分组</a>
       <a href="#ai-line">AI 家宽专线</a>
@@ -160,7 +161,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <li><b>坏了马上换</b>：当前节点确认故障后，立刻换到事先准备好的同地区“热备”节点。</li>
           <li><b>慢了悄悄换</b>：当前节点没坏、但有明显更快更稳的同地区家宽时，在不打断正在进行的对话的前提下换过去。</li>
         </ul>
-        <p>它不改你的订阅，不上传任何数据；只有在设置页确认开启 AI 家宽专线后才会往 Clash 写入专线和规则，关闭即完整撤销。看板只在本机 <code>127.0.0.1:17654</code> 上提供，别的设备访问不到。</p>
+        <p>它不改你的订阅，不上传任何数据；只有在设置页确认开启 AI 家宽专线后才会往 Clash 写入专线和规则，暂停保留规则；明确确认交还 Clash 才撤销当前订阅自己的内容。看板只在本机 <code>127.0.0.1:17654</code> 上提供，别的设备访问不到。</p>
       </section>
 
       <section class="card gsec" id="iron-rule">
@@ -198,7 +199,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <li><b>规则从哪来</b>：第一优先级是 <a href="https://ip.net.coffee/claude/" target="_blank" rel="noopener noreferrer">ip.net.coffee</a> 整理的 Claude 与 ChatGPT / Codex 分流规则（含 Anthropic 的 IP 段），其后是社区维护的 AI 服务合集（Gemini、Grok、Perplexity 等）、AI 桌面 App 和命令行，以及你在设置页手动添加的域名。规则每周自动同步；同步失败时继续用现有规则，6 小时后重试（连续失败 3 次后改为每天一次），设置页“高级信息”里也可以立即同步。</li>
           <li><b>订阅切换</b>：各订阅的原始分组与规则分别保存，撤销只恢复当前订阅的内容；当前订阅与上次应用记录不一致时提示待核对。新订阅不含原固定目标时拒绝受管 AI 连接，不自动换国家或解除固定。保存成功与节点连通性分别核验。旧版本已经混用的记录需依据切换前备份核对恢复。</li>
           <li><b>写入安全</b>：写入前由 Clash 内核校验并自动备份，任何一步失败都会恢复原配置并选回原来的节点。内容写在 Clash Verge 当前订阅的扩展文件里，更新订阅不会丢失；切换订阅后稳航会在一小时内自动补上。</li>
-          <li><b>可以随时撤销</b>：关闭开关或卸载稳航，专线和规则会完整撤销，Clash 恢复原样。</li>
+          <li><b>可以随时撤销</b>：关闭 AI 专线或明确确认交还 Clash 才撤销受管内容；总开关暂停只停止工作进程并保留规则。卸载另按撤销流程核对。</li>
           <li><b>不能选的地区</b>：香港、澳门等地区不在 ChatGPT / Claude 的服务范围内，不能用作 AI 专线。</li>
         </ul>
         <p><b>AI 分流体检</b>：设置页按 Clash 当前规则推演参考列表中各 AI 地址命中的规则、分组和所选节点。“34 / 34”是规则推演通过项数，国家根据节点名称识别，不是 34 次实际请求或公网 IP 地区检测。</p>
@@ -390,7 +391,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
           <details><summary>同地区的家宽全坏了会怎样？</summary>
             <p>稳航会保持当前选择，继续检测，看板显示红色告警。它不会为了“能连上”而换到其他地区或非家宽节点，见<a href="#iron-rule">铁律</a>。</p></details>
           <details><summary>看板打不开怎么办？</summary>
-            <p>先确认稳航在运行：它由系统的 LaunchAgent 自动启动，开机后自己会跑起来。看板地址是 <code>http://127.0.0.1:17654</code>。运行 <code>python3 scripts/installer.py status</code> 能看到它是否在线；如果没在运行，重新运行一次 <code>install.command</code> 即可。</p></details>
+            <p>先查看总开关的实际工作进程状态：轻量控制页面与工作进程分别运行，登录启动独立保存，暂停不会被自动启动覆盖。看板地址是 <code>http://127.0.0.1:17654</code>。运行 <code>python3 scripts/installer.py status</code> 能看到它是否在线；如果控制页面已退出，使用“启动稳航.command”独立打开，再预览并确认启动，不需要重新安装。</p></details>
           <details><summary>怎么升级、换电脑或卸载？</summary>
             <p>升级：下载新版（或在仓库里 <code>git pull</code>）后再运行一次 <code>install.command</code>，状态、历史和设置都会保留，安装失败的自动恢复以安装器输出及备份为准。换电脑：在新 Mac 上装好 Clash Verge，再运行 <code>install.command</code>。<code>rollback.command</code> 仅恢复旧程序迁移时存档的旧启动项，无此存档会拒绝，不是同一安装目录任意版本回退；它会撤销受管分组与规则，可能失去固定边界。固定场景应由发布管理保持服务停止，成套核对并恢复应用、配置、状态及 Clash 边界后再启动和验证。卸载：运行 <code>uninstall.command</code>，稳航写进 Clash 的专线和规则会一并撤销。</p></details>
           <details><summary>一直在测，会不会耗流量、拖慢网速？</summary>
@@ -401,7 +402,7 @@ html { scroll-behavior: smooth; scroll-padding-top: 76px; }
       </section>
     </div>
   </div>
-</main>
+<section class="gsec" id="master-switch" style="margin:32px 0"><h2>稳航总开关与独立启动</h2><p>设置顶部和看板显示已保存意愿、实际工作进程及控制页面。暂停工作进程会停止所有探测、选路、同步和修复，等待在途事务结束再退出；控制页面保留，原固定规则、目标和历史保留。暂停不代表撤销固定。</p><p>“停用并交还 Clash”先预览当前订阅自己的分组和规则，经勾选确认后撤销固定保护。其他订阅的恢复资料保留，不恢复旧订阅静态节点到新订阅，不删除用户规则、不清连接或 Cookie。失败显示未完成，旧版污染记录仍需按备份恢复。</p><p>安装包和安装目录均有“启动稳航.command”“停止稳航.command”。停止入口先完成暂停再退出控制页面；启动入口独立打开控制页面，预览并确认当前订阅与原目标后启动。新安装与首次引入总开关先暂停。登录时启动工作进程独立保存；已经暂停时，登录、重启或 KeepAlive 不会恢复接管。控制页面可保留，不代表工作进程运行。</p><p>缺少原锁定目标、当前选择漂移、离线或预览期间订阅变化都会阻断启动，不自动换国或 DIRECT。暂停时可以明确预览并保存下次启动目标，也可以保留停用；更新偏好不接管内核，再启动需重新核对。工作进程崩溃不自动重启。停止页不展示旧绿色检测结论，历史观察不重置。页面离线不能作为规则已撤销的证据。</p></section></main>
 
 <footer class="wrap"><span>仅监听本机 127.0.0.1 · 所有数据只在这台 Mac 上</span><span id="footer-version"></span></footer>
 
