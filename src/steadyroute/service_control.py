@@ -58,6 +58,7 @@ class Control:
                 self.save(actual='failed', desired_running=False,
                           error='工作进程意外退出；保持停止，请核对后手动启动')
             result = dict(self.state)
+            result['subscription_scope'] = self.service.scope.snapshot()
             result.update(app="SteadyRoute", controller_running=True, worker_running=self.worker is not None,
                           worker_pid=self.worker.pid if self.worker else None,
                           protection='未重新核实；暂停保留已有规则，进程停止不代表规则撤销')
@@ -69,7 +70,7 @@ class Control:
         uid, groups, rules = self.service.target.resolve()
         source = self.service.target.profile_dir / (uid + '.yaml')
         paths = [self.service.config_path, self.service.applied_path, self.service.target.profiles_yaml,
-                 groups, rules, self.service.target.runtime, source]
+                 groups, rules, self.service.target.runtime, source, self.service.scope.path]
         digest = hashlib.sha256()
         for path in paths:
             digest.update(str(path).encode())
@@ -97,6 +98,7 @@ class Control:
         return [item.get('name') for item in data.get('proxies') or []]
 
     def preview(self, action):
+        self.service.scope.require()
         if action not in ('start', 'release'):
             raise ValueError('未知运行操作')
         uid, source, digest = self._inputs()
@@ -112,7 +114,7 @@ class Control:
             self.service.check_core()
             data = self.service.proxies()
             self.service.writer().check_current(self.service.target.runtime.read_text())
-            if line.get('enabled') and exit_policy.mode(line) == 'locked':
+            if line.get('enabled') and exit_policy.mode(line) == 'locked' and not line.get('binding_missing'):
                 target = line.get('locked_node')
                 if target not in self.source_names(source) or not ai_line.is_node(data.get(target)):
                     raise clash_profile.ProfileError('当前订阅缺少原锁定目标；保持停用。请补回原目标，或在 Clash 核对后明确更新目标；不会自动选其他节点或 DIRECT')
@@ -136,6 +138,7 @@ class Control:
         return result
 
     def target_candidates(self):
+        self.service.scope.require()
         with self.lock:
             if self.snapshot()['worker_running']:
                 raise RuntimeError('请先暂停，再核对下次启动目标')
@@ -172,9 +175,14 @@ class Control:
             config = self.service.config()
             line = dict(config.get('ai_line') or {})
             line.pop('slow_exit',None)
+            line.pop('binding_missing',None)
             line.update(enabled=True,exit_policy='locked',country=country,locked_node=node)
             line.setdefault('group_name',ai_line.DEFAULT_AI_GROUP)
             config['ai_line'] = line
+            if (config.get('netcoffee') or {}).get('enabled'):
+                config['netcoffee'].setdefault('bindings', {})[plan['profile_uid']] = {
+                    key: line[key] for key in ('country','locked_node','group_name')}
+                config['probe_nodes'] = [node]
             old_text = self.service.config_path.read_text()
             self.service.save_config(config)
             try:
@@ -236,6 +244,7 @@ class Control:
             return self.snapshot()
 
     def _guard_preview(self, action, expected):
+        self.service.scope.require()
         _, _, digest = self._inputs()
         if action == 'start':
             line = self.service.config().get('ai_line') or {}

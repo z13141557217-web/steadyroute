@@ -1570,6 +1570,8 @@ function renderFilters(d) {
 }
 
 function probePresentation(n) {
+  if (n.measurement_status === 'unmeasured') return {text:'未探测', cls:'info', when:'尚无稳航检测记录'};
+  if (n.measurement_status === 'historical') return {text:'历史结果', cls:'info', when:n.last_probe_at ? age(Math.max(0,Math.round(nowSeconds()-n.last_probe_at))) : '时间未知'};
   const p = n.latest_probe;
   if (!p) return {text:'未知', cls:'info', when:'旧记录未保留结果'};
   const when = p.observed_at == null ? '时间未知' : age(Math.max(0, Math.round(nowSeconds()-p.observed_at)));

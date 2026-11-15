@@ -449,6 +449,8 @@ class ControllerHTTPError(RuntimeError):
 
 @operation_gate.guarded
 def api_request(method, path, payload=None, timeout=10):
+    if method != 'GET' or '/delay?' in path:
+        settings_service_instance().scope.require()
     body = b""
     if payload is not None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -735,6 +737,8 @@ def node_contract(group_name, node_name, node_state, now, current_names):
     return {
         "id": state_contract.node_ui_id(group_name, node_name),
         "name": node_name,
+        "probe_selected": probe_authorized(node_name),
+        "measurement_status": 'historical' if node_state.get('last_probe_at') and not probe_authorized(node_name) else 'unmeasured' if not node_state.get('last_probe_at') else 'measured',
         "group": group_name,
         "region": region_for_group(group_name),
         "lifecycle": lifecycle["code"],
@@ -1218,6 +1222,9 @@ def build_status_snapshots(state, proxy_data, connections, now=None, memory_mb=N
             "window_samples": node["window_samples"],
             "window_p90_ms": node["window_p90_ms"],
             "latest_probe": node["latest_probe"],
+            "probe_selected": node['probe_selected'],
+            "measurement_status": node['measurement_status'],
+            "last_probe_at": node['last_probe_at'],
             "last_success_delay_ms": node["last_success_delay_ms"],
             "last_success_at": node["last_success_at"],
             "window_p50": node["window_p50_ms"],
@@ -1592,7 +1599,9 @@ def settings_service_instance():
 
 def reload_policy_settings():
     """Pick up settings saved by the settings page; runtime policies stay as they are."""
-    fresh = route_policy.load_policy_config(POLICY_CONFIG_PATH)
+    fresh = settings_service_instance().config()
+    if (fresh.get('probe_nodes'), fresh.get('_profile_uid')) != (POLICY_CONFIG.get('probe_nodes'), POLICY_CONFIG.get('_profile_uid')):
+        PROBE_SCOPE_EPOCH[0] += 1
     policies = POLICY_CONFIG.get("policies", [])
     POLICY_CONFIG.clear()
     POLICY_CONFIG.update(fresh)
@@ -1674,7 +1683,7 @@ def settings_post(route, body):
                 return 409, {"error":"不是受控工作进程"}
             operation_gate.gate.close(180)
             return 200, {"drained":True}
-        changes = {key: value for key, value in changes.items() if key in settings_service.EDITABLE}
+        changes = {key: value for key, value in changes.items() if key in settings_service.EDITABLE or (key == '_preview' and route == '/api/settings/apply')}
         if route == "/api/settings/preview":
             return 200, service.preview(changes)
         if route == "/api/settings/sync":
@@ -1682,6 +1691,8 @@ def settings_post(route, body):
             logging_setup.write_event("rules_synced", ok=result["ok"], changed=result["changed"])
             return 200, result
         if route == "/api/settings/apply":
+            if 'netcoffee' in changes and not changes.get('_preview'):
+                return 409, {'error':'请先预览检测规则，再确认导入或撤销'}
             result = service.apply(changes)
             reload_policy_settings()
             logging_setup.write_event("settings_changed", result=result)
@@ -1741,9 +1752,52 @@ def start_dashboard():
 
 
 PROBE_CONTEXT = threading.local()
+PROBE_SCOPE_EPOCH = [0]
+
+
+def subscription_authorized():
+    try:
+        return settings_service_instance().scope.allowed()
+    except Exception:
+        return False
+
+
+def probe_authorized(name):
+    if not subscription_authorized():
+        return False
+    selected = set(POLICY_CONFIG.get('probe_nodes') or [])
+    if not selected or (name != 'DIRECT' and name not in selected):
+        return False
+    if (POLICY_CONFIG.get('netcoffee') or {}).get('enabled'):
+        try:
+            service = settings_service_instance()
+            current = service.config()
+            if current.get('_profile_uid') != POLICY_CONFIG.get('_profile_uid'):
+                return False
+            if not current.get('probe_nodes'):
+                return False
+            if name != 'DIRECT' and name not in current.get('probe_nodes', []):
+                return False
+        except Exception:
+            return False
+    return True
+
+
+def submit_probe(pool, name, url, timeout_ms, observation=None):
+    epoch = PROBE_SCOPE_EPOCH[0]
+    def execute():
+        if epoch != PROBE_SCOPE_EPOCH[0] or not probe_authorized(name):
+            if observation is not None:
+                observation.update(status='unmeasured', reason_code='not_selected')
+            return None
+        return timed_probe(name, url, timeout_ms, observation)
+    return pool.submit(execute)
 
 
 def probe_url(name, url, timeout_ms):
+    if not probe_authorized(name):
+        PROBE_CONTEXT.result = dict(status='unmeasured', reason_code='not_selected')
+        return None
     path = "/proxies/%s/delay?timeout=%d&url=%s" % (
         quote(name, safe=""),
         timeout_ms,
@@ -1791,6 +1845,8 @@ ELAPSED_LOCK = threading.Lock()
 def timed_probe(name, url, timeout_ms, observation=None):
     """probe_url, remembering how long a successful answer really took (seconds)."""
     started = time.monotonic()
+    if not probe_authorized(name):
+        return None
     PROBE_CONTEXT.result = None
     delay = probe_url(name, url, timeout_ms)
     if observation is not None:
@@ -1866,13 +1922,28 @@ def run_probe_jobs(jobs, observations=None):
     results = {}
     executor = probe_pool()
     futures = {}
+    shared = {}
     for key, name, url, timeout_ms in jobs:
+        if not probe_authorized(name):
+            continue
         observation = {} if observations is not None else None
         if observations is not None:
             observations[key] = observation
-        futures[executor.submit(timed_probe, name, url, timeout_ms, observation)] = key
+        identity = (name, url, timeout_ms)
+        if identity not in shared:
+            future = submit_probe(executor, name, url, timeout_ms, observation)
+            shared[identity] = future
+            futures[future] = []
+        futures[shared[identity]].append((key, name, observation))
     for future in concurrent.futures.as_completed(futures):
-        results[futures[future]] = future.result()
+        delay = future.result()
+        aliases = futures[future]
+        source = aliases[0][2]
+        for key, name, observation in aliases:
+            if probe_authorized(name) and (not source or source.get('status') != 'unmeasured'):
+                results[key] = delay
+                if observation is not None and source:
+                    observation.update(source)
     return results
 
 
@@ -1882,6 +1953,8 @@ def probe_many(jobs, timeout_ms):
 
 
 def local_network_ok():
+    if not POLICY_CONFIG.get('probe_nodes'):
+        return False
     """Probe DIRECT through Mihomo's delay API. Read-only: never selects DIRECT."""
     results = probe_many([(url, "DIRECT", url) for url in LOCAL_CHECK_URLS], LOCAL_CHECK_TIMEOUT_MS)
     return any(value is not None for value in results.values())
@@ -1906,12 +1979,14 @@ def confirm_current_failure(current, cycle_cache, standby=None, first=None):
     - otherwise: 'confirmed'
     cycle_cache is shared within one cycle so the local check runs at most once.
     """
+    if not probe_authorized(current):
+        return 'unmeasured'
     pool = probe_pool()
     pending = [first] if first is not None else []
     controls = {}
     timeout_ms = confirm_timeout_ms(current)
-    if standby and standby != current:
-        controls["standby"] = pool.submit(timed_probe, standby, FAST_PROBE_URL, control_timeout_ms(standby))
+    if standby and standby != current and probe_authorized(standby):
+        controls["standby"] = submit_probe(pool, standby, FAST_PROBE_URL, control_timeout_ms(standby))
     if "local_ok" not in cycle_cache:
         # Own thread, not a probe worker: local_network_ok waits on probe workers itself.
         controls["local"] = control_pool().submit(local_network_ok)
@@ -1922,7 +1997,7 @@ def confirm_current_failure(current, cycle_cache, standby=None, first=None):
         if any(f.done() and f.result() is not None for f in pending):
             answered = True
             break
-        pending.append(pool.submit(timed_probe, current, FAST_PROBE_URL, timeout_ms))
+        pending.append(submit_probe(pool, current, FAST_PROBE_URL, timeout_ms))
     if not answered:
         # The first probe may run longer than the confirmation probes; it counts only while
         # they are still waiting.
@@ -2179,8 +2254,9 @@ def choose_probe_targets(state, proxy_data, now=None):
             if not low or now - int(node_state.get("last_probe_at", 0)) >= LOW_TIER_PROBE_SECONDS - 1:
                 targets.add(name)
     targets.update(name for _policy, name in candidate_registry.warmup_probe_targets(POLICY_CONFIG, state))
+    targets.update(n for n in POLICY_CONFIG.get('probe_nodes', []) if ai_line.is_node(proxy_data.get(n)))
     targets.discard(None)
-    return sorted(targets)
+    return sorted(n for n in targets if probe_authorized(n))
 
 
 def target_down_urls(state, group_name, now):
@@ -2199,6 +2275,8 @@ def preflight_is_fresh(node_state, now):
 
 
 def business_preflight(group_name, node_name, state, dry_run=False, now=None, allow_fresh_skip=True):
+    if not probe_authorized(node_name):
+        return False
     now = time.time() if now is None else now
     down = target_down_urls(state, group_name, now)
     urls = [url for url in BUSINESS_TEST_URLS.get(group_name, []) if url not in down]
@@ -2261,6 +2339,8 @@ class RegionGuardError(RuntimeError):
 
 
 def selection_allowed(group_name, node_name):
+    if not probe_authorized(node_name):
+        return False
     """Iron rule: a group may only ever select its own region's residential nodes."""
     policy = POLICY_BY_GROUP.get(group_name)
     if policy is None or not isinstance(node_name, str):
@@ -2422,6 +2502,8 @@ PRECHECKED = {}   # (group, node) -> (wall time, success): business check run wh
 def precheck_target(group_name, node_name, down_urls):
     """Background business check of the probable failover target while the line waits out
     LONG_OUTAGE_SECONDS, so the switch itself does not have to wait for it."""
+    if not probe_authorized(node_name):
+        return
     urls = [url for url in BUSINESS_TEST_URLS.get(group_name, []) if url not in down_urls]
     if not urls:
         return
@@ -3126,6 +3208,8 @@ TIMELINE_LOCK = threading.Lock()
 
 
 def fast_plan():
+    if not subscription_authorized():
+        return {}
     """{group: (current, candidates, hot standby)} for the lines the fast lane watches."""
     base_state = RUNTIME.get("last_state") or {}
     plan = {}
@@ -3154,7 +3238,7 @@ def fast_plan():
                         "failover_readback", group=group_name, incident_id=pending[0],
                         outcome="observed", selection_to_observed_ms=round((observed - pending[2]) * 1000),
                         ack_to_observed_ms=round((observed - pending[3]) * 1000))
-        if candidates and current in candidates:
+        if candidates and current in candidates and probe_authorized(current):
             standby = (base_state.get("groups", {}).get(group_name) or {}).get("hot_standby")
             plan[group_name] = (current, candidates, standby)
     return plan
@@ -3169,6 +3253,8 @@ def run_fast_tick(dry_run=False):
     still applies. Returns 'skip' | 'resume' | 'controller_error' | 'ok' | 'transient' |
     'local_offline' | 'failover'.
     """
+    if not subscription_authorized():
+        return 'out_of_scope'
     drain_probe_completions()
     if RUNTIME.get("last_state") is None:
         return "skip"
@@ -3186,8 +3272,11 @@ def run_fast_tick(dry_run=False):
     started = time.monotonic()
     tick_wall = time.time()
     observations = {group: {} for group in plan}
-    futures = {group: pool.submit(timed_probe, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS, observations[group])
-               for group, (current, _candidates, _standby) in plan.items()}
+    futures, shared = {}, {}
+    for group, (current, _candidates, _standby) in plan.items():
+        if current not in shared:
+            shared[current] = (submit_probe(pool, current, FAST_PROBE_URL, FAST_PROBE_TIMEOUT_MS, observations[group]), observations[group])
+        futures[group], observations[group] = shared[current]
     for future in futures.values():
         future.add_done_callback(_stamp_done)
     limits = {group: suspect_after(current) for group, (current, _candidates, _standby) in plan.items()}
@@ -3219,6 +3308,8 @@ def run_fast_tick(dry_run=False):
     for group, future in futures.items():
         request_id = uuid.uuid4().hex
         node = plan[group][0]
+        if not probe_authorized(node):
+            continue
         if future.done():
             delay, status, elapsed = completed_probe_result(future, started)
             if status == "failed" and observations[group].get("status") == "unavailable":
@@ -3273,6 +3364,8 @@ def run_fast_tick(dry_run=False):
             return "controller_error"
         for group_name in confirmed:
             current, candidates, _standby = plan[group_name]
+            if not probe_authorized(current):
+                continue
             if (proxy_data.get(group_name) or {}).get("now") != current:
                 clear_outage(group_name)
                 continue   # the full cycle or the user moved the line meanwhile
@@ -3339,6 +3432,8 @@ def drain_probe_completions():
         pending = list(PROBE_COMPLETIONS)
         PROBE_COMPLETIONS.clear()
     for group, node, request_id, at, (delay, status, elapsed), observation in pending:
+        if not probe_authorized(node):
+            continue
         trace_kind = status if status in ("cancelled", "unavailable") else "fast"
         probe_trace.record(trace_kind, node, delay, time.time(),
                            elapsed=elapsed, request_id=request_id)
@@ -3391,6 +3486,18 @@ def run_cycle(dry_run=False):
 
 
 def plan_cycle():
+    if not subscription_authorized():
+        service = settings_service_instance()
+        payload = dict(service=dict(version=read_service_version(), controller_connected=False,
+            subscription_scope=service.scope.snapshot(),
+            state=dict(code='out_of_scope', title='当前订阅已跳过', severity='info', detail=service.scope.snapshot()['summary'])),
+            groups=[], stale=False)
+        update_dashboard_cache(dict(snapshot_id='scope-'+uuid.uuid4().hex, legacy=payload, v1=dict(payload, schema_version=1)))
+        update_nodes_cache(state_contract.new_state(), {}, time.time())
+        return None
+    if (POLICY_CONFIG.get('netcoffee') or {}).get('enabled'):
+        settings_service_instance().ensure_subscription()
+        reload_policy_settings()
     cycle_clock = time.perf_counter()
     cycle_started_at = int(time.time())
     state = load_state()
@@ -3466,6 +3573,9 @@ def plan_cycle():
         if urls and not node_state.get("business_successes") and (group_name, name) not in scheduled:
             jobs.append((("biz", group_name, name), name, urls[0], BUSINESS_PROBE_TIMEOUT_MS))
             scheduled.add((group_name, name))
+    jobs = [job for job in jobs if probe_authorized(job[1])]
+    business_plan = {g: (current, url, standby if probe_authorized(standby) else None)
+                     for g, (current, url, standby) in business_plan.items() if probe_authorized(current)}
     RUNTIME["last_state"] = state
     return dict(clock=cycle_clock, started=cycle_started_at, resume=resume_cycle, targets=targets, jobs=jobs,
                 state=state, generation=STATE_GENERATION[0],
@@ -3489,8 +3599,13 @@ def probe_cycle(plan):
 
 
 def record_cycle(plan, results, retry, dry_run):
+    if not subscription_authorized():
+        return
     cycle_clock, cycle_started_at, resume_cycle = plan["clock"], plan["started"], plan["resume"]
     targets, jobs, business_plan = plan["targets"], plan["jobs"], plan["business_plan"]
+    targets = [n for n in targets if probe_authorized(n) and ('base', n) in results]
+    jobs = [job for job in jobs if probe_authorized(job[1]) and job[0] in results]
+    business_plan = {g: row for g, row in business_plan.items() if probe_authorized(row[0]) and ('biz', g, row[0]) in results}
     state = plan["state"]
     if STATE_GENERATION[0] != plan["generation"]:
         # The fast lane saved (a failover) while the probes ran: start from what it wrote and
@@ -3561,6 +3676,8 @@ def record_cycle(plan, results, retry, dry_run):
         log("all %d probes failed at once; treating the cycle as a local outage" % len(targets))
     for group_name, candidates in GROUPS.items():
         current = current_for_group(proxy_data, group_name, candidates)
+        if current not in targets:
+            continue
         if base_results.get(current) is not None:
             continue
         if verdicts.get(group_name) == "ok" or results.get(("fast", group_name)) is not None:
@@ -3626,6 +3743,8 @@ def record_cycle(plan, results, retry, dry_run):
         }
     for group_name, candidates in GROUPS.items():
         current = current_for_group(proxy_data, group_name, candidates)
+        if current not in targets:
+            continue
         node_state = state["nodes"].setdefault(current, {})
         # A blip that the confirmation probes disproved is not a failure of a live node.
         update_effective_health(

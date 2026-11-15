@@ -13,6 +13,7 @@ clash_profile.Writer (backup → core validation → write → reload → verify
 
 import json
 import re
+import netcoffee
 import time
 
 try:
@@ -72,6 +73,10 @@ def group_definition(name, code, ai, line=None):
     if ai and line and exit_policy.mode(line) == "locked":
         exit_policy.validate(line)
         group["filter"] = r"\A" + re.escape(line["locked_node"]) + r"\z"
+        if line.get('binding_missing'):
+            group.pop('include-all-proxies', None)
+            group.pop('filter', None)
+            group['proxies'] = ['REJECT']
     return group
 
 
@@ -147,8 +152,13 @@ class Manager(object):
         owned = self.profile_record(uid)
         lines = self.lines()
         rule_lines, breakdown = self.rule_lines(drop)
+        additions = []
+        if (self.config.get('netcoffee') or {}).get('enabled'):
+            additions = netcoffee.extra_rules(self.config['ai_line']['group_name'], rule_lines)
+            rule_lines = additions + rule_lines
+            breakdown.insert(0, dict(source='net.coffee 检测端点', count=len(additions)))
         names = {line["name"] for line in lines}
-        legacy = set(self.config.get("legacy_group_names") or []) | set(self.applied.get("groups") or [])
+        legacy = set(self.config.get("legacy_group_names") or []) | set(owned.get("groups") or [])
         groups = [group_definition(line["name"], line["country"], line["ai"], self.config.get("ai_line")) for line in lines]
         group_items = [clash_profile.group_item(group) for group in groups]
         rule_items = [clash_profile.rule_item(line) for line in rule_lines]
@@ -177,7 +187,7 @@ class Manager(object):
                     clash_profile._normal_rule(row["item"]) == normalized for row in original_rules):
                 original_rules.append({"index": index, "item": item})
         new_runtime = clash_profile.patch_runtime(
-            runtime, group_items, rule_items, names | legacy, stale_rules=self.applied.get("rules") or [])
+            runtime, group_items, rule_items, names | legacy, stale_rules=owned.get("rules") or [])
         new_runtime = insert_runtime_groups(new_runtime, [dedent_item(item) for item in restored])
         proxy_data = self.proxies_reader()
         nodes = [name for name, proxy in proxy_data.items() if is_node(proxy)]
@@ -201,6 +211,7 @@ class Manager(object):
             })
         return {
             "profile_uid": uid, "binding": [uid,groups_file.name,rules_file.name], "groups_file": groups_file.name, "rules_file": rules_file.name,
+            "netcoffee": dict(conditions=list(netcoffee.CONDITIONS), added_rules=additions),
             "lines": preview, "rules": rule_lines, "rule_breakdown": breakdown, "groups": groups,
             "removed_rules": [line for line in self.applied.get("rules") or [] if line not in rule_lines],
             "removed_legacy": [clash_profile._item_name(item.splitlines()[0]) for item in removed_groups],
@@ -253,15 +264,21 @@ class Manager(object):
                     raise clash_profile.ProfileError(evidence["reason"])
             if missing:
                 raise clash_profile.ProfileError("重新加载后没有看到分组：%s" % "、".join(missing))
+            if (self.config.get('netcoffee') or {}).get('enabled'):
+                code, body = self.writer.controller('GET', '/rules', None)
+                if code != 200 or not netcoffee.verify_rules(json.loads(body or '{}').get('rules') or [], plan['rules']):
+                    raise clash_profile.ProfileError('检测规则回读未通过；本次导入回滚')
 
         def guard_current():
             line = self.config.get("ai_line") or {}
             if not line.get("enabled") or exit_policy.mode(line) != "locked":
                 return
+            if line.get('binding_missing'):
+                return  # Explicitly no target: the generated group can only REJECT.
             live = self.proxies_reader().get(line.get("group_name")) or {}
             # A prior applied lock may be absent after subscription removal; never rebind it.
             prior = self.applied.get("exit_policy") or {}
-            continuing = resume or (prior.get("locked_node") == line.get("locked_node") and prior.get("group_name") == line.get("group_name"))
+            continuing = resume or line.get('binding_missing') or (prior.get("locked_node") == line.get("locked_node") and prior.get("group_name") == line.get("group_name"))
             allowed = (line["locked_node"], "REJECT", None) if continuing else (line["locked_node"],)
             if live.get("now") not in allowed:
                 raise clash_profile.ProfileError("当前选择已变化；未重选或改写锁定目标，请重新核对")
@@ -292,6 +309,7 @@ class Manager(object):
         removed.sort(key=lambda item: order.index(clash_profile._item_name(item.splitlines()[0])))
         self.applied = {
             "profile_uid": plan["profile_uid"], "profiles": profiles, "groups": names, "rules": plan["rules"],
+            "netcoffee_rules": plan['netcoffee']['added_rules'],
             "original_runtime_rules": plan["original_runtime_rules"],
             "removed_items": removed, "removed_order": order, "dropped": plan["dropped"], "at": int(time.time()),
             "backup": str(backup), "first_rules": first_rules,

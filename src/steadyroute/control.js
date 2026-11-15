@@ -21,8 +21,10 @@
     state=s; q('#sr-actual').textContent=names[s.actual]||'未核实';q('#sr-login').checked=s.login_start;
     q('#sr-effective').textContent=`已保存：${s.desired_running?'允许运行':'保持停用'}。实际：${s.worker_running?'工作进程正在运行':'工作进程未运行'}；轻量控制页面正在运行。`;
     q('#sr-protection').textContent=s.protection;q('#sr-error').textContent=localError||s.error||'';
+    if(s.subscription_scope?.active === false)q('#sr-protection').textContent=s.subscription_scope.summary;
     q('#sr-start').disabled=busy||s.worker_running;q('#sr-target').disabled=busy||s.worker_running;
     q('#sr-pause').disabled=busy||(!s.worker_running&&s.actual==='paused');
+    if(s.subscription_scope?.active === false)for(const id of ['#sr-start','#sr-target','#sr-release'])q(id).disabled=true;
     if(showingRunning!==null && showingRunning!==s.worker_running && location.pathname!='/control')location.reload();
     showingRunning=s.worker_running;
   }

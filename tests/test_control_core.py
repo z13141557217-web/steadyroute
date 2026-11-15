@@ -34,6 +34,7 @@ class ControlCoreTests(unittest.TestCase):
         self.config_path.write_text(json.dumps(config))
         self.service=settings_service.SettingsService(self.config_path,self.base,self.core,
             clash_home=self.core.verge,core=real_core.CORE)
+        cycle_harness.authorize_fixture(self.service)
         self.group='AI 台湾家宽线路'
         self.target=self.core.proxies()[self.group]['now']
         self.original_groups,self.original_rules=self.core.groups(),self.core.rules()

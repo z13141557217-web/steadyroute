@@ -24,6 +24,7 @@ class SubscriptionProfilesTests(unittest.TestCase):
         self.config_path.write_text(json.dumps(config))
         self.service = settings_service.SettingsService(self.config_path, self.base, self.core,
             clash_home=self.core.verge, core=real_core.CORE, fetch=lambda url: b'')
+        cycle_harness.authorize_fixture(self.service)
         self.old_profiles = self.service.target.profiles_yaml.read_text()
         self.group = 'AI 台湾家宽线路'
         self.target = self.core.proxies()[self.group]['now']
@@ -45,55 +46,76 @@ class SubscriptionProfilesTests(unittest.TestCase):
         self.service.target.runtime.write_text(text)
         self.assertEqual(self.core.load(text)[0], 204)
         self.service.reapply(self.service.config(), self.service.applied(), 'subscription switched')
-    def test_partial_disable_never_restores_old_static_nodes_into_new_subscription(self):
+    def test_other_subscription_skips_all_automatic_writes_and_replay(self):
+        ledger=self.service.applied()
+        ledger.setdefault('profiles',{})['new-profile']=dict(groups=[self.group,'香港家宽自动备援'],
+            rules=['DOMAIN,claude.ai,'+self.group],removed_items=['- name: Old fixture group'])
+        self.service.applied_path.write_text(json.dumps(ledger))
         self.switch_new()
-        self.assertEqual(self.core.proxies()[self.group]['all'], ['REJECT'])
-        self.service.apply({'ai_line': {'enabled': False}})
-        self.assertNotIn(self.group, self.core.groups())
-        self.assertEqual(self.core.proxies()['Native US']['all'], ['US ISP new'])
-        self.assertNotIn(self.target, self.service.target.runtime.read_text())
-    def test_return_to_original_profile_restores_its_own_groups_and_rules(self):
+        before = {p:p.read_bytes() for p in (self.service.target.runtime,*self.service.target.resolve()[1:],self.service.applied_path)}
+        self.assertEqual(self.service.ensure_subscription(), 'skipped')
+        self.assertEqual(self.service.watch(), 'skipped')
+        self.assertEqual(self.service.maintenance(), 'skipped')
+        self.assertNotIn(self.group,self.core.groups())
+        self.assertNotIn('香港家宽自动备援',self.core.groups())
+        for action in (lambda:self.service.apply({'ai_line':{'enabled':False}}),
+                       lambda:self.service.preview({'netcoffee':True}),
+                       lambda:self.service.manager(self.service.config()).disable(),
+                       self.service.sync_now):
+            with self.assertRaises(clash_profile.ProfileError):action()
+        self.assertEqual({p:p.read_bytes() for p in before},before)
+
+    def test_return_authorized_profile_retains_its_own_originals(self):
+        ledger=self.service.applied()
         self.switch_new()
+        self.assertEqual(self.service.applied(),ledger)
         self.service.target.profiles_yaml.write_text(self.old_profiles)
         self.service.target.runtime.write_text(self.old_runtime)
-        self.assertEqual(self.core.load(self.old_runtime)[0], 204)
-        self.assertIn('当前订阅', self.service.line_problems(self.service.applied()))
-        self.assertIsNone(self.service.snapshot()['exit_policy']['effective_mode'])
-        self.service.reapply(self.service.config(), self.service.applied(), 'returned')
+        self.assertEqual(self.core.load(self.old_runtime)[0],204)
+        self.service.reapply(self.service.config(),self.service.applied(),'returned')
         self.service.manager(self.service.config()).disable()
-        self.assertEqual(self.core.groups(), self.original_groups)
-        self.assertEqual(self.core.rules(), self.original_rules)
-    def test_persistence_failure_rolls_back_new_profile_and_preserves_old_ledger(self):
-        self.switch_new()
-        before = self.service.applied()
-        runtime = self.service.target.runtime.read_text()
-        with mock.patch.object(self.service, 'save_config', side_effect=OSError('storage failure')):
-            with self.assertRaisesRegex(clash_profile.ProfileError, '已回滚'):
-                self.service.apply({'ai_line': {'enabled': False}})
-        self.assertEqual(self.service.applied(), before)
-        self.assertEqual(self.service.target.runtime.read_text(), runtime)
-        self.assertEqual(self.core.proxies()[self.group]['all'], ['REJECT'])
+        self.assertEqual(self.core.groups(),self.original_groups)
+        self.assertEqual(self.core.rules(),self.original_rules)
 
-    def test_disable_new_profile_keeps_original_subscription_restore_record(self):
-        self.switch_new()
-        result = self.service.manager(self.service.config()).disable()
-        self.service.applied_path.write_text(json.dumps(result))
-        self.assertNotIn(self.group, self.core.groups())
-        self.assertTrue(result.get("profiles"))
-        self.service.target.profiles_yaml.write_text(self.old_profiles)
-        self.service.target.runtime.write_text(self.old_runtime)
-        self.assertEqual(self.core.load(self.old_runtime)[0], 204)
-        self.service.reapply(self.service.config(), self.service.applied(), 'returned after disable')
-        self.service.manager(self.service.config()).disable()
-        self.assertEqual(self.core.groups(), self.original_groups)
-        self.assertEqual(self.core.rules(), self.original_rules)
+    def test_identity_switch_during_validation_blocks_commit(self):
+        writer=self.service.writer()
+        plan=self.service.manager(self.service.config()).plan()
+        writer.validate=lambda text:self.switch_new()
+        with self.assertRaises(clash_profile.ProfileError):
+            writer.commit(plan['texts']['groups'],plan['texts']['rules'],plan['texts']['runtime'],{'profile_uid':self.service.target.resolve()[0]})
+        self.assertNotIn(self.group,self.core.groups())
+        self.assertIn('Native US',self.core.groups())
+        self.assertNotIn(self.target,self.service.target.runtime.read_text())
 
-    def test_preview_owner_change_is_refused_before_any_profile_write(self):
-        old_uid = self.service.target.resolve()[0]
+    def test_same_name_reimport_with_different_uid_and_restart_remains_skipped(self):
         self.switch_new()
-        target = self.service.target
-        before = {p: p.read_bytes() for p in [target.runtime, *target.resolve()[1:]]}
-        with self.assertRaisesRegex(clash_profile.ProfileError, '订阅已变化'):
-            self.service.writer().commit('prepend: []', 'prepend: []', target.runtime.read_text(),
-                                         {"profile_uid": old_uid})
-        self.assertEqual({p: p.read_bytes() for p in before}, before)
+        self.service.target.profiles_yaml.write_text(self.service.target.profiles_yaml.read_text().replace('type: remote','name: 机场订阅\n  type: remote'))
+        restarted=settings_service.SettingsService(self.config_path,self.base,self.core,clash_home=self.core.verge,core=real_core.CORE)
+        self.assertFalse(restarted.scope.allowed())
+        self.assertEqual(restarted.ensure_subscription(),'skipped')
+        self.assertNotIn(self.group,self.core.groups())
+
+    def test_identity_switch_between_writes_never_reloads_old_runtime(self):
+        group_file=self.service.target.resolve()[1]
+        original=group_file.read_bytes()
+        atomic=clash_profile._atomic_write
+        switched=[False]
+        def write(path,text):
+            atomic(path,text)
+            if pathlib.Path(path)==group_file and not switched[0]:
+                switched[0]=True
+                self.switch_new()
+        with mock.patch.object(clash_profile,'_atomic_write',side_effect=write):
+            with self.assertRaisesRegex(clash_profile.ProfileError,'未向当前订阅重载旧配置'):
+                self.service.apply({'manual':['extra.fixture.invalid']})
+        self.assertEqual(group_file.read_bytes(),original)
+        self.assertNotIn(self.group,self.core.groups())
+        self.assertIn('Native US',self.core.groups())
+        self.assertNotIn(self.target,self.service.target.runtime.read_text())
+
+    def test_preview_then_switch_never_writes_new_subscription(self):
+        self.service.preview({'ai_line':{'enabled':False}})
+        self.switch_new()
+        before=self.service.target.runtime.read_bytes()
+        with self.assertRaises(clash_profile.ProfileError):self.service.apply({'ai_line':{'enabled':False}})
+        self.assertEqual(self.service.target.runtime.read_bytes(),before)

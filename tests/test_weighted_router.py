@@ -69,6 +69,10 @@ class ControllerSocketTests(unittest.TestCase):
 
 class RoutingDecisionTests(unittest.TestCase):
     def setUp(self):
+        # These unit tests isolate route decisions; probe admission has its own I/O tests.
+        consent = mock.patch.object(router, 'probe_authorized', return_value=True)
+        consent.start()
+        self.addCleanup(consent.stop)
         self.selected = []
         self.closed = []
         self.original_select = router.select_node

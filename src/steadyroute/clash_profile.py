@@ -159,6 +159,13 @@ _ITEM_NAME = re.compile(r'^-\s+(?:\{\s*"name"\s*:\s*"((?:[^"\\]|\\.)*)"|name:\s*
 
 
 def _item_name(line):
+    # Clash subscriptions also use flow mappings with an unquoted name key.
+    flow = re.match(r"""^-\s*\{\s*name\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)'|([^,'"{}\[\]]+?))\s*[,}]""", line.strip())
+    if flow:
+        double, single, plain = flow.groups()
+        if double is not None:
+            return json.loads('"' + double + '"')
+        return single.replace("''", "'") if single is not None else plain.strip()
     match = _ITEM_NAME.match(line.strip())
     if not match:
         return None
@@ -437,11 +444,12 @@ class Writer(object):
     ProfileError when the core rejects a config.
     """
 
-    def __init__(self, target, backup_root, validate, controller):
+    def __init__(self, target, backup_root, validate, controller, scope_check=None):
         self.target = target
         self.backup_root = pathlib.Path(backup_root)
         self.validate = validate
         self.controller = controller
+        self.scope_check = scope_check or (lambda: None)
 
     def _backup(self, files, meta):
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -496,6 +504,7 @@ class Writer(object):
 
     def commit(self, groups_text, rules_text, runtime_text, meta, verify=None, keep_selection=(), precondition=None):
         """Validate, back up, write the three files, reload, verify; roll everything back on failure."""
+        self.scope_check()
         _uid, groups_file, rules_file = self.target.resolve()
         if meta.get("profile_uid") and meta["profile_uid"] != _uid:
             raise ProfileError("预览后当前订阅已变化，未写入；请重新预览")
@@ -510,6 +519,7 @@ class Writer(object):
         selections = self._selections(keep_selection)
         if precondition:
             precondition()
+        self.scope_check()
         if self.target.resolve() != (_uid, groups_file, rules_file):
             raise ProfileError("校验期间当前订阅已变化，未写入；请重新预览")
         if self.target.runtime.read_text(encoding="utf-8") != originals["runtime"]:
@@ -517,12 +527,23 @@ class Writer(object):
 
         def put_back():
             for label, path in files.items():
+                if label == 'runtime':
+                    try:
+                        self.scope_check()
+                        if self.target.resolve() != (_uid, groups_file, rules_file):
+                            continue
+                    except Exception:
+                        continue
                 _atomic_write(path, originals[label])
 
         try:
+            self.scope_check()
             _atomic_write(groups_file, groups_text)
+            self.scope_check()
             _atomic_write(rules_file, rules_text)
+            self.scope_check()
             _atomic_write(self.target.runtime, runtime_text)
+            self.scope_check()
             self._reload(runtime_text)
         except ReloadRejected as error:
             put_back()
@@ -542,6 +563,10 @@ class Writer(object):
         return backup
 
     def _reload_original(self, text, error):
+        try:
+            self.scope_check()
+        except Exception:
+            raise ProfileError('事务期间订阅授权已变化；未向当前订阅重载旧配置，原订阅扩展文件已恢复；请返回原订阅核对')
         try:
             self._reload(text)
         except Exception as reload_error:

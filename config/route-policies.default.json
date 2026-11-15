@@ -2,6 +2,7 @@
   "schema_version": 1,
   "mode": "shadow",
   "profile": "auto_lock",
+  "probe_nodes": [],
   "auto_lock": {
     "exclude_groups": [],
     "business_test_urls": [

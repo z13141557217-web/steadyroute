@@ -11,7 +11,10 @@ and the dashboard say so while they are missing.
 """
 
 import copy
+import hashlib
 import operation_gate
+import netcoffee
+import subscription_scope
 import json
 import os
 import pathlib
@@ -45,7 +48,7 @@ WATCH_STRIKES = 2             # looks in a row before re-writing: Clash Verge ma
 REPAIR_RETRY = 60             # after a re-write that failed: 1, 2, 4 … minutes
 REPAIR_RETRY_MAX = 30 * 60
 REPAIRS_PER_HOUR = 6          # something else keeps undoing it: stop reloading Clash over and over
-EDITABLE = ("exclude_groups", "takeover", "ai_line", "manual", "migration")
+EDITABLE = ("exclude_groups", "takeover", "ai_line", "manual", "migration", "netcoffee", "probe_nodes")
 
 
 def _atomic_json(path, data):
@@ -107,6 +110,7 @@ class SettingsService(object):
         self.base_dir = pathlib.Path(base_dir)
         self.controller = controller
         self.target = clash_profile.Target(clash_home)
+        self.scope = subscription_scope.Scope(self.base_dir, self.target)
         self.core = core if core is not None else clash_profile.find_core()
         self.fetch = fetch
         self.clock = clock
@@ -119,10 +123,34 @@ class SettingsService(object):
 
     # ------------------------------------------------------------ state files
     def config(self):
-        return route_policy.load_policy_config(self.config_path)
+        config = route_policy.load_policy_config(self.config_path)
+        if not self.scope.allowed():
+            config['probe_nodes'] = []
+            config['_out_of_scope'] = True
+            return config
+        if (config.get('netcoffee') or {}).get('enabled'):
+            uid, _, _ = self.target.resolve()
+            return netcoffee.effective(config, uid)
+        return config
 
     def applied(self):
         return _read_json(self.applied_path, {})
+
+    @operation_gate.guarded
+    def ensure_subscription(self):
+        """Prepare current subscription, without copying another profile's binding."""
+        with self.lock:
+            if not self.scope.allowed():
+                return 'skipped'
+            config = self.config()
+            if not (config.get('netcoffee') or {}).get('enabled'):
+                return
+            applied = self.applied()
+            if applied.get('profile_uid') == config['_profile_uid']:
+                return
+            self.check_core()
+            _, applied = self.manager(config, applied).apply(resume=True)
+            _atomic_json(self.applied_path, applied)
 
     def rules_state(self):
         return _read_json(self.rules_path, {})
@@ -141,12 +169,18 @@ class SettingsService(object):
         return self._get("/proxies").get("proxies") or {}
 
     def writer(self):
+        uid = self.scope.require()
         validate = self.validator
         if validate is None:
             if not self.core:
                 raise clash_profile.ProfileError("没找到 Clash Verge 的内核，无法校验配置；请确认 Clash Verge 安装在“应用程序”里")
             validate = clash_profile.core_validator(self.core, self.target.home)
-        return clash_profile.Writer(self.target, self.base_dir / "clash-backups", validate, self.controller)
+        def scoped_controller(method, path, payload):
+            if method != 'GET' or '/delay?' in path:
+                self.scope.require(uid)
+            return self.controller(method, path, payload)
+        return clash_profile.Writer(self.target, self.base_dir / "clash-backups", validate, scoped_controller,
+                                    scope_check=lambda: self.scope.require(uid))
 
     def check_core(self):
         """Refuse to write a line into a Clash core that would send it direct when it is empty."""
@@ -167,6 +201,7 @@ class SettingsService(object):
 
     # ------------------------------------------------------------ settings page
     def merged(self, changes):
+        self.scope.require()
         config = copy.deepcopy(self.config())
         config["policies"] = []
         unknown = [key for key in changes if key not in EDITABLE]
@@ -218,6 +253,41 @@ class SettingsService(object):
                 if entry[1] not in cleaned:
                     cleaned.append(entry[1])
             config.setdefault("ai_rules", {})["manual"] = cleaned
+        if 'probe_nodes' in changes:
+            nodes = changes['probe_nodes']
+            if not isinstance(nodes, list) or any(not isinstance(n, str) or not n.strip() for n in nodes):
+                raise clash_profile.ProfileError('请选择明确的叶子节点列表')
+            config['probe_nodes'] = list(dict.fromkeys(nodes))
+            data = self.proxies() if nodes else {}
+            if any(not ai_line.is_node(data.get(n)) for n in nodes):
+                raise clash_profile.ProfileError('探测对象必须是当前订阅存在的叶子节点')
+        if 'netcoffee' in changes and not isinstance(changes['netcoffee'], bool):
+            raise clash_profile.ProfileError('检测规则启用状态必须为布尔值')
+        setting = config.setdefault('netcoffee', {}) if 'netcoffee' in changes else config.get('netcoffee', {})
+        if 'netcoffee' in changes:
+            setting['enabled'] = changes['netcoffee']
+        if setting.get('enabled'):
+            uid, _, _ = self.target.resolve()
+            bindings = setting.setdefault('bindings', {})
+            if 'probe_nodes' in changes and not config['probe_nodes']:
+                bindings.pop(uid, None)
+                config = netcoffee.effective(config, uid)
+            elif changes.get('netcoffee') or 'ai_line' in changes or 'probe_nodes' in changes:
+                line = config.get('ai_line') or {}
+                node = line.get('locked_node')
+                data = self.proxies()
+                live = data.get(line.get('group_name')) or {}
+                if (not line.get('enabled') or exit_policy.mode(line) != 'locked'
+                        or not ai_line.is_node(data.get(node)) or line.get('binding_missing')
+                        or live.get('type') != 'Selector' or live.get('all') != [node] or live.get('now') != node):
+                    raise clash_profile.ProfileError('请先核对当前订阅的固定叶子节点和严格单节点分组；缺失或漂移时未导入')
+                if 'probe_nodes' in changes and config['probe_nodes'] != [node]:
+                    raise clash_profile.ProfileError('规则启用时只能探测本订阅明确锁定的那个节点；请先更新固定目标')
+                if node not in netcoffee.source_names(self.target, uid):
+                    raise clash_profile.ProfileError('当前订阅源没有该目标，未借用其他订阅的节点')
+                bindings[uid] = {key: line[key] for key in ('locked_node', 'country', 'group_name')}
+                config['probe_nodes'] = [node]
+            config = netcoffee.effective(config, uid)
         if settings.get("include_groups") is not None:
             # Lines SteadyRoute keeps in Clash are always its own to switch.
             line = config.get("ai_line") or {}
@@ -227,7 +297,7 @@ class SettingsService(object):
         route_policy.validate_policy_config(config)
         line = config.get("ai_line") or {}
         old_line = self.config().get("ai_line") or {}
-        if line.get("enabled") and exit_policy.mode(line) == "locked" and (
+        if line.get("enabled") and not line.get('binding_missing') and exit_policy.mode(line) == "locked" and (
                 exit_policy.mode(old_line) != "locked" or not old_line.get("enabled")
                 or any(line.get(k) != old_line.get(k) for k in ("locked_node", "group_name", "country"))):
             data = self.proxies()
@@ -244,6 +314,7 @@ class SettingsService(object):
         rules_state = self.rules_state()
         result = {
             "profile": config.get("profile", "fixed"),
+            "subscription_scope": self.scope.snapshot(),
             "exclude_groups": (config.get("auto_lock") or {}).get("exclude_groups", []),
             "include_groups": (config.get("auto_lock") or {}).get("include_groups"),
             "ai_line": config.get("ai_line") or {"enabled": False, "group_name": ai_line.DEFAULT_AI_GROUP},
@@ -262,6 +333,9 @@ class SettingsService(object):
             "geo": {"updated_at": rules_state.get("geo_updated_at"), "last_error": rules_state.get("geo_error")},
             "unsupported": ai_line.AI_UNSUPPORTED,
             "migration": config.get("migration"),
+            "probe_nodes": config.get('probe_nodes', []),
+            "probe_choices": [],
+            "netcoffee": netcoffee.snapshot(config, applied),
             "line_status": self.line_status(),
             "ai_rules_counts": {
                 "netcoffee": len(set(map(tuple, rules_state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)) |
@@ -269,9 +343,24 @@ class SettingsService(object):
                 "community": len(ai_rules.COMMUNITY), "processes": len(ai_rules.AI_PROCESSES),
             },
         }
+        if not self.scope.allowed():
+            result['netcoffee'].update(binding=None, binding_missing=False, rules_status='out_of_scope', ip_consistency='unverified')
+            result.update(countries=[], groups=[], group_details=[], current_ai_node=None,
+                          clash=dict(ok=False, error=subscription_scope.SUMMARY),
+                          exit_policy=exit_policy.status({}))
+            return result
         try:
             checked_at = self.clock()
             proxies = self.proxies()
+            result['probe_choices'] = sorted(n for n, p in proxies.items() if ai_line.is_node(p))
+            uid, _, _ = self.target.resolve()
+            result['netcoffee'] = netcoffee.snapshot(config, applied, uid)
+            extra = applied.get('netcoffee_rules') or []
+            if extra and applied.get('profile_uid') == uid:
+                result['netcoffee']['rules_status'] = 'verified' if netcoffee.verify_rules(
+                    self._get('/rules').get('rules') or [], applied.get('rules') or []) else 'unverified'
+                result['netcoffee']['checked_at'] = self.clock()
+                result['netcoffee']['expires_at'] = self.clock() + exit_policy.EVIDENCE_MAX_AGE
             connections = None
             try:
                 response = self._get("/connections")
@@ -358,7 +447,10 @@ class SettingsService(object):
                 parts.append("Clash 中缺少 %d 条 AI 规则（共写入 %d 条）" % (
                     len(applied["rules"]) if len(lost) == len(ours) else len(lost), len(applied["rules"])))
         configured = self.config().get("ai_line") or {}
-        if configured.get("enabled") and exit_policy.mode(configured) == "locked" and ours:
+        if applied.get('netcoffee_rules') and not netcoffee.verify_rules(
+                self._get('/rules').get('rules') or [], applied.get('rules') or []):
+            parts.append('检测规则边界或优先顺序未核实')
+        if configured.get("enabled") and exit_policy.mode(configured) == "locked" and ours and not applied.get('netcoffee_rules'):
             expected = []
             for item in applied.get("rules") or []:
                 kind, value, group = str(item).split(",", 2)
@@ -376,6 +468,10 @@ class SettingsService(object):
 
         Returns "repaired" when Clash was written again, else None.
         """
+        if not self.scope.allowed():
+            self._watch = self._fresh_watch()
+            self._watch['state'] = 'out_of_scope'
+            return 'skipped'
         if not self.lock.acquire(False):      # the settings page is changing Clash right now
             return None
         try:
@@ -451,7 +547,7 @@ class SettingsService(object):
     def _needs_clash(self, old, new):
         # slow_exit only changes how SteadyRoute switches; nothing in Clash depends on it.
         line = lambda config: {key: value for key, value in (config.get("ai_line") or {}).items() if key != "slow_exit"}
-        keys = lambda config: (line(config), config.get("managed_lines"), (config.get("ai_rules") or {}).get("manual"))
+        keys = lambda config: (line(config), config.get("managed_lines"), (config.get("ai_rules") or {}).get("manual"), config.get('netcoffee'))
         return keys(old) != keys(new)
 
     def _wants_lines(self, config):
@@ -459,10 +555,12 @@ class SettingsService(object):
         return bool((line.get("enabled") and line.get("country")) or config.get("managed_lines"))
 
     def preview(self, changes):
+        self.scope.require()
         new = self.merged(changes)
         old = self.config()
         if not self._needs_clash(old, new):
-            return {"clash_change": False, "policy_before": exit_policy.mode(old.get("ai_line") or {}),
+            return {"clash_change": False, "preview_id": self.preview_fingerprint(changes) if 'netcoffee' in changes else None,
+                    "policy_before": exit_policy.mode(old.get("ai_line") or {}),
                     "policy_after": exit_policy.mode(new.get("ai_line") or {})}
         if not self._wants_lines(new):
             applied = self.applied()
@@ -486,11 +584,28 @@ class SettingsService(object):
         plan["action"] = "apply"
         plan["rule_count"] = len(plan["rules"])
         plan["runtime_file"] = self.target.runtime.name
+        plan['preview_id'] = self.preview_fingerprint(changes)
         return plan
+
+    def preview_fingerprint(self, changes):
+        uid, groups, rules = self.target.resolve()
+        digest = hashlib.sha256()
+        for path in (self.config_path, self.target.profiles_yaml, groups, rules, self.target.runtime):
+            digest.update(path.read_bytes())
+        config = self.config()
+        group = (config.get('ai_line') or {}).get('group_name')
+        data = self.proxies()
+        digest.update(json.dumps([uid, changes, data.get(group)], sort_keys=True, ensure_ascii=False).encode())
+        return digest.hexdigest()
 
     @operation_gate.guarded
     def apply(self, changes):
         with self.lock:
+            self.scope.require()
+            changes = dict(changes)
+            expected = changes.pop('_preview', None)
+            if expected is not None and expected != self.preview_fingerprint(changes):
+                raise clash_profile.ProfileError('预览后订阅、目标或配置已变化；请重新预览，未写入')
             self.check_writable()
             new = self.merged(changes)
             old = self.config()
@@ -533,6 +648,7 @@ class SettingsService(object):
 
     @operation_gate.guarded
     def remove_all(self):
+        self.scope.require()
         """Uninstall: take every SteadyRoute item out of Clash and put back what was there."""
         with self.lock:
             self.check_writable()
@@ -556,8 +672,11 @@ class SettingsService(object):
 
     @operation_gate.guarded
     def save_config(self, config):
+        self.scope.require()
         self.check_writable()
         stored = copy.deepcopy(config)
+        stored.pop('_profile_uid', None)
+        stored.pop('_out_of_scope', None)
         stored["policies"] = []
         route_policy.validate_policy_config(stored)
         _atomic_json(self.config_path, stored)
@@ -588,12 +707,16 @@ class SettingsService(object):
         A week after a good sync; after a failed one, again in 6 hours, and daily once three in a
         row have failed, so a Mac that was offline at the wrong moment does not wait a week.
         """
+        uid = self.scope.require()
         changed = False
         state["checked_at"] = int(now)
+        def fetch_current(url):
+            self.scope.require(uid)
+            return self.fetch(url)
         try:
-            claude = ai_rules.check_source("claude", ai_rules.parse_page(self.fetch(ai_rules.NETCOFFEE_CLAUDE_URL)),
+            claude = ai_rules.check_source("claude", ai_rules.parse_page(fetch_current(ai_rules.NETCOFFEE_CLAUDE_URL)),
                                            state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)
-            gpt = ai_rules.check_source("gpt", ai_rules.parse_page(self.fetch(ai_rules.NETCOFFEE_GPT_URL)),
+            gpt = ai_rules.check_source("gpt", ai_rules.parse_page(fetch_current(ai_rules.NETCOFFEE_GPT_URL)),
                                         state.get("gpt") or ai_rules.NETCOFFEE_GPT)
             gpt = gpt if ("GEOSITE", "openai") in gpt else [("GEOSITE", "openai")] + gpt
             before = [tuple(i) for i in (state.get("claude") or ai_rules.NETCOFFEE_CLAUDE)] + \
@@ -615,6 +738,7 @@ class SettingsService(object):
         # every GEOIP / GEOSITE rule of theirs uses, so nothing is refreshed on install alone.
         if self.applied().get("groups") and now - state.get("geo_updated_at", 0) >= WEEK:
             try:
+                self.scope.require(uid)
                 status, body = self.controller("POST", "/configs/geo", {"path": "", "payload": ""})
                 if status in (200, 204):
                     state["geo_updated_at"], state["geo_error"] = int(now), None
@@ -622,11 +746,14 @@ class SettingsService(object):
                     state["geo_error"] = "HTTP %s %s" % (status, str(body)[:120])
             except Exception as error:
                 state["geo_error"] = str(error)[:200]
+        self.scope.require(uid)
         _atomic_json(self.rules_path, state)
         return changed
 
     @operation_gate.guarded
     def reapply(self, config, applied, reason):
+        if not self.scope.allowed():
+            return 'skipped'
         self.check_core()
         manager = self.manager(config, applied)
         with self.lock:
@@ -636,6 +763,7 @@ class SettingsService(object):
 
     @operation_gate.guarded
     def sync_now(self):
+        self.scope.require()
         """The settings page's 立即同步: sync at once and write new rules into Clash if they changed."""
         self.check_writable()
         now = self.clock()
@@ -651,6 +779,8 @@ class SettingsService(object):
     @operation_gate.guarded
     def maintenance(self):
         """Hourly: self-heal, and the net.coffee sync when it is due. Never raises."""
+        if not self.scope.allowed():
+            return 'skipped'
         now = self.clock()
         state = self.rules_state()
         config = self.config()

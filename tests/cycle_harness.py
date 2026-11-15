@@ -35,6 +35,8 @@ def _load_router(name):
     spec.loader.exec_module(module)
     # Real pacing between confirmation probes (0.7 s) only slows tests down; no test measures it.
     module.CONFIRM_STAGGER_SECONDS = 0
+    # Route algorithm fixtures assume local scope authorization; scope suites use the real service.
+    module.subscription_authorized = lambda: True
     return module
 
 
@@ -173,3 +175,10 @@ class FakeNetwork(object):
 
     def calls_to(self, name):
         return [call for call in self.probe_calls if call[0] == name]
+
+
+def authorize_fixture(service, uid=None):
+    """Explicit local authorization for synthetic test subscriptions only."""
+    import json
+    service.scope.path.parent.mkdir(parents=True, exist_ok=True)
+    service.scope.path.write_text(json.dumps(dict(schema_version=1, authorized_uid=uid or service.target.resolve()[0])))

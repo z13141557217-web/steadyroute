@@ -22,6 +22,7 @@ class AuthorizationTests(unittest.TestCase):
         self.router = cycle_harness.load_router('exit_policy_test_router')
         self.line = dict(enabled=True, group_name=GROUP, country='TW', exit_policy='locked', locked_node=TARGET)
         self.router.POLICY_CONFIG.update(profile='auto_lock', ai_line=self.line)
+        self.router.POLICY_CONFIG['probe_nodes'] = [TARGET, BACKUP]
         self.router.PROFILE = 'auto_lock'
         self.data = {TARGET:{'type':'Http'}, BACKUP:{'type':'Http'},
                      GROUP:{'type':'Selector','now':TARGET,'all':[TARGET]}}

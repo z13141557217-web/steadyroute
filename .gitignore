@@ -31,3 +31,5 @@ backups/
 service-instance.json
 control-state.json
 control.lock
+subscription-authorization.json
+!src/steadyroute/subscription_scope.py

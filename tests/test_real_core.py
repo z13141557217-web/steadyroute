@@ -62,6 +62,8 @@ class RealCoreTests(unittest.TestCase):
             self.config_path, self.base, self.core, clash_home=self.core.verge, core=real_core.CORE,
             fetch=lambda url: (_ for _ in ()).throw(OSError("offline")), clock=lambda: self.clock[0])
 
+        cycle_harness.authorize_fixture(self.service)
+
     def tearDown(self):
         self.tmp.cleanup()
 
@@ -251,6 +253,7 @@ class RealCoreTests(unittest.TestCase):
     def test_router_client_reads_the_core_over_its_socket(self):
         import os
         router = cycle_harness.load_router("steadyroute_real_core_router")
+        router.SETTINGS = self.service
         os.environ["STEADYROUTE_CONTROLLER_SOCKET"] = self.core.socket
         try:
             self.assertRegex(router.api_request("GET", "/version")["version"], r"\d+\.\d+\.\d+")
