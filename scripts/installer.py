@@ -46,7 +46,7 @@ MIN_PYTHON = (3, 9)
 CLASH_APP_ID = "io.github.clash-verge-rev.clash-verge-rev"
 CLASH_APPS = ("/Applications/Clash Verge.app", "~/Applications/Clash Verge.app")
 APP_FILES = (
-    "netcoffee.py", "subscription_scope.py",
+    "service_template.py", "netcoffee.py", "subscription_scope.py",
     "weighted_router.py", "operation_gate.py", "service_control.py", "service_cli.py",
     "control.html", "control.js", "state_contract.py", "route_policy.py", "candidate_registry.py",
     "health_model.py", "runtime_metrics.py", "logging_setup.py", "node_catalog.py",

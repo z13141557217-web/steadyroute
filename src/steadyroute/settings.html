@@ -302,6 +302,8 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
   <section class="card sec scope-panel" aria-labelledby="netcoffee-title">
     <div class="sec-head"><h2 id="netcoffee-title">net.coffee 检测规则</h2><span id="netcoffee-state" class="state"></span></div>
     <p class="desc">把 IP138、IP.cn、1.1.1.1 的 443 端口，以及两项 Claude 条件指向当前明确固定的节点。已有 Claude 规则复用；普通国内流量按订阅分流。</p>
+    <button class="btn" type="button" role="switch" aria-checked="false" id="service-template">完整服务分流</button>
+    <p class="hint">采用本机模板的直连、拦截和兜底规则。Claude、OpenAI 与出口检测走原固定节点。</p>
     <p id="netcoffee-binding" class="hint"></p>
     <div class="actions"><button class="btn primary" id="netcoffee-import" type="button">预览并导入当前订阅</button><button class="btn" id="netcoffee-remove" type="button">预览撤销检测规则</button></div>
     <p id="netcoffee-rules" class="hint" aria-live="polite"></p>
@@ -471,6 +473,9 @@ function render() {
   $('#netcoffee-rules').textContent = `检测规则：${nc.rules_status === 'verified' && !settingsReadFailed && nc.expires_at > Date.now()/1000 ? '回读已核实' : '未核实'} · 公网 IP 一致性：未核实`;
   $('#netcoffee-limit').textContent = nc.stopped_limit || '';
   $('#ip-checks').innerHTML = (nc.ip_checks || []).map(x => `<li><b>${esc(x.label)}</b><span>未核实 · 未实测</span></li>`).join('');
+  $('#service-template').textContent = s.service_template ? '完整服务分流：已开启' : '完整服务分流：已关闭';
+  $('#service-template').setAttribute('aria-checked', String(!!s.service_template));
+  $('#service-template').disabled = busy || (!nc.enabled && !s.service_template);
   $('#netcoffee-remove').disabled = busy || !nc.enabled;
   $('#netcoffee-import').disabled = busy || !!s.controller_error;
 
@@ -644,7 +649,9 @@ function compareHtml(body, plan) {
 function plainHtml(body, plan) {
   const exit = code => `之后受管 AI 规则指向${countryLabel(code)}家宽分组；已有会话可能保留旧出口，需另核对实际连接。${countryLabel(code)}家宽全部不可用时，受管新连接拒绝，不回退其他国家。`;
   let text = '';
-  if (body.probe_nodes && !body.probe_nodes.length && snap.netcoffee?.enabled) {
+  if ('service_template' in body) {
+    text = body.service_template ? '启用整套直连、拦截和服务规则，最终兜底按参考模板走固定 AI 出口。将新增 '+(plan.template_rules || []).length+' 条规则（含出口保护）。' : '关闭模板，恢复授权订阅原分流。';
+  } else if (body.probe_nodes && !body.probe_nodes.length && snap.netcoffee?.enabled) {
     text = '取消当前订阅的节点绑定并停止稳航探测。此订阅受管 AI 新连接将拒绝，普通国内应用仍按订阅分流；其他订阅的绑定保留。';
   } else if ('netcoffee' in body) {
     text = body.netcoffee ? `为当前订阅绑定明确固定节点「${line().locked_node || '未绑定'}」。五项条件复用已有 Claude 规则，补齐三个检测端点；公网 IP 尚未实测。其他订阅不会借用本订阅目标，未绑定时拒绝受管 AI 新连接。` : '撤销新增的三个检测端点，保留原有 Claude 和其他 AI 规则。';
@@ -788,6 +795,7 @@ $('#probe-form').addEventListener('submit', e => {
   submit({probe_nodes:[...document.querySelectorAll('input[name="probe-node"]:checked')].map(x => x.value)}, '探测选择已保存。');
 });
 $('#probe-clear').addEventListener('click', () => submit({probe_nodes:[]}, '已取消全部稳航探测；已有历史结果保留原时间。'));
+$('#service-template').onclick = () => submit({service_template:!snap.service_template}, '完整服务分流设置已保存。');
 $('#netcoffee-import').addEventListener('click', () => submit({netcoffee:true}, '检测规则已导入并完成回读；公网 IP 尚未实测。'));
 $('#netcoffee-remove').addEventListener('click', () => submit({netcoffee:false}, '已撤销新增检测规则；原有 Claude 和其他 AI 规则保留。'));
 $('#choices').addEventListener('click', e => {
