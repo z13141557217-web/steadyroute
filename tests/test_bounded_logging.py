@@ -292,6 +292,11 @@ class SnapshotPatchTests(Base):
 
 
 class ProbePoolTests(unittest.TestCase):
+    def setUp(self):
+        consent = mock.patch.dict(router.POLICY_CONFIG, {'probe_nodes':['n','m'] + ['n%d' % i for i in range(router.PROBE_WORKERS * 3)]})
+        consent.start()
+        self.addCleanup(consent.stop)
+
     def test_pool_is_reused_across_batches(self):
         with mock.patch.object(router, "probe_url", return_value=50):
             router.run_probe_jobs([("a", "n", "u", 1000)])

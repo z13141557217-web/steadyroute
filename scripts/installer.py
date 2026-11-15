@@ -46,6 +46,7 @@ MIN_PYTHON = (3, 9)
 CLASH_APP_ID = "io.github.clash-verge-rev.clash-verge-rev"
 CLASH_APPS = ("/Applications/Clash Verge.app", "~/Applications/Clash Verge.app")
 APP_FILES = (
+    "netcoffee.py", "subscription_scope.py",
     "weighted_router.py", "operation_gate.py", "service_control.py", "service_cli.py",
     "control.html", "control.js", "state_contract.py", "route_policy.py", "candidate_registry.py",
     "health_model.py", "runtime_metrics.py", "logging_setup.py", "node_catalog.py",
@@ -367,11 +368,14 @@ class Installer(object):
             service = settings_service.SettingsService(
                 path, work, controller, clash_home=self.paths.home / "Library" / "Application Support" / CLASH_APP_ID,
                 core=self.core if self.core is not None else clash_profile.find_core())
+            service.scope.path = self.paths.app / 'subscription-authorization.json'
             lines = []
             try:
                 lines.append("Clash 内核 %s，支持专线的全部设置" % service.check_core())
             except Exception as error:
                 return ["Clash：%s" % error]
+            if not service.scope.allowed():
+                return lines + ['当前订阅未获本机授权，跳过线路导入与接管；保持原订阅规则。']
             if not config.get("migration"):
                 return lines
             try:

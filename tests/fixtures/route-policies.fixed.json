@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "probe_nodes": ["台湾 HiNet 家宽 01 🇨🇳","台湾 HiNet 家宽 02 🇨🇳","台湾 HiNet 家宽 03 🇨🇳","台湾 HiNet 家宽 04","台湾 HiNet 家宽 05","台湾 HiNet 家宽 06","台湾 HiNet 家宽 07","台湾 HiNet 家宽 08","台湾 HiNet 家宽 09","台湾 HiNet 家宽 10","台湾 HiNet 家宽 11","香港 家宽 01","香港 家宽 02","香港 家宽 03","香港 家宽 04","香港 家宽 05"],
   "mode": "shadow",
   "activation": {
     "approved": false,

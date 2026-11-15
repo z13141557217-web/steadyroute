@@ -379,7 +379,7 @@ class ClashCheckTests(InstallerBase):
             return 200, "{}"
         return clash_home, controller, version
 
-    def test_install_reports_the_upgrade_checked_by_the_real_core(self):
+    def test_install_without_local_scope_keeps_subscription_native(self):
         clash_home, controller, _version = self.clash()
         before = {p: p.read_bytes() for p in clash_home.rglob("*") if p.is_file()}
         self.make_legacy()
@@ -387,8 +387,7 @@ class ClashCheckTests(InstallerBase):
         text = "\n".join(self.printed)
         self.assertIn("检查（只读，不改动 Clash）", text)
         self.assertIn("Clash 内核 v1.19.31", text)
-        self.assertIn("升级后「AI 台湾家宽线路」：台湾家宽 3 个节点（现在 2 个）", text)
-        self.assertIn("已由本机 Clash 内核校验通过", text)
+        self.assertIn("当前订阅未获本机授权，跳过线路导入与接管", text)
         self.assertEqual({p: p.read_bytes() for p in clash_home.rglob("*") if p.is_file()}, before)
 
     def test_old_core_is_reported_but_does_not_block_the_install(self):
@@ -519,6 +518,8 @@ class UninstallTests(InstallerBase):
             return settings_service.SettingsService(
                 self.app / "config/route-policies.json", self.app, Controller(), clash_home=clash_home,
                 core="/bin/true", validator=lambda text: None)
+        cycle_harness = __import__("cycle_harness")
+        cycle_harness.authorize_fixture(factory())
         factory().apply({"ai_line": {"enabled": True, "country": "TW", "group_name": "AI 台湾家宽线路"}})
         self.assertNotEqual((clash_home / "profiles/gkX1aa.yaml").read_text(encoding="utf-8"), before)
         with self.quiet():

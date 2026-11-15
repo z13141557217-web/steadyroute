@@ -55,6 +55,11 @@ class ProbeDisplayTests(unittest.TestCase):
 
 
 class ProbeReasonTests(unittest.TestCase):
+    def setUp(self):
+        consent = mock.patch.dict(router.POLICY_CONFIG, {'probe_nodes':['node']})
+        consent.start()
+        self.addCleanup(consent.stop)
+
     def measure(self, reply=None, error=None):
         observation = {}
         with mock.patch.object(router, "api_request", return_value=reply, side_effect=error):

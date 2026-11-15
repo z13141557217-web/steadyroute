@@ -3,6 +3,7 @@
 import json
 import pathlib
 import re
+import netcoffee
 
 try:
     import regions
@@ -109,6 +110,10 @@ def validate_auto_lock_config(config):
 def validate_policy_config(config):
     if not isinstance(config, dict) or config.get("schema_version") != SCHEMA_VERSION:
         raise PolicyConfigError("unsupported route policy schema")
+    try:
+        netcoffee.validate(config)
+    except ValueError as error:
+        raise PolicyConfigError(str(error))
     if config.get("profile", "fixed") not in PROFILES:
         raise PolicyConfigError("profile must be fixed or auto_lock")
     if config.get("mode") not in MODES:

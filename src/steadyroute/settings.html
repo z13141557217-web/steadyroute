@@ -38,6 +38,10 @@ a.btn { text-decoration: none; }
 .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; margin-top: 8px; }
 .btn:disabled { opacity: .5; cursor: default; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.scope-panel .hint { color: var(--ink-3); }
+.scope-panel .btn { height: auto; min-height: 44px; white-space: normal; text-align: left; }
+.scope-panel input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+.scope-panel input:focus-visible, .scope-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* plain lists: migration lines, what is included */
 .list { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--hair); border-radius: 12px; }
@@ -240,7 +244,7 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
 <main class="wrap narrow">
   <header class="ph">
     <h1>设置</h1>
-    <p>以下均为可选，不设置也能正常使用。</p>
+    <p>先明确选择要检测的节点；未选择时稳航不发起检测。</p>
   </header>
 
   <div class="note" role="note" id="clash-note" hidden>
@@ -283,6 +287,27 @@ dialog::backdrop { background: rgba(8, 12, 18, .45); }
         </table>
       </div>
     </details>
+  </section>
+
+  <section class="card sec scope-panel" aria-labelledby="probe-title">
+    <div class="sec-head"><h2 id="probe-title">允许稳航探测的节点</h2><span id="probe-count" class="state"></span></div>
+    <p class="desc">可见节点、候选和热备均不代表授权。快检、全检、业务检查、预热、复测和切换前检查共用此选择；清空后零探测，已发出的请求可完成，排队任务停止。选择会保存并在重启后继续使用。</p>
+    <form id="probe-form">
+      <fieldset id="probe-choices" style="border:0;padding:0;display:grid;gap:12px;max-height:260px;overflow:auto"><legend class="hint">仅勾选允许检测的叶子节点</legend></fieldset>
+      <div class="actions" style="margin-top:16px"><button class="btn primary" type="submit">保存探测选择</button><button class="btn" id="probe-clear" type="button">取消全部探测</button></div>
+    </form>
+    <p class="hint">检测规则启用后仅允许本订阅绑定的一个节点。更换节点请先暂停，在总开关中明确保存该订阅的下次启动目标。未探测不算失败，历史结果以原检测时间为准。Clash 自身的健康检查由 Clash 管理，不受此选择控制。</p>
+  </section>
+
+  <section class="card sec scope-panel" aria-labelledby="netcoffee-title">
+    <div class="sec-head"><h2 id="netcoffee-title">net.coffee 检测规则</h2><span id="netcoffee-state" class="state"></span></div>
+    <p class="desc">把 IP138、IP.cn、1.1.1.1 的 443 端口，以及两项 Claude 条件指向当前明确固定的节点。已有 Claude 规则复用；普通国内流量按订阅分流。</p>
+    <p id="netcoffee-binding" class="hint"></p>
+    <div class="actions"><button class="btn primary" id="netcoffee-import" type="button">预览并导入当前订阅</button><button class="btn" id="netcoffee-remove" type="button">预览撤销检测规则</button></div>
+    <p id="netcoffee-rules" class="hint" aria-live="polite"></p>
+    <ul class="list" id="ip-checks" aria-label="实际公网 IP 检测"></ul>
+    <p class="hint">规则导入成功与公网 IP 一致是两件事。这里没有实际公网检测证据时始终显示未核实；不会把规则检查或节点名称当作公网 IP 实测。</p>
+    <p id="netcoffee-limit" class="hint"></p>
   </section>
 
   <section class="card sec" id="sites" aria-labelledby="sites-title" hidden>
@@ -412,8 +437,9 @@ const countryLabel = code => {
   return c ? c.label : ((snap && snap.unsupported) || {})[code] || code || '';
 };
 const line = () => (snap && snap.ai_line) || {};
-const live = () => !!(line().enabled && ((snap.applied && snap.applied.groups) || []).includes(line().group_name));
+const live = () => !!(snap.subscription_scope?.active !== false && line().enabled && ((snap.applied && snap.applied.groups) || []).includes(line().group_name));
 const liveRules = () => live() ? snap.applied_rule_count : 0;
+let probeDraft = null;
 /* written by SteadyRoute, but not what Clash is running right now (checked every 20 s by the service) */
 const watch = () => (snap && snap.line_status) || {};
 const missing = () => watch().state === 'missing';
@@ -430,6 +456,23 @@ function missingNote() {
 function render() {
   if (!snap) return;
   const s = snap, l = line();
+  const nc = s.netcoffee || {}, selectedProbes = s.probe_nodes || [];
+  $('#probe-count').textContent = `${selectedProbes.length} 个已选${probeDraft === null ? '' : ' · 选择未保存'}`;
+  $('#probe-clear').textContent = nc.enabled ? '取消本订阅绑定并停止探测' : '取消全部探测';
+  const draftProbes = probeDraft ?? selectedProbes;
+  const probeChoices = [...new Set([...(s.probe_choices || []), ...selectedProbes, ...draftProbes])];
+  if (!$('#probe-form').contains(document.activeElement)) {
+    const scroll = $('#probe-choices').scrollTop;
+    $('#probe-choices').innerHTML = '<legend class="hint">仅勾选允许检测的叶子节点</legend>' + (probeChoices.length ? probeChoices.map(n => `<label style="display:flex;gap:10px;align-items:baseline;overflow-wrap:anywhere"><input type="checkbox" name="probe-node" value="${esc(n)}" ${draftProbes.includes(n) ? 'checked' : ''}><span>${esc(n)}${(s.probe_choices || []).includes(n) ? '' : '（当前缺失）'}</span></label>`).join('') : '<p class="hint">没有可核对的节点；当前零探测。</p>');
+    $('#probe-choices').scrollTop = scroll;
+  }
+  $('#netcoffee-state').textContent = nc.enabled ? '已启用' : '未启用';
+  $('#netcoffee-binding').textContent = s.subscription_scope?.active === false ? s.subscription_scope.summary : nc.binding ? `授权订阅绑定：${nc.binding.locked_node}` : '当前授权订阅未绑定。启用后受管 AI 新连接拒绝，稳航零探测。';
+  $('#netcoffee-rules').textContent = `检测规则：${nc.rules_status === 'verified' && !settingsReadFailed && nc.expires_at > Date.now()/1000 ? '回读已核实' : '未核实'} · 公网 IP 一致性：未核实`;
+  $('#netcoffee-limit').textContent = nc.stopped_limit || '';
+  $('#ip-checks').innerHTML = (nc.ip_checks || []).map(x => `<li><b>${esc(x.label)}</b><span>未核实 · 未实测</span></li>`).join('');
+  $('#netcoffee-remove').disabled = busy || !nc.enabled;
+  $('#netcoffee-import').disabled = busy || !!s.controller_error;
 
   const notes = [];
   if (s.clash && !s.clash.ok) notes.push(`<b>无法写入 Clash：</b>${esc(s.clash.error)}`);
@@ -495,7 +538,7 @@ function render() {
   $('#exit-policy-fields').hidden = !l.enabled;
   $('#exit-policy-options').innerHTML = Object.keys(labels).map(mode => `<label class="policy-option"><input type="radio" name="exit-policy" value="${mode}" ${configured === mode ? 'checked' : ''}><span><b>${labels[mode]}</b><small>${descriptions[mode]}</small>${mode === 'locked' ? '' : warning}</span></label>`).join('');
   $('#policy-status').textContent = `已保存：${labels[configured] || '未读取策略'}。${policy.summary || '核验证据不可用'}。${policy.evidence_detail || ''}${policy.legacy ? '（旧配置兼容，尚未明确选择新策略）' : ''}`;
-  $('#locked-node').value = l.locked_node || '尚未设置';
+  $('#locked-node').value = l.binding_missing ? '本授权订阅尚未绑定节点' : l.locked_node || '尚未设置';
   $('#update-lock').disabled = !s.current_ai_node || busy;
   const managed = s.managed_lines || [];
   $('#ai-facts').innerHTML = [
@@ -560,6 +603,16 @@ function render() {
   $('#watch').innerHTML = watching;
   $('#where').textContent = s.clash && s.clash.profile_uid
     ? `Clash Verge 当前订阅（${s.clash.profile_uid}）的扩展分组与扩展规则文件，稳航标记块内；更新订阅不会丢失。` : '—';
+  if(s.subscription_scope?.active === false) {
+    document.querySelectorAll('main button, main input').forEach(x => x.disabled = true);
+    $('#ai-state').textContent = '当前订阅已跳过';
+    $('#policy-status').textContent = s.subscription_scope.summary;
+    $('#exit-policy-fields').hidden = true;
+    $('#choices').hidden = true;
+    $('#sites').hidden = true;
+    $('#netcoffee-state').textContent = '当前订阅已跳过';
+    $('#ai-result').textContent = '当前订阅由 Clash 原生规则处理；稳航未接管。';
+  }
 }
 
 /* ---- the confirmation: 改动前 → 改动后, in plain words first ---- */
@@ -591,7 +644,11 @@ function compareHtml(body, plan) {
 function plainHtml(body, plan) {
   const exit = code => `之后受管 AI 规则指向${countryLabel(code)}家宽分组；已有会话可能保留旧出口，需另核对实际连接。${countryLabel(code)}家宽全部不可用时，受管新连接拒绝，不回退其他国家。`;
   let text = '';
-  if (body.ai_line && body.ai_line.exit_policy === 'locked') {
+  if (body.probe_nodes && !body.probe_nodes.length && snap.netcoffee?.enabled) {
+    text = '取消当前订阅的节点绑定并停止稳航探测。此订阅受管 AI 新连接将拒绝，普通国内应用仍按订阅分流；其他订阅的绑定保留。';
+  } else if ('netcoffee' in body) {
+    text = body.netcoffee ? `为当前订阅绑定明确固定节点「${line().locked_node || '未绑定'}」。五项条件复用已有 Claude 规则，补齐三个检测端点；公网 IP 尚未实测。其他订阅不会借用本订阅目标，未绑定时拒绝受管 AI 新连接。` : '撤销新增的三个检测端点，保留原有 Claude 和其他 AI 规则。';
+  } else if (body.ai_line && body.ai_line.exit_policy === 'locked') {
     text = `只允许锁定节点「${body.ai_line.locked_node || line().locked_node}」。变慢、探测异常、故障或节点消失时均不自动换节点；无法完成的受管 AI 连接拒绝，不回退备用、DIRECT 或其他国家。固定节点不能保证供应商公网 IP 不变。`;
   } else if (body.ai_line && body.ai_line.exit_policy) {
     text = body.ai_line.exit_policy === 'failover_only' ? '仅在确认故障或节点移除时允许同国家备援，恢复后不自动返回原节点。' : '性能持续下降或故障时允许自动更换同国家节点。';
@@ -705,7 +762,8 @@ async function submit(body, message) {
       const ok = await confirmDialog(off ? '确认关闭 AI 专线' : '确认写入 Clash', '写入前自动备份并由 Clash 内核校验，失败会自动恢复原配置。', html, off ? '确认关闭' : '确认写入');
       if (!ok) { toast('已取消，未作改动。'); return; }
     }
-    const result = await post('/api/settings/apply', body);
+    const result = await post('/api/settings/apply', plan.preview_id ? {...body, _preview:plan.preview_id} : body);
+    if('probe_nodes' in body || 'netcoffee' in body || 'ai_line' in body) probeDraft = null;
     const dropped = (result.dropped || []).length ? ` 当前内核缺少数据库，已跳过 ${result.dropped.map(x => x.join(',')).join('、')}。` : '';
     toast((typeof message === 'function' ? message(result) : message || '已保存。') + dropped);
     check = null;
@@ -721,6 +779,17 @@ async function submit(body, message) {
 }
 
 /* ---- events ---- */
+$('#probe-form').addEventListener('change', () => {
+  probeDraft = [...document.querySelectorAll('input[name="probe-node"]:checked')].map(x => x.value);
+  $('#probe-count').textContent = `${(snap.probe_nodes || []).length} 个已选 · 选择未保存`;
+});
+$('#probe-form').addEventListener('submit', e => {
+  e.preventDefault();
+  submit({probe_nodes:[...document.querySelectorAll('input[name="probe-node"]:checked')].map(x => x.value)}, '探测选择已保存。');
+});
+$('#probe-clear').addEventListener('click', () => submit({probe_nodes:[]}, '已取消全部稳航探测；已有历史结果保留原时间。'));
+$('#netcoffee-import').addEventListener('click', () => submit({netcoffee:true}, '检测规则已导入并完成回读；公网 IP 尚未实测。'));
+$('#netcoffee-remove').addEventListener('click', () => submit({netcoffee:false}, '已撤销新增检测规则；原有 Claude 和其他 AI 规则保留。'));
 $('#choices').addEventListener('click', e => {
   const b = e.target.closest('button[data-country]');
   if (!b || b.disabled || busy) return;
@@ -850,6 +919,8 @@ async function load() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
     const before = snap ? watch().state : null;
+    const previousScope = snap?.subscription_scope?.active;
+    if(previousScope !== undefined && previousScope !== d.subscription_scope?.active) { location.reload(); return; }
     settingsReadFailed = false;
     policyExpiryShown = false;
     snap = d;

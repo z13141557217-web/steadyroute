@@ -23,7 +23,8 @@ from test_real_core import GEOSITE, BASE_CONFIG
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--port',type=int,default=18772)
-    cases = ('empty', 'consistent', 'same-country', 'other-country', 'direct', 'unknown', 'mixed', 'offline', 'fetch-error', 'stale', 'api-error')
+    parser.add_argument('--netcoffee', action='store_true', help='include synthetic diagnostic binding')
+    cases = ('empty', 'consistent', 'same-country', 'other-country', 'direct', 'unknown', 'mixed', 'offline', 'fetch-error', 'stale', 'api-error', 'out-of-scope')
     parser.add_argument('--case', choices=cases, default='empty')
     args=parser.parse_args()
     if not real_core.available():
@@ -34,9 +35,17 @@ def main():
             root=pathlib.Path(directory);config=root/'config.json'
             config.write_text(json.dumps(BASE_CONFIG))
             service=settings_service.SettingsService(config,root,core,clash_home=core.verge,core=real_core.CORE)
+            cycle_harness.authorize_fixture(service)
             group='AI 台湾家宽线路';target=core.proxies()[group]['now']
             service.apply({'ai_line':dict(enabled=True,country='TW',group_name=group,exit_policy='locked',locked_node=target)})
+            if args.netcoffee:
+                uid=service.target.resolve()[0]
+                (core.verge/'profiles'/(uid+'.yaml')).write_text(json.dumps({'proxies':[
+                    dict(name=n,type='socks5',server='127.0.0.1',port=9) for n in real_core.NODES]}))
+                service.apply({'netcoffee':True})
             selected = {'case': args.case}
+            authorized_fixture_uid=service.target.resolve()[0]
+            service.scope.authorized_uid=lambda: 'other-fixture' if selected['case']=='out-of-scope' else authorized_fixture_uid
             data = core.proxies()
             same = next(n for n in data if n != target and n.startswith('台湾') and ai_line.is_node(data[n]))
             other = next(n for n in data if '日本' in n and ai_line.is_node(data[n]))

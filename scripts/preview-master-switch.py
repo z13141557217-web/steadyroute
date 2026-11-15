@@ -24,6 +24,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='sr-control-preview-') as td:
         base=pathlib.Path(td);config=base/'config.json';config.write_text(json.dumps(BASE_CONFIG))
         service=settings_service.SettingsService(config,base,core,clash_home=core.verge,core=real_core.CORE)
+        cycle_harness.authorize_fixture(service)
         group='AI 台湾家宽线路';target=core.proxies()[group]['now']
         service.apply({'ai_line':dict(enabled=True,country='TW',group_name=group,exit_policy='locked',locked_node=target)})
         uid=service.target.resolve()[0]

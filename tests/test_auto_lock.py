@@ -173,6 +173,9 @@ class RouterTests(unittest.TestCase):
     """Full cycles against a friend's subscription served by the in-process fake controller."""
 
     def setUp(self):
+        consent = mock.patch.dict(router.POLICY_CONFIG, {'probe_nodes': list(ALL_NODES)})
+        consent.start()
+        self.addCleanup(consent.stop)
         router.RUNTIME.update({"last_cycle_wall": None, "last_cycle_mono": None, "last_duration_s": 0.0})
         router.apply_policies([])
         router.AUTO_LOCK_STATUS.clear()
@@ -313,6 +316,7 @@ class RouterTests(unittest.TestCase):
         return None
 
     def test_fresh_install_gets_a_mature_backup_within_a_minute(self):
+        router.POLICY_CONFIG['probe_nodes'] = list(US_RES)
         self.fresh_install()
         mature = lambda: any(router.eligible_for_optimization(self.state["nodes"].get(n, {})) for n in US_RES[1:])
         ticks = self.ticks_until(mature)

@@ -93,6 +93,8 @@ class ServiceBase(unittest.TestCase):
             self.config_path, self.base, self.clash, clash_home=self.clash_home, core="/bin/true",
             fetch=fetch, clock=lambda: self.clock[0], validator=lambda text: None)
 
+        cycle_harness.authorize_fixture(self.service)
+
     def tearDown(self):
         self.tmp.cleanup()
 

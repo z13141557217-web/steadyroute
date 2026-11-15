@@ -288,6 +288,9 @@ class FastFailoverCycleTests(unittest.TestCase):
 
 class PreflightTests(unittest.TestCase):
     def setUp(self):
+        consent = mock.patch.dict(router.POLICY_CONFIG, {'probe_nodes':['n']})
+        consent.start()
+        self.addCleanup(consent.stop)
         self.now = 1_800_000_000
         self.state = {"nodes": {"n": {}}, "groups": {TW_GROUP: {}}}
         self.urls = router.BUSINESS_TEST_URLS[TW_GROUP]
@@ -383,6 +386,9 @@ class HotStandbyTests(unittest.TestCase):
                       "among the best five of its line: every 5 s even under 90%")
 
     def test_failover_storm_requires_full_preflight_and_logs_once(self):
+        consent = mock.patch.dict(router.POLICY_CONFIG, {'probe_nodes':['current','backup']})
+        consent.start()
+        self.addCleanup(consent.stop)
         group = "storm-group"
         now = 1_800_000_000
         current = cycle_harness.mature_node(80, now)

@@ -183,6 +183,8 @@ def status(line, proxies=None, rules_ok=False, probe_ok=None, connections=None, 
                               reason="规则约束已核实；已识别 AI 连接 %d/%d 与目标一致" % (sample["target"], sample["identified"]))
             if not present:
                 result.update(effective_mode=None, policy_status="missing_reject", severity="warning", reason="锁定节点消失；受管规则指向拒绝，现有连接证据见分类")
+                if line.get('binding_missing'):
+                    result.update(policy_status='unbound_reject', reason='本授权订阅尚未绑定节点；受管新连接拒绝，稳航零探测')
             elif probe_ok is False:
                 result.update(effective_mode=None, policy_status="probe_abnormal", severity="warning", reason=result["reason"] + "；锁定节点探测异常，保持目标与健康会话")
     result["summary"] = result["reason"]

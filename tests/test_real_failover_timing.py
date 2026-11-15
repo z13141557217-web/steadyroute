@@ -15,6 +15,7 @@ from urllib.parse import quote
 
 import cycle_harness
 import real_core
+import settings_service
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "sim" / "detection"))
 from measure_recovery import measure_recovery, proxy_http_probe
@@ -66,6 +67,12 @@ class RealFailoverTimingTests(unittest.TestCase):
             core = real_core.Core({"cn": ["example.cn"], "openai": ["example.invalid"],
                                    "category-ai-!cn": ["example.invalid"]})
             stack.callback(core.stop)
+            scoped_base=core.root/'router-scope'
+            scoped_base.mkdir()
+            scoped_config=scoped_base/'policies.json'
+            scoped_config.write_bytes(cycle_harness.FIXED_CONFIG.read_bytes())
+            router.SETTINGS=settings_service.SettingsService(scoped_config,scoped_base,core,clash_home=core.verge,core=real_core.CORE)
+            cycle_harness.authorize_fixture(router.SETTINGS)
             servers = []
             for _ in nodes:
                 server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Endpoint)
