@@ -104,6 +104,8 @@ def signature(line):
 
 def payload_signature(kind, payload):
     value = ''.join(str(payload).split())
+    if kind == 'geoip':
+        return value.lower()
     if kind == 'and':
         # Mihomo omits no-resolve and renders the AND separator as && in /rules.
         value = value.lower().replace(',no-resolve', '').replace('&&', ',')

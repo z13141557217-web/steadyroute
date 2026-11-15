@@ -14,6 +14,7 @@ clash_profile.Writer (backup → core validation → write → reload → verify
 import json
 import re
 import netcoffee
+import service_template
 import time
 
 try:
@@ -172,8 +173,15 @@ class Manager(object):
         restored = [item for item in owned.get("removed_items") or []
                     if clash_profile._item_name(item.splitlines()[0]) in gone]
         new_groups = clash_profile.insert_prepend_items(new_groups, restored)
-        new_rules, _removed_rules = clash_profile.edit_prepend(rules_text, rule_items)
+        overlay = []
+        if self.config.get('service_template'):
+            group_names = clash_profile.runtime_group_names(self.target.runtime.read_text()) or []
+            overlay = service_template.compile_rules(self.writer.backup_root.parent / 'service-template.local.json',
+                                                     self.config['ai_line'], group_names)
+        new_rules, _removed_rules = clash_profile.edit_prepend(rules_text, [clash_profile.rule_item(r) for r in overlay] + rule_items)
         runtime = self.target.runtime.read_text(encoding="utf-8")
+        if owned.get("template_rules"):
+            runtime = service_template.prefix(runtime, owned["template_rules"])
         # Remember unmarked user rules which runtime de-duplication replaces with our block.
         original_rules = list(owned.get("original_runtime_rules") or [])
         rule_rows = runtime_rule_items(runtime)
@@ -189,6 +197,8 @@ class Manager(object):
         new_runtime = clash_profile.patch_runtime(
             runtime, group_items, rule_items, names | legacy, stale_rules=owned.get("rules") or [])
         new_runtime = insert_runtime_groups(new_runtime, [dedent_item(item) for item in restored])
+        if overlay:
+            new_runtime = service_template.prefix(new_runtime, desired=overlay)
         proxy_data = self.proxies_reader()
         nodes = [name for name, proxy in proxy_data.items() if is_node(proxy)]
         preview = []
@@ -212,7 +222,7 @@ class Manager(object):
         return {
             "profile_uid": uid, "binding": [uid,groups_file.name,rules_file.name], "groups_file": groups_file.name, "rules_file": rules_file.name,
             "netcoffee": dict(conditions=list(netcoffee.CONDITIONS), added_rules=additions),
-            "lines": preview, "rules": rule_lines, "rule_breakdown": breakdown, "groups": groups,
+            "template_rules": overlay, "lines": preview, "rules": rule_lines, "rule_breakdown": breakdown, "groups": groups,
             "removed_rules": [line for line in self.applied.get("rules") or [] if line not in rule_lines],
             "removed_legacy": [clash_profile._item_name(item.splitlines()[0]) for item in removed_groups],
             "texts": {"groups": new_groups, "rules": new_rules, "runtime": new_runtime},
@@ -266,7 +276,7 @@ class Manager(object):
                 raise clash_profile.ProfileError("重新加载后没有看到分组：%s" % "、".join(missing))
             if (self.config.get('netcoffee') or {}).get('enabled'):
                 code, body = self.writer.controller('GET', '/rules', None)
-                if code != 200 or not netcoffee.verify_rules(json.loads(body or '{}').get('rules') or [], plan['rules']):
+                if code != 200 or not netcoffee.verify_rules(json.loads(body or '{}').get('rules') or [], plan['template_rules'] + plan['rules']):
                     raise clash_profile.ProfileError('检测规则回读未通过；本次导入回滚')
 
         def guard_current():
@@ -309,7 +319,7 @@ class Manager(object):
         removed.sort(key=lambda item: order.index(clash_profile._item_name(item.splitlines()[0])))
         self.applied = {
             "profile_uid": plan["profile_uid"], "profiles": profiles, "groups": names, "rules": plan["rules"],
-            "netcoffee_rules": plan['netcoffee']['added_rules'],
+            "template_rules": plan["template_rules"], "netcoffee_rules": plan['netcoffee']['added_rules'],
             "original_runtime_rules": plan["original_runtime_rules"],
             "removed_items": removed, "removed_order": order, "dropped": plan["dropped"], "at": int(time.time()),
             "backup": str(backup), "first_rules": first_rules,
@@ -328,7 +338,7 @@ class Manager(object):
         rules_text = clash_profile.restore_prepend(rules_file.read_text(encoding="utf-8"), [])
         restored_runtime_groups = [dedent_item(item) for item in removed]
         runtime = clash_profile.patch_runtime(
-            self.target.runtime.read_text(encoding="utf-8"), [], [],
+            service_template.prefix(self.target.runtime.read_text(encoding="utf-8"), owned["template_rules"]) if owned.get("template_rules") else self.target.runtime.read_text(encoding="utf-8"), [], [],
             set(owned.get("groups") or []), stale_rules=owned.get("rules") or [])
         runtime = insert_runtime_groups(runtime, restored_runtime_groups)
         runtime = restore_runtime_rules(runtime, owned.get("original_runtime_rules") or [])

@@ -48,7 +48,7 @@ WATCH_STRIKES = 2             # looks in a row before re-writing: Clash Verge ma
 REPAIR_RETRY = 60             # after a re-write that failed: 1, 2, 4 … minutes
 REPAIR_RETRY_MAX = 30 * 60
 REPAIRS_PER_HOUR = 6          # something else keeps undoing it: stop reloading Clash over and over
-EDITABLE = ("exclude_groups", "takeover", "ai_line", "manual", "migration", "netcoffee", "probe_nodes")
+EDITABLE = ("exclude_groups", "takeover", "ai_line", "manual", "migration", "netcoffee", "probe_nodes", "service_template")
 
 
 def _atomic_json(path, data):
@@ -146,7 +146,8 @@ class SettingsService(object):
             if not (config.get('netcoffee') or {}).get('enabled'):
                 return
             applied = self.applied()
-            if applied.get('profile_uid') == config['_profile_uid']:
+            if (applied.get('profile_uid') == config['_profile_uid']
+                    and bool(applied.get('template_rules')) == bool(config.get('service_template'))):
                 return
             self.check_core()
             _, applied = self.manager(config, applied).apply(resume=True)
@@ -204,6 +205,12 @@ class SettingsService(object):
         self.scope.require()
         config = copy.deepcopy(self.config())
         config["policies"] = []
+        if 'service_template' in changes:
+            if not isinstance(changes['service_template'], bool):
+                raise clash_profile.ProfileError('模板开关值无效')
+            config['service_template'] = changes['service_template']
+        if config.get('service_template') and not (config.get('netcoffee') or {}).get('enabled'):
+            raise clash_profile.ProfileError('请先启用固定节点检测规则')
         unknown = [key for key in changes if key not in EDITABLE]
         if unknown:
             raise clash_profile.ProfileError("不能修改的设置项：%s" % "、".join(unknown))
@@ -306,6 +313,8 @@ class SettingsService(object):
                 raise clash_profile.ProfileError("当前选择与锁定目标不同；请核对当前选择，未自动切回或重选")
             if not ai_line.is_node(data.get(node)) or node not in ai_line.members(line["country"], [node]):
                 raise clash_profile.ProfileError("锁定目标必须是所选地区的明确家宽叶子节点")
+        if config.get('service_template') and not (config.get('netcoffee') or {}).get('enabled'):
+            raise clash_profile.ProfileError('请先关闭完整服务分流，再撤销固定节点检测规则')
         return config
 
     def snapshot(self):
@@ -314,6 +323,7 @@ class SettingsService(object):
         rules_state = self.rules_state()
         result = {
             "profile": config.get("profile", "fixed"),
+            "service_template": bool(config.get("service_template")),
             "subscription_scope": self.scope.snapshot(),
             "exclude_groups": (config.get("auto_lock") or {}).get("exclude_groups", []),
             "include_groups": (config.get("auto_lock") or {}).get("include_groups"),
@@ -358,7 +368,7 @@ class SettingsService(object):
             extra = applied.get('netcoffee_rules') or []
             if extra and applied.get('profile_uid') == uid:
                 result['netcoffee']['rules_status'] = 'verified' if netcoffee.verify_rules(
-                    self._get('/rules').get('rules') or [], applied.get('rules') or []) else 'unverified'
+                    self._get('/rules').get('rules') or [], (applied.get('template_rules') or []) + (applied.get('rules') or [])) else 'unverified'
                 result['netcoffee']['checked_at'] = self.clock()
                 result['netcoffee']['expires_at'] = self.clock() + exit_policy.EVIDENCE_MAX_AGE
             connections = None
@@ -448,7 +458,7 @@ class SettingsService(object):
                     len(applied["rules"]) if len(lost) == len(ours) else len(lost), len(applied["rules"])))
         configured = self.config().get("ai_line") or {}
         if applied.get('netcoffee_rules') and not netcoffee.verify_rules(
-                self._get('/rules').get('rules') or [], applied.get('rules') or []):
+                self._get('/rules').get('rules') or [], (applied.get('template_rules') or []) + (applied.get('rules') or [])):
             parts.append('检测规则边界或优先顺序未核实')
         if configured.get("enabled") and exit_policy.mode(configured) == "locked" and ours and not applied.get('netcoffee_rules'):
             expected = []
@@ -547,7 +557,7 @@ class SettingsService(object):
     def _needs_clash(self, old, new):
         # slow_exit only changes how SteadyRoute switches; nothing in Clash depends on it.
         line = lambda config: {key: value for key, value in (config.get("ai_line") or {}).items() if key != "slow_exit"}
-        keys = lambda config: (line(config), config.get("managed_lines"), (config.get("ai_rules") or {}).get("manual"), config.get('netcoffee'))
+        keys = lambda config: (line(config), config.get("managed_lines"), (config.get("ai_rules") or {}).get("manual"), config.get('netcoffee'), config.get('service_template'))
         return keys(old) != keys(new)
 
     def _wants_lines(self, config):

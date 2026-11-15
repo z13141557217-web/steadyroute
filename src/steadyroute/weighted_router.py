@@ -1691,7 +1691,7 @@ def settings_post(route, body):
             logging_setup.write_event("rules_synced", ok=result["ok"], changed=result["changed"])
             return 200, result
         if route == "/api/settings/apply":
-            if 'netcoffee' in changes and not changes.get('_preview'):
+            if ('netcoffee' in changes or 'service_template' in changes) and not changes.get('_preview'):
                 return 409, {'error':'请先预览检测规则，再确认导入或撤销'}
             result = service.apply(changes)
             reload_policy_settings()
