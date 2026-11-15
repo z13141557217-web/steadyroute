@@ -159,6 +159,13 @@ _ITEM_NAME = re.compile(r'^-\s+(?:\{\s*"name"\s*:\s*"((?:[^"\\]|\\.)*)"|name:\s*
 
 
 def _item_name(line):
+    # Clash subscriptions also use flow mappings with an unquoted name key.
+    flow = re.match(r"""^-\s*\{\s*name\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)'|([^,'"{}\[\]]+?))\s*[,}]""", line.strip())
+    if flow:
+        double, single, plain = flow.groups()
+        if double is not None:
+            return json.loads('"' + double + '"')
+        return single.replace("''", "'") if single is not None else plain.strip()
     match = _ITEM_NAME.match(line.strip())
     if not match:
         return None

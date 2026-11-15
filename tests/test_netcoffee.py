@@ -13,6 +13,10 @@ import clash_profile
 
 
 class ImportTests(ServiceBase):
+    def test_flow_mapping_source_names(self):
+        self.assertEqual(clash_profile._item_name("- { name: sample node, type: http }"), "sample node")
+        self.assertEqual(clash_profile._item_name("- { name: 'one, two', type: http }"), "one, two")
+
     def setUp(self):
         super().setUp()
         config = json.loads(self.config_path.read_text())
